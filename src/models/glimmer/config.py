@@ -2,6 +2,7 @@
 
 from dataclasses import asdict, dataclass
 import math
+from typing import ClassVar
 
 
 @dataclass(frozen=True)
@@ -104,9 +105,8 @@ class GlimmerConfig:
         return 1.0 / math.sqrt(self.hidden_size / 256.0)
 
     def to_dict(self) -> dict:
-        # Materialize computed fields so experiment manifests are self-contained
-        # and do not depend on reconstructing property logic from a code revision.
-        result = asdict(self)
-        result["layer_types"] = list(self.layer_types)
-        result["output_multiplier"] = self.logit_multiplier
-        return result
+        # Shared config serialization must contain constructor fields only so the
+        # dictionary round-trips through GlimmerConfig(**data). Derived layer_types
+        # and logit_multiplier remain deterministic properties of these fields.
+        return asdict(self)
+    model_type: ClassVar[str] = "glimmer"

@@ -1,6 +1,7 @@
 """Configuration for Amarken-Bit, a sub-60M native ternary decoder."""
 
 from dataclasses import asdict, dataclass
+from typing import ClassVar
 
 
 @dataclass(frozen=True)
@@ -62,3 +63,4 @@ class BitConfig:
 
     def to_dict(self) -> dict:
         return asdict(self)
+    model_type: ClassVar[str] = "bit"

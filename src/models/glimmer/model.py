@@ -5,12 +5,12 @@ This is an Amarken-sized decoder, not a weight-compatible reproduction of the
 experiments do not depend on a particular Transformers release.
 """
 
-from dataclasses import dataclass
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
 from .config import GlimmerConfig
+from ..common import AmarkenCausalLM, CausalLMOutput
 
 
 class RMSNorm(nn.Module):
@@ -194,16 +194,10 @@ class GlimmerDecoderLayer(nn.Module):
         return x + self.post_ffn_norm(self.mlp(self.pre_ffn_norm(x)))
 
 
-@dataclass
-class GlimmerOutput:
-    """Small stable return object; loss is absent during inference."""
-
-    logits: Tensor
-    loss: Tensor | None = None
-
-
-class GlimmerCausalLM(nn.Module):
+class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
     """Text-only Amarken-Glimmer decoder for scratch training and evaluation."""
+
+    config_type = GlimmerConfig
 
     def __init__(self, config: GlimmerConfig | None = None):
         super().__init__()
@@ -241,10 +235,31 @@ class GlimmerCausalLM(nn.Module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             nn.init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
 
-    def parameter_count(self, trainable_only: bool = False) -> int:
-        # parameters() deduplicates tied Parameter objects, so this reports deployed
-        # learned scalars correctly; trainable_only supports later freezing studies.
-        return sum(p.numel() for p in self.parameters() if not trainable_only or p.requires_grad)
+    def _resource_accounting(self, sequence_length: int, element_bytes: int) -> tuple[int, int, int, int]:
+        # Linear FLOPs cover every layer projection plus the tied output projection;
+        # embedding lookup itself is indexing and therefore excluded.
+        layer_linear_parameters = sum(
+            module.weight.numel() for layer in self.layers for module in layer.modules() if isinstance(module, nn.Linear)
+        )
+        linear_flops = 2 * sequence_length * (
+            layer_linear_parameters + self.config.hidden_size * self.config.vocab_size
+        )
+
+        def causal_pairs(tokens: int, window: int | None = None) -> int:
+            if window is None or tokens <= window:
+                return tokens * (tokens + 1) // 2
+            return window * (window + 1) // 2 + (tokens - window) * window
+
+        attention_flops = 0
+        cached_kv_elements = 0
+        for layer_type in self.config.layer_types:
+            keys = sequence_length if layer_type == "full_attention" else min(sequence_length, self.config.sliding_window)
+            pairs = causal_pairs(sequence_length, None if layer_type == "full_attention" else self.config.sliding_window)
+            # QK and AV each cost ~2 FLOPs per hidden-dimension MAC => 4*H per pair.
+            attention_flops += 4 * self.config.hidden_size * pairs
+            cached_kv_elements += 2 * self.config.num_key_value_heads * self.config.head_dim * keys
+        total = self.parameter_count()
+        return linear_flops + attention_flops, cached_kv_elements * element_bytes, total * element_bytes, 0
 
     def _attention_masks(
         self,
@@ -296,7 +311,7 @@ class GlimmerCausalLM(nn.Module):
         input_ids: Tensor,
         attention_mask: Tensor | None = None,
         labels: Tensor | None = None,
-    ) -> GlimmerOutput:
+    ) -> CausalLMOutput:
         # Batch-major integer token IDs are the sole current input interface; direct
         # embeddings/cache support can be added without changing decoder blocks.
         if input_ids.ndim != 2:
@@ -306,9 +321,13 @@ class GlimmerCausalLM(nn.Module):
         if input_ids.shape[1] > self.config.max_position_embeddings:
             raise ValueError("sequence exceeds max_position_embeddings")
         batch, length = input_ids.shape
-        # All examples share 0..T-1 positions because left-padded/cache decoding is
-        # not implemented yet. expand is a zero-copy batch view.
-        positions = torch.arange(length, device=input_ids.device).expand(batch, -1)
+        if attention_mask is None:
+            positions = torch.arange(length, device=input_ids.device).expand(batch, -1)
+        else:
+            # Match Bit/common semantics: real tokens start at RoPE position zero
+            # under left padding instead of shifting with batch padding length.
+            valid = attention_mask.to(device=input_ids.device, dtype=torch.bool)
+            positions = (valid.long().cumsum(-1) - 1).clamp_min(0)
         hidden = self.embedding_norm(self.token_embedding(input_ids))
         # Both receptive-field variants are hoisted out of the layer loop: default
         # depth now performs two rather than eighteen O(T^2) mask constructions.
@@ -335,4 +354,4 @@ class GlimmerCausalLM(nn.Module):
             # Standard next-token teacher forcing: prediction t targets token t+1;
             # reshape flattens batch/time and PyTorch CE honors label -100 masking.
             loss = F.cross_entropy(logits[:, :-1].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1))
-        return GlimmerOutput(logits=logits, loss=loss)
+        return CausalLMOutput(logits=logits, loss=loss)

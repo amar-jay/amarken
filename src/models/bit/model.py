@@ -16,6 +16,7 @@ from torch import Tensor, nn
 import torch.nn.functional as F
 
 from .config import BitConfig
+from ..common import AmarkenCausalLM, CausalLMOutput
 
 
 def _effective_ternary(weight: Tensor, eps: float) -> tuple[Tensor, Tensor, Tensor]:
@@ -184,14 +185,10 @@ class ArtifactReport:
     training_master_bytes_fp32: int
 
 
-@dataclass
-class BitOutput:
-    logits: Tensor
-    loss: Tensor | None = None
-
-
-class BitCausalLM(nn.Module):
+class BitCausalLM(AmarkenCausalLM[BitConfig]):
     """Amarken-sized BitNet decoder trained from scratch with online ternarization."""
+
+    config_type = BitConfig
 
     def __init__(self, config: BitConfig | None = None):
         super().__init__()
@@ -213,9 +210,23 @@ class BitCausalLM(nn.Module):
         if isinstance(module, (BitLinear, nn.Linear, nn.Embedding)):
             nn.init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
 
-    def parameter_count(self) -> int:
-        # PyTorch deduplicates the tied embedding/head Parameter automatically.
-        return sum(parameter.numel() for parameter in self.parameters())
+    def _resource_accounting(self, sequence_length: int, element_bytes: int) -> tuple[int, int, int, int]:
+        ternary = sum(module.weight.numel() for module in self.modules() if isinstance(module, BitLinear))
+        # Every BitLinear and the FP tied LM head performs a dense MAC in this
+        # reference implementation; ternary kernels may reduce energy, not FLOP count.
+        linear_flops = 2 * sequence_length * (
+            ternary + self.config.hidden_size * self.config.vocab_size
+        )
+        pairs = sequence_length * (sequence_length + 1) // 2
+        attention_flops = self.config.num_hidden_layers * 4 * self.config.hidden_size * pairs
+        kv_elements = (
+            self.config.num_hidden_layers
+            * 2
+            * self.config.num_key_value_heads
+            * self.config.head_dim
+            * sequence_length
+        )
+        return linear_flops + attention_flops, kv_elements * element_bytes, self.artifact_report(element_bytes).packed_2bit_bytes, ternary
 
     def _padding_causal_mask(self, attention_mask: Tensor, batch: int, length: int) -> Tensor:
         if attention_mask.shape != (batch, length):
@@ -255,7 +266,7 @@ class BitCausalLM(nn.Module):
         input_ids: Tensor,
         attention_mask: Tensor | None = None,
         labels: Tensor | None = None,
-    ) -> BitOutput:
+    ) -> CausalLMOutput:
         if input_ids.ndim != 2:
             raise ValueError("input_ids must have shape [batch, sequence]")
         batch, length = input_ids.shape
@@ -283,4 +294,4 @@ class BitCausalLM(nn.Module):
             if labels.shape != input_ids.shape:
                 raise ValueError("labels must have the same shape as input_ids")
             loss = F.cross_entropy(logits[:, :-1].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1))
-        return BitOutput(logits, loss)
+        return CausalLMOutput(logits, loss)
