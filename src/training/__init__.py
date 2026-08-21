@@ -1,5 +1,5 @@
-"""Training and preflight correctness infrastructure."""
+"""Training and preflight correctness infrastructure.
 
-from .correctness import GateResult, SuiteResult, run_correctness_suite
-
-__all__ = ["GateResult", "SuiteResult", "run_correctness_suite"]
+Import the runner from ``src.training.correctness``. Keeping package import free
+of eager runner imports also makes ``python -m src.training.correctness`` clean.
+"""

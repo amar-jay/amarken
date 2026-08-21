@@ -13,7 +13,7 @@ from pathlib import Path
 import platform
 import tempfile
 import time
-from typing import Callable
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -134,15 +134,32 @@ def _padding_error(model, corpus: Tensor) -> float:
     return float((reference - candidate).abs().max())
 
 
-def _checkpoint_exact(model, corpus: Tensor, directory: Path) -> bool:
+def _nested_equal(left: Any, right: Any) -> bool:
+    """Exact recursive comparison for tensor-bearing optimizer state dictionaries."""
+    if isinstance(left, Tensor) and isinstance(right, Tensor):
+        return torch.equal(left.cpu(), right.cpu())
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(_nested_equal(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)) and isinstance(right, type(left)):
+        return len(left) == len(right) and all(_nested_equal(a, b) for a, b in zip(left, right))
+    return left == right
+
+
+def _checkpoint_exact(model, optimizer: torch.optim.Optimizer, corpus: Tensor, directory: Path) -> bool:
     model.eval()
-    optimizer = _optimizer(model)
     expected = model(corpus[:2]).logits.detach().cpu()
     path = directory / f"{model.config.model_type}-roundtrip.pt"
     model.save_checkpoint(path, optimizer=optimizer, step=120, metadata={"gate": "roundtrip"})
     restored, info = type(model).from_checkpoint(path)
     actual = restored(corpus[:2].cpu()).logits.detach().cpu()
-    return info.step == 120 and info.metadata == {"gate": "roundtrip"} and torch.equal(actual, expected)
+    restored_optimizer = _optimizer(restored)
+    restored.restore_training_state(path, restored_optimizer, restore_rng=False)
+    return (
+        info.step == 120
+        and info.metadata == {"gate": "roundtrip"}
+        and torch.equal(actual, expected)
+        and _nested_equal(optimizer.state_dict(), restored_optimizer.state_dict())
+    )
 
 
 def _state_equal(left, right) -> bool:
@@ -171,6 +188,8 @@ def _deterministic_resume_exact(config, corpus: Tensor, directory: Path, seed: i
     uninterrupted, uninterrupted_optimizer = initialize()
     for _ in range(total_steps):
         stochastic_step(uninterrupted, uninterrupted_optimizer)
+    uninterrupted_cpu_rng = torch.get_rng_state().clone()
+    uninterrupted_cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
 
     split, split_optimizer = initialize()
     for _ in range(split_step):
@@ -185,7 +204,17 @@ def _deterministic_resume_exact(config, corpus: Tensor, directory: Path, seed: i
     info = resumed.restore_training_state(checkpoint, resumed_optimizer, restore_rng=True)
     for _ in range(split_step, total_steps):
         stochastic_step(resumed, resumed_optimizer)
-    return info.step == split_step and _state_equal(uninterrupted, resumed)
+    rng_equal = torch.equal(uninterrupted_cpu_rng, torch.get_rng_state())
+    if uninterrupted_cuda_rng is not None:
+        rng_equal = rng_equal and all(
+            torch.equal(left, right) for left, right in zip(uninterrupted_cuda_rng, torch.cuda.get_rng_state_all())
+        )
+    return (
+        info.step == split_step
+        and _state_equal(uninterrupted, resumed)
+        and _nested_equal(uninterrupted_optimizer.state_dict(), resumed_optimizer.state_dict())
+        and rng_equal
+    )
 
 
 def _run_model(config, corpus: Tensor, steps: int, seed: int, directory: Path) -> GateResult:
@@ -207,7 +236,7 @@ def _run_model(config, corpus: Tensor, steps: int, seed: int, directory: Path) -
     generated = model.generate(prompt, max_new_tokens=len(expected) - prompt.shape[1])[0].tolist()
     causal_error = _causal_error(model, corpus)
     padding_error = _padding_error(model, corpus)
-    checkpoint_exact = _checkpoint_exact(model, corpus, directory)
+    checkpoint_exact = _checkpoint_exact(model, optimizer, corpus, directory)
     resume_exact = _deterministic_resume_exact(config, corpus, directory, seed + 10_000)
     loss_ratio = final_loss / initial_loss
     generation_exact = generated == expected
