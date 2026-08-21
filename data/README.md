@@ -40,3 +40,39 @@ divided by all emitted pieces. Turkish morphology fragmentation is measured on
 the separate probe set both as pieces per word and as each inflected form's
 piece count relative to its lemma. Artifact size includes `.model` and `.vocab`.
 Round-trip correctness requires exact string equality after decode(encode(text)).
+
+## Proxy pretraining corpus
+
+Build the non-distilled proxy corpus with:
+
+```bash
+python -m src.data.proxy \
+  --config configs/proxy_dataset.json \
+  --output-dir data/processed/proxy-v1
+```
+
+`proxy-v1` starts from deterministic 100k-record samples of each OPUS-100 EN/TR
+training side, the project-owned Python modules, and the Python 3.11.15 standard
+library under the PSF license. CPython tests, `site-packages`, and `ensurepip` are
+excluded: tests resemble evaluation data, while the latter directories introduce
+bundled third-party code and licenses. This is a proxy for pipeline/model
+validation, not the eventual pretraining mixture; OPUS component licenses must
+be resolved individually before redistribution or production training.
+
+Each JSONL record carries stable ID, content hash, source ID, source locator,
+language, domain, and split group. Aligned EN/TR rows share a group so translations
+cannot cross the train/validation boundary. Selection takes the lowest seeded
+hashes instead of the first records. Splitting hashes groups into 100 fixed basis
+points (1%) for validation, so results do not depend on traversal order.
+
+Cleaning performs language-local exact deduplication followed by trigram SimHash
+near-deduplication at Hamming distance three. Contamination rejects an exact
+document or any exact 13-token window shared with configured reference files.
+The initial registry covers repository correctness tests and tokenizer probes;
+future hidden/public evaluation datasets must be added to
+`contamination_references` before any benchmark claim. `manifest.json` records
+all source, license, configuration, and output hashes. `contamination.jsonl`
+quarantines rejected documents for audit rather than silently deleting them.
+
+The builder accepts only `lines`, `glob`, and `python_stdlib` source kinds. There
+is deliberately no synthetic or distillation adapter in proxy-v1.
