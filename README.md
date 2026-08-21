@@ -16,8 +16,7 @@ Matched tokenizer, tokens, optimizer-compute, data, context and evaluation:
 
 - **Amarken-DT**: deep-thin RMSNorm/RoPE/SwiGLU/GQA Transformer; baseline near `18L × 512d × 1344ff × 8Q/2KV`, ~57M.
 - **Amarken-Share**: fewer unique blocks, recurrent/immediate block reuse; spend saved parameters on width/depth; report logical and unique layers.
-- **Amarken-SSM**: gated state-space/convolutional mixer; matched parameters and FLOPs.
-- **Amarken-Hybrid**: sparse attention layers interleaved with recurrent/SSM layers.
+- **Amarken-SSM**: gated state-space/convolutional mixer; matched parameters and FLOPs. sparse attention layers interleaved with recurrent/SSM layers if necessary.
 - **Amarken-Glimmer**: repeat `(Local-RoPE, Local-RoPE, Local-RoPE, Global-NoPE)`; local-window sweep `256/512/1024`; gated-GQA sweep `8:1/16:1`; per-head RMS QK-norm + learned query scale. Hypothesis: local layers learn order/composition cheaply; periodic position-free global layers carry long-range content without RoPE distance distortion.
 - **Amarken-MoE**: <=60M total sparse experts; matched active FLOPs; only survives if total-byte score wins.
 - **Amarken-Bit**: natively ternary weights; FP activations/norms; compare with post-trained INT4 DT winner.

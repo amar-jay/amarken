@@ -73,6 +73,25 @@ def test_masks_restore_padded_query_diagonals():
         assert not torch.isneginf(mask).all(dim=-1).any()
 
 
+def test_layers_reuse_only_two_mask_objects_per_forward():
+    model = GlimmerCausalLM(tiny_config())
+    tokens = torch.randint(0, model.config.vocab_size, (1, 7))
+    seen_mask_ids = []
+    hooks = [
+        layer.attention.register_forward_pre_hook(lambda _module, args: seen_mask_ids.append(id(args[2])))
+        for layer in model.layers
+    ]
+    model(tokens)
+    for hook in hooks:
+        hook.remove()
+    assert len(seen_mask_ids) == model.config.num_hidden_layers
+    assert len(set(seen_mask_ids)) == 2
+
+
+def test_default_config_is_created_per_model_instance():
+    assert GlimmerCausalLM().config is not GlimmerCausalLM().config
+
+
 def test_default_model_stays_below_project_limit():
     model = GlimmerCausalLM()
     assert model.parameter_count() <= 60_000_000
