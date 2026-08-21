@@ -1,0 +1,16 @@
+[pytest]
+# Fail setup early on an incompatible runner instead of producing misleading
+# collection errors from configuration features added in pytest 9.
+minversion = "9.0"
+
+# Limit discovery to the repository's correctness suite. This avoids collecting
+# downloaded corpora, generated artifacts, or future utility scripts as tests.
+testpaths = ["tests"]
+
+# Compact output is readable locally while `-ra` preserves every non-pass reason
+# needed to diagnose skips, expected failures, or unexpected passes in CI.
+addopts = ["-ra", "-q"]
+
+# The repository uses the conventional test_*.py naming rule; recording it here
+# makes discovery stable even if pytest changes defaults in a future major release.
+python_files = ["test_*.py"]

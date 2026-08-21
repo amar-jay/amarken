@@ -2,6 +2,19 @@
 # Amarken
 Goal: best measured chat intelligence under `P <= 60M`; secondary objective: intelligence/artifact-bit and intelligence/runtime-byte. No architecture privileged. Unlimited sequential experiments; fixed tests decide.
 
+## Development
+
+Install the test-only dependencies into an activated virtual environment, then
+run the repository's configured correctness suite:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Pytest configuration lives in `pytest.toml`; discovery is deliberately limited
+to `tests/test_*.py` so generated corpora and experiment artifacts are excluded.
+
 ## Invariants
 
 - Decoder LM unless an alternative wins.

@@ -1,0 +1,7 @@
+# Keep the test runner isolated from runtime/model dependencies; those belong in
+# the future project manifest once the training environment is formally pinned.
+pytest>=9.0,<10
+
+# typeguard is already present as an auto-loaded pytest plugin in the ML
+# environment and requires NoExtraItems, introduced in typing_extensions 4.14.
+typing-extensions>=4.14,<5
