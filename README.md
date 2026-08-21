@@ -1,5 +1,5 @@
+![amarken](assets/banner.png)
 # Amarken
-
 Goal: best measured chat intelligence under `P <= 60M`; secondary objective: intelligence/artifact-bit and intelligence/runtime-byte. No architecture privileged. Unlimited sequential experiments; fixed tests decide.
 
 ## Invariants
