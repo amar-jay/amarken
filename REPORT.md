@@ -463,13 +463,38 @@ The runner is deterministic, resumable JSONL, and scores correctness, verbosity,
 tool choice, argument accuracy, and unnecessary tool use. A five-case pilot
 showed that a system-level concision contract is necessary: without it, correct
 answers routinely expanded into unwanted explanations. The contracted pilot
-produced concise correct answers. Full qualification is pending completion of a
-GPU-capable Ollama runtime repair; the existing user-local installation omitted
-the bundled NVIDIA runner libraries and offloaded 0/25 layers despite a healthy
-RTX 3050 driver and UVM device.
+produced concise correct answers.
+
+The incomplete user-local Ollama installation was repaired with the official
+bundle. Ollama 0.32.15 now detects the RTX 3050 as CUDA compute 8.6, selects its
+CUDA 13 runner, and loads the 2B model in approximately 1.4 GiB VRAM at context
+2,048. The frozen qualification then produced:
+
+| Slice | Passed | Rate |
+|---|---:|---:|
+| Concise English QA | 49/50 | 98% |
+| Concise Turkish QA | 34/50 | 68% |
+| English short reasoning | 1/20 | 5% |
+| Turkish short reasoning | 0/20 | 0% |
+| Tool routing / unnecessary-tool checks | 38/40 | 95% |
+| Post-tool-result answers | 20/20 | 100% |
+| Overall | 142/200 | 71% |
+
+The conclusion is not to bulk-generate unconstrained answers. The model is a
+good candidate for concise English and tool-use surface realization, but it is
+not a trustworthy sole source for Turkish facts or reasoning labels. A low-
+thinking follow-up correctly computed a sample internally but repeatedly spent
+the entire 512-token budget restating formatting checks and emitted no final
+answer; it does not repair the production behavior. The data generator must
+therefore be grounded: authored or retrieved answer keys for QA, deterministic
+programs/calculators for verifiable reasoning, and executable schema validation
+for tools. Qwen may verbalize those verified records, but it must not define
+their truth.
 
 Artifacts: `benchmarks/ollama_teacher_qualification_v1.json`,
-`src/distillation/ollama_qualification.py`
+`src/distillation/ollama_qualification.py`,
+`experiments/ollama_teacher_qwen3_5_2b.jsonl`,
+`experiments/ollama_teacher_qwen3_5_2b.summary.json`
 
 ## Current position
 
@@ -494,13 +519,13 @@ The project has progressed from architecture prototypes to a deterministic, prov
 
 ## Immediate next actions
 
-1. Repair Ollama's missing NVIDIA runtime, verify GPU placement with `ollama ps`,
-   and complete the frozen 200-case Qwen teacher qualification.
-2. Inspect failure clusters manually and set explicit promotion gates for EN,
-   TR, reasoning, tool routing, post-tool answers, and concision.
-3. If the teacher passes, generate a small auditable pilot dataset with no code,
-   validate every record, deduplicate it, and manually review stratified samples
-   before any bulk generation.
+1. Build a grounded pilot generator with no code tasks: verified EN/TR answer
+   keys, deterministic reasoning generators/calculator results, and executable
+   tool transcripts. Use Qwen only to phrase already-verified targets.
+2. Add rejection and retry rules for Turkish language, concision, answer-key
+   preservation, tool necessity, tool schema, and argument equivalence.
+3. Generate a small auditable pilot dataset, deduplicate it, and manually review
+   stratified samples before any bulk generation.
 4. Train an apostrophe-BPE DT control on the pilot and require capability gains
    on frozen held-out tasks before scaling synthetic-data volume.
 5. Only after that gate, expand the balanced EN/TR general-QA, short-reasoning,
