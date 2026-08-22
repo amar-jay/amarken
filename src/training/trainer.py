@@ -6,6 +6,7 @@ from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import random
@@ -15,11 +16,10 @@ from typing import Literal
 import torch
 from torch import Tensor
 from torch.nn.utils import clip_grad_norm_
-from torch.utils.checkpoint import checkpoint
 
 from src.models.common import AmarkenCausalLM
 from .data import PackedSequenceDataset
-from .diagnostics import gradient_health, ternary_statistics
+from .diagnostics import TernaryTransitionTracker, gradient_health, ternary_statistics
 from .optimizer import OptimizerConfig, create_optimizer
 
 
@@ -34,12 +34,20 @@ class TrainerConfig:
     log_every_steps: int = 10
     checkpoint_every_steps: int = 1_000
     output_dir: Path = Path("runs/default")
+    lr_schedule: Literal["constant", "cosine"] = "constant"
+    warmup_steps: int = 0
+    total_steps: int | None = None
+    min_lr_ratio: float = 0.1
 
     def __post_init__(self) -> None:
         if min(self.batch_size, self.gradient_accumulation_steps, self.log_every_steps, self.checkpoint_every_steps) < 1:
             raise ValueError("batch, accumulation, log, and checkpoint intervals must be positive")
         if self.max_grad_norm <= 0:
             raise ValueError("max_grad_norm must be positive")
+        if self.warmup_steps < 0 or not 0 <= self.min_lr_ratio <= 1:
+            raise ValueError("warmup_steps must be nonnegative and min_lr_ratio in [0,1]")
+        if self.lr_schedule == "cosine" and (self.total_steps is None or self.total_steps <= self.warmup_steps):
+            raise ValueError("cosine schedule requires total_steps > warmup_steps")
 
 
 @dataclass
@@ -49,17 +57,19 @@ class TrainerState:
     consumed_tokens: int = 0
     epoch: int = 0
     block_offset: int = 0
+    clipped_updates: int = 0
 
 
 class Trainer:
     """Shared AdamW/AMP trainer whose checkpoints resume at optimizer boundaries."""
 
-    FORMAT_VERSION = 1
+    FORMAT_VERSION = 2
     # These settings alter batch selection or floating-point updates and must be
     # identical after resume. Output/log/checkpoint intervals may safely change.
     TRAJECTORY_CONFIG_FIELDS = (
         "batch_size", "gradient_accumulation_steps", "precision",
         "gradient_checkpointing", "max_grad_norm", "seed",
+        "lr_schedule", "warmup_steps", "total_steps", "min_lr_ratio",
     )
 
     def __init__(
@@ -78,6 +88,7 @@ class Trainer:
         if dataset.sequence_length > model.config.max_position_embeddings:
             raise ValueError("packed sequence length exceeds model context")
         self.model = model.to(self.device)
+        self.model.set_gradient_checkpointing(config.gradient_checkpointing)
         self.dataset = dataset
         self.config = config
         self.optimizer_config = optimizer_config
@@ -90,6 +101,7 @@ class Trainer:
         self.config.output_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = self.config.output_dir / "metrics.jsonl"
         self._dataset_fingerprint = self._fingerprint_dataset()
+        self._ternary_transitions = TernaryTransitionTracker(self.model)
 
     def _fingerprint_dataset(self) -> str:
         digest = hashlib.sha256()
@@ -124,21 +136,36 @@ class Trainer:
         return torch.autocast(device_type=self.device.type, dtype=dtype)
 
     def _forward_loss(self, batch: dict[str, Tensor]) -> Tensor:
-        def loss_forward(input_ids: Tensor, attention_mask: Tensor, labels: Tensor) -> Tensor:
-            loss = self.model(input_ids, attention_mask=attention_mask, labels=labels).loss
-            if loss is None:
-                raise RuntimeError("model did not return training loss")
-            return loss
+        attention_mask: Tensor | None = batch["attention_mask"]
+        segment_ids: Tensor | None = batch["segment_ids"]
+        # A genuinely single-segment, unpadded batch can use native causal SDPA;
+        # multi-document packing must retain the dense segment isolation mask.
+        one_segment = all(row[row >= 0].unique().numel() <= 1 for row in segment_ids)
+        if bool(attention_mask.all()) and one_segment:
+            attention_mask = None
+            segment_ids = None
+        loss = self.model(
+            batch["input_ids"], attention_mask=attention_mask,
+            labels=batch["labels"], segment_ids=segment_ids,
+        ).loss
+        if loss is None:
+            raise RuntimeError("model did not return training loss")
+        return loss
 
-        if self.config.gradient_checkpointing:
-            # Non-reentrant checkpointing supports integer-only inputs and records
-            # the autograd graph during recomputation; preserve_rng_state keeps
-            # dropout masks identical between original and recomputed forwards.
-            return checkpoint(
-                loss_forward, batch["input_ids"], batch["attention_mask"], batch["labels"],
-                use_reentrant=False, preserve_rng_state=True,
-            )
-        return loss_forward(batch["input_ids"], batch["attention_mask"], batch["labels"])
+    def _set_learning_rates(self) -> None:
+        """Set the next update LR as a pure function of completed update count."""
+        next_step = self.state.update_step + 1
+        if self.config.warmup_steps and next_step <= self.config.warmup_steps:
+            multiplier = next_step / self.config.warmup_steps
+        elif self.config.lr_schedule == "cosine":
+            decay_steps = self.config.total_steps - self.config.warmup_steps
+            progress = min(1.0, (next_step - self.config.warmup_steps) / decay_steps)
+            cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+            multiplier = self.config.min_lr_ratio + (1.0 - self.config.min_lr_ratio) * cosine
+        else:
+            multiplier = 1.0
+        for group in self.optimizer.param_groups:
+            group["lr"] = group["base_lr"] * multiplier
 
     def _log(self, record: dict) -> None:
         with self.log_path.open("a", encoding="utf-8") as handle:
@@ -155,6 +182,7 @@ class Trainer:
         while self.state.update_step < target:
             started = time.perf_counter()
             self.optimizer.zero_grad(set_to_none=True)
+            self._set_learning_rates()
             micro_batches = [self._next_batch() for _ in range(self.config.gradient_accumulation_steps)]
             supervised = [int((batch["labels"][:, 1:] != -100).sum()) for batch in micro_batches]
             supervised_total = sum(supervised)
@@ -172,9 +200,14 @@ class Trainer:
             # Diagnostics and clipping must observe true gradients, so AMP
             # unscales once after all accumulation and before either operation.
             self.scaler.unscale_(self.optimizer)
-            health = gradient_health(self.model)
-            bit_stats = ternary_statistics(self.model)
+            # Full tensor scans are valuable diagnostics but expensive for Bit;
+            # collect them only on emitted log steps, never silently every update.
+            diagnostics_due = (self.state.update_step + 1) % self.config.log_every_steps == 0
+            health = gradient_health(self.model) if diagnostics_due else {}
+            bit_stats = ternary_statistics(self.model) if diagnostics_due else {}
             clipped_norm = float(clip_grad_norm_(self.model.parameters(), self.config.max_grad_norm))
+            if clipped_norm > self.config.max_grad_norm:
+                self.state.clipped_updates += 1
             old_scale = self.scaler.get_scale()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -187,6 +220,9 @@ class Trainer:
                 # the caller's requested update count.
                 continue
             self.state.update_step += 1
+            # When logging is sparse this deliberately measures churn since the
+            # previous observation, which is both cheaper and more interpretable.
+            transition_stats = self._ternary_transitions.measure(self.model) if diagnostics_due else {}
             record = {
                 "step": self.state.update_step,
                 "loss": weighted_loss / supervised_total,
@@ -198,10 +234,12 @@ class Trainer:
                 "block_offset": self.state.block_offset,
                 "grad_norm_before_clip": clipped_norm,
                 "grad_clip_coefficient": min(1.0, self.config.max_grad_norm / max(clipped_norm, 1e-12)),
+                "gradient_clipping_fraction": self.state.clipped_updates / self.state.update_step,
                 "amp_scale": self.scaler.get_scale(),
                 "seconds": time.perf_counter() - started,
                 **health,
                 **bit_stats,
+                **transition_stats,
             }
             if self.state.update_step % self.config.log_every_steps == 0:
                 self._log(record)
@@ -252,6 +290,9 @@ class Trainer:
         if payload["dataset_fingerprint"] != self._dataset_fingerprint:
             raise ValueError("checkpoint dataset does not match trainer")
         self.model.load_state_dict(payload["model_state"], strict=True)
+        # Anchor telemetry to restored weights; construction-time random weights
+        # otherwise make the first post-resume transition meaningless.
+        self._ternary_transitions.reset(self.model)
         self.optimizer.load_state_dict(payload["optimizer_state"])
         self.scaler.load_state_dict(payload["scaler_state"])
         self.state = TrainerState(**payload["trainer_state"])

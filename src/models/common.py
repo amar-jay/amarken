@@ -15,6 +15,22 @@ import torch
 from torch import Tensor, nn
 
 
+def packed_positions(attention_mask: Tensor, segment_ids: Tensor | None = None) -> Tensor:
+    """Return zero-based positions, resetting at every packed document boundary."""
+    valid = attention_mask.bool()
+    if segment_ids is None:
+        return (valid.long().cumsum(-1) - 1).clamp_min(0)
+    if segment_ids.shape != attention_mask.shape:
+        raise ValueError("segment_ids must have the same shape as attention_mask")
+    batch, length = segment_ids.shape
+    indices = torch.arange(length, device=segment_ids.device).expand(batch, -1)
+    boundary = torch.ones_like(valid)
+    boundary[:, 1:] = segment_ids[:, 1:] != segment_ids[:, :-1]
+    boundary |= ~valid
+    starts = torch.where(boundary, indices, torch.zeros_like(indices)).cummax(dim=-1).values
+    return torch.where(valid, indices - starts, torch.zeros_like(indices))
+
+
 class ModelConfig(Protocol):
     """Minimum immutable config surface consumed by shared infrastructure."""
 
@@ -72,6 +88,10 @@ class AmarkenCausalLM(nn.Module, ABC, Generic[ConfigT]):
 
     config_type: ClassVar[type]
     config: ConfigT
+
+    def set_gradient_checkpointing(self, enabled: bool) -> None:
+        """Enable architecture-owned per-layer activation recomputation."""
+        self.gradient_checkpointing = bool(enabled)
 
     def parameter_count(self, trainable_only: bool = False) -> int:
         # parameters() deduplicates tied tensors, which is the project's counting rule.

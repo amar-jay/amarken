@@ -8,9 +8,10 @@ experiments do not depend on a particular Transformers release.
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from .config import GlimmerConfig
-from ..common import AmarkenCausalLM, CausalLMOutput
+from ..common import AmarkenCausalLM, CausalLMOutput, packed_positions
 
 
 class RMSNorm(nn.Module):
@@ -108,13 +109,18 @@ class GatedGroupedQueryAttention(nn.Module):
         self.v_proj = nn.Linear(config.hidden_size, kv_width, bias=False)
         # Gate is computed from the same normalized branch input and modulates each
         # concatenated head feature before mixing by o_proj; sigmoid bounds it 0..1.
-        self.gate_proj = nn.Linear(config.hidden_size, q_width, bias=False)
+        self.gate_proj = (
+            nn.Linear(config.hidden_size, q_width, bias=False) if config.use_attention_gate else None
+        )
         self.o_proj = nn.Linear(q_width, config.hidden_size, bias=False)
         # One parameter-free norm is safe to reuse: RMSNorm has no running state;
         # it operates on the last dimension, therefore independently per head.
-        self.qk_norm = RMSNorm(eps=config.rms_norm_eps, scale=False)
+        self.qk_norm = RMSNorm(eps=config.rms_norm_eps, scale=False) if config.use_qk_norm else None
         # Per-head learnable inverse temperature; initialized from Muse Glimmer.
-        self.query_scale = nn.Parameter(torch.full((config.num_attention_heads,), config.qk_scale_factor))
+        self.query_scale = (
+            nn.Parameter(torch.full((config.num_attention_heads,), config.qk_scale_factor))
+            if config.use_qk_norm else None
+        )
 
     def forward(
         self,
@@ -129,8 +135,9 @@ class GatedGroupedQueryAttention(nn.Module):
         v = self.v_proj(hidden_states).view(batch, length, self.config.num_key_value_heads, -1).transpose(1, 2)
         # Unit-RMS Q/K stabilizes dot products; learned per-Q-head scale acts as an
         # inverse softmax temperature in addition to SDPA's standard 1/sqrt(D).
-        q = self.qk_norm(q) * self.query_scale.view(1, -1, 1, 1)
-        k = self.qk_norm(k)
+        if self.qk_norm is not None:
+            q = self.qk_norm(q) * self.query_scale.view(1, -1, 1, 1)
+            k = self.qk_norm(k)
         if rope is not None:
             # Local layers encode relative order/distance; global layers pass None
             # and are deliberately position-free to avoid long-distance RoPE decay.
@@ -154,7 +161,8 @@ class GatedGroupedQueryAttention(nn.Module):
         # Rejoin heads, apply bounded content-dependent gate, then mix/project back
         # to residual width. Gate-before-o_proj exactly matches Muse's operation order.
         output = output.transpose(1, 2).reshape(batch, length, -1)
-        output = output * torch.sigmoid(self.gate_proj(hidden_states))
+        if self.gate_proj is not None:
+            output = output * torch.sigmoid(self.gate_proj(hidden_states))
         return self.o_proj(output)
 
 
@@ -206,6 +214,7 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
         # added later and prevents surprising identity coupling between models.
         config = GlimmerConfig() if config is None else config
         self.config = config
+        self.gradient_checkpointing = False
         # No positional embedding table: token embeddings carry content only and
         # RoPE is applied inside local attention. Padding row is tokenizer-dependent.
         self.token_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
@@ -267,6 +276,7 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
         batch: int,
         length: int,
         device: torch.device,
+        segment_ids: Tensor | None = None,
     ) -> dict[str, Tensor]:
         """Build the two immutable stack masks once per forward.
 
@@ -298,6 +308,10 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
             # Apply key padding first, then restore only padded-query diagonals. The
             # reverse order would immediately erase the safety edge with key masking.
             allowed = geometry.unsqueeze(0) & valid[:, None, :]
+            if segment_ids is not None:
+                if segment_ids.shape != (batch, length):
+                    raise ValueError("segment_ids must have shape [batch, sequence]")
+                allowed &= segment_ids[:, :, None] == segment_ids[:, None, :]
             allowed |= (~valid)[:, :, None] & identity.unsqueeze(0)
             # FP32 additive -inf composes exactly with attention scores. Shape
             # [B|1,1,T,T] broadcasts over query heads without materializing H copies.
@@ -311,6 +325,7 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
         input_ids: Tensor,
         attention_mask: Tensor | None = None,
         labels: Tensor | None = None,
+        segment_ids: Tensor | None = None,
     ) -> CausalLMOutput:
         # Batch-major integer token IDs are the sole current input interface; direct
         # embeddings/cache support can be added without changing decoder blocks.
@@ -322,23 +337,36 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
             raise ValueError("sequence exceeds max_position_embeddings")
         batch, length = input_ids.shape
         if attention_mask is None:
+            if segment_ids is not None:
+                raise ValueError("segment_ids require attention_mask")
             positions = torch.arange(length, device=input_ids.device).expand(batch, -1)
         else:
             # Match Bit/common semantics: real tokens start at RoPE position zero
             # under left padding instead of shifting with batch padding length.
             valid = attention_mask.to(device=input_ids.device, dtype=torch.bool)
-            positions = (valid.long().cumsum(-1) - 1).clamp_min(0)
+            positions = packed_positions(valid, segment_ids)
         hidden = self.embedding_norm(self.token_embedding(input_ids))
         # Both receptive-field variants are hoisted out of the layer loop: default
         # depth now performs two rather than eighteen O(T^2) mask constructions.
-        additive_masks = self._attention_masks(attention_mask, batch, length, input_ids.device)
+        additive_masks = self._attention_masks(attention_mask, batch, length, input_ids.device, segment_ids)
         # Compute RoPE once per forward; full layers ignore it, local layers reuse it.
         rope = self.rotary_embedding(positions, hidden.dtype)
         for layer in self.layers:
             # NoPE is selected by layer type rather than theta=0: applying RoPE with
             # theta zero would be undefined and identity RoPE would still encode pos.
-            layer_rope = None if layer.attention.layer_type == "full_attention" else rope
-            hidden = layer(hidden, layer_rope, additive_masks[layer.attention.layer_type])
+            layer_rope = (
+                None
+                if self.config.use_nope_global and layer.attention.layer_type == "full_attention"
+                else rope
+            )
+            layer_mask = additive_masks[layer.attention.layer_type]
+            if self.gradient_checkpointing and self.training:
+                hidden = checkpoint(
+                    lambda state, block=layer, block_rope=layer_rope, mask=layer_mask: block(state, block_rope, mask),
+                    hidden, use_reentrant=False,
+                )
+            else:
+                hidden = layer(hidden, layer_rope, layer_mask)
         # Project in model dtype, then use FP32 for scaling/cap/loss stability. The
         # width-derived multiplier keeps initial logit variance comparable by scale.
         logits = self.lm_head(self.final_norm(hidden)).float() * self.config.logit_multiplier

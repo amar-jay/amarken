@@ -47,6 +47,11 @@ class GlimmerConfig:
     # Muse's post-QK-norm inverse-temperature initializer; this implementation
     # makes it independently learnable per Q head rather than a frozen scalar.
     qk_scale_factor: float = 3.87
+    # Architecture switches make the three unusual Glimmer choices measurable
+    # independently instead of forcing comparisons against a bundled treatment.
+    use_attention_gate: bool = True
+    use_qk_norm: bool = True
+    use_nope_global: bool = True
     # Muse pre/final/QK normalization epsilon: enough BF16/FP16 stability without
     # noticeably biasing normal-variance vectors.
     rms_norm_eps: float = 1e-5

@@ -41,6 +41,15 @@ def test_pack_ternary_uses_four_trits_per_byte():
     assert padding == 3
 
 
+def test_output_channel_scaling_has_one_scale_per_neuron():
+    layer = BitLinear(5, 3, eps=1e-5, scale_granularity="output_channel")
+    torch.nn.init.normal_(layer.weight)
+    trits, scale = layer.quantized()
+    assert scale.shape == (3, 1)
+    inputs = torch.randn(2, 5)
+    assert torch.allclose(layer(inputs), torch.nn.functional.linear(inputs, trits.float() * scale), atol=1e-6)
+
+
 def test_forward_loss_backward_and_tied_embeddings():
     model = BitCausalLM(tiny_config())
     tokens = torch.randint(0, model.config.vocab_size, (2, 9))

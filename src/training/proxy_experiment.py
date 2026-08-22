@@ -116,6 +116,12 @@ def run(config_path: Path, report_path: Path) -> dict:
             max_grad_norm=config["max_grad_norm"], seed=config["seed"], log_every_steps=1,
             checkpoint_every_steps=config["optimizer_updates"] + 1,
             output_dir=output_root / model_type,
+            # Optional keys preserve old smoke configs while letting serious runs
+            # declare the complete trajectory in their provenance JSON.
+            lr_schedule=config.get("lr_schedule", "constant"),
+            warmup_steps=config.get("warmup_steps", 0),
+            total_steps=config.get("total_steps", config["optimizer_updates"]),
+            min_lr_ratio=config.get("min_lr_ratio", 0.1),
         )
         trainer = Trainer(model, train_dataset, trainer_config, optimizer_config, device)
         initial_validation_loss = _evaluate(model, validation_dataset, device, config["precision"])

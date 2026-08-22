@@ -92,6 +92,15 @@ def test_default_config_is_created_per_model_instance():
     assert GlimmerCausalLM().config is not GlimmerCausalLM().config
 
 
+def test_architecture_ablation_switches_remove_only_requested_mechanisms():
+    model = GlimmerCausalLM(tiny_config(use_attention_gate=False, use_qk_norm=False, use_nope_global=False))
+    attention = model.layers[0].attention
+    assert attention.gate_proj is None
+    assert attention.qk_norm is None and attention.query_scale is None
+    tokens = torch.randint(0, model.config.vocab_size, (1, 7))
+    assert torch.isfinite(model(tokens).logits).all()
+
+
 def test_default_model_stays_below_project_limit():
     model = GlimmerCausalLM()
     assert model.parameter_count() <= 60_000_000

@@ -1,11 +1,14 @@
 """Full-precision deep-thin Transformer control for architecture tournaments."""
 
+import math
+
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from .config import DTConfig
-from ..common import AmarkenCausalLM, CausalLMOutput
+from ..common import AmarkenCausalLM, CausalLMOutput, packed_positions
 
 
 class RMSNorm(nn.Module):
@@ -98,12 +101,20 @@ class DTCausalLM(AmarkenCausalLM[DTConfig]):
         super().__init__()
         config = DTConfig() if config is None else config
         self.config = config
+        self.gradient_checkpointing = False
         self.token_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
         self.rotary_embedding = RotaryEmbedding(config.head_dim, config.rope_theta)
         self.layers = nn.ModuleList(DecoderLayer(config) for _ in range(config.num_hidden_layers))
         self.final_norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.apply(self._init_weights)
+        # Residual-producing projections are the only matrices whose outputs are
+        # accumulated through all L blocks. GPT-style 1/sqrt(2L) depth scaling
+        # keeps their aggregate initial variance approximately depth-independent.
+        residual_std = config.initializer_range / math.sqrt(2 * config.num_hidden_layers)
+        for layer in self.layers:
+            nn.init.normal_(layer.attention.o_proj.weight, mean=0.0, std=residual_std)
+            nn.init.normal_(layer.mlp.down_proj.weight, mean=0.0, std=residual_std)
         if config.tie_word_embeddings:
             self.lm_head.weight = self.token_embedding.weight
 
@@ -121,34 +132,43 @@ class DTCausalLM(AmarkenCausalLM[DTConfig]):
         kv_elements = self.config.num_hidden_layers * 2 * self.config.num_key_value_heads * self.config.head_dim * sequence_length
         return linear_flops + attention_flops, kv_elements * element_bytes, self.parameter_count() * element_bytes, 0
 
-    def _padding_mask(self, attention_mask: Tensor, batch: int, length: int) -> Tensor:
+    def _padding_mask(self, attention_mask: Tensor, batch: int, length: int, segment_ids: Tensor | None = None) -> Tensor:
         if attention_mask.shape != (batch, length):
             raise ValueError("attention_mask must have shape [batch, sequence]")
         valid = attention_mask.bool()
         causal = torch.ones((length, length), device=valid.device, dtype=torch.bool).tril()
         allowed = causal.unsqueeze(0) & valid[:, None, :]
+        if segment_ids is not None:
+            if segment_ids.shape != (batch, length):
+                raise ValueError("segment_ids must have shape [batch, sequence]")
+            allowed &= segment_ids[:, :, None] == segment_ids[:, None, :]
         # Padded queries receive a self-edge to prevent all-masked SDPA rows; their
         # labels remain -100, so this numerical safeguard adds no training target.
         allowed |= (~valid)[:, :, None] & torch.eye(length, device=valid.device, dtype=torch.bool).unsqueeze(0)
         return allowed.unsqueeze(1)
 
-    def forward(self, input_ids: Tensor, attention_mask: Tensor | None = None, labels: Tensor | None = None) -> CausalLMOutput:
+    def forward(self, input_ids: Tensor, attention_mask: Tensor | None = None, labels: Tensor | None = None, segment_ids: Tensor | None = None) -> CausalLMOutput:
         if input_ids.ndim != 2:
             raise ValueError("input_ids must have shape [batch, sequence]")
         if input_ids.shape[1] > self.config.max_position_embeddings:
             raise ValueError("sequence exceeds max_position_embeddings")
         batch, length = input_ids.shape
         if attention_mask is None:
+            if segment_ids is not None:
+                raise ValueError("segment_ids require attention_mask")
             positions = torch.arange(length, device=input_ids.device).expand(batch, -1)
             mask = None
         else:
             valid = attention_mask.to(device=input_ids.device, dtype=torch.bool)
-            positions = (valid.long().cumsum(-1) - 1).clamp_min(0)
-            mask = self._padding_mask(valid, batch, length)
+            positions = packed_positions(valid, segment_ids)
+            mask = self._padding_mask(valid, batch, length, segment_ids)
         hidden = self.token_embedding(input_ids)
         rope = self.rotary_embedding(positions, hidden.dtype)
         for layer in self.layers:
-            hidden = layer(hidden, rope, mask)
+            if self.gradient_checkpointing and self.training:
+                hidden = checkpoint(lambda state, block=layer: block(state, rope, mask), hidden, use_reentrant=False)
+            else:
+                hidden = layer(hidden, rope, mask)
         logits = self.lm_head(self.final_norm(hidden)).float()
         loss = None
         if labels is not None:

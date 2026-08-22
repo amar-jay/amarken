@@ -47,12 +47,25 @@ def test_packing_masks_nonassistant_padding_eos_and_record_boundaries():
     dataset = _dataset()
     assert all(len(block.input_ids) == 8 for block in dataset)
     assert all(block.labels[0] == -100 for block in dataset)
+    assert all(segment == -1 for block in dataset for segment, valid in zip(block.segment_ids, block.attention_mask) if not valid)
     assert all(label == -100 for block in dataset for label, valid in zip(block.labels, block.attention_mask) if not valid)
     flattened_labels = [label for block in dataset for label in block.labels]
     assert 2 not in flattened_labels  # inserted EOS is context, never a target
     # Token 11 begins the third record with assistant_mask=True but must not be
     # learned from the preceding packed record's context.
     assert all(not (token == 11 and label == 11) for block in dataset for token, label in zip(block.input_ids, block.labels))
+
+
+def test_warmup_cosine_schedule_is_logged_at_optimizer_boundaries(tmp_path: Path):
+    config = TrainerConfig(
+        batch_size=1, gradient_accumulation_steps=2, precision="fp32", gradient_checkpointing=False,
+        log_every_steps=1, checkpoint_every_steps=99, output_dir=tmp_path,
+        warmup_steps=2, total_steps=4, lr_schedule="cosine", min_lr_ratio=0.1,
+    )
+    trainer = Trainer(create_model(_glimmer_config()), _dataset(), config)
+    records = trainer.train(4)
+    rates = [record["learning_rates"]["decay"] for record in records]
+    assert torch.allclose(torch.tensor(rates), torch.tensor([1.5e-4, 3e-4, 1.65e-4, 3e-5]))
 
 
 def test_optimizer_groups_are_model_specific_and_complete():
@@ -73,6 +86,7 @@ def test_exact_resume_with_accumulation_and_checkpointing(tmp_path: Path):
         batch_size=1, gradient_accumulation_steps=2, precision="fp32",
         gradient_checkpointing=True, log_every_steps=1, checkpoint_every_steps=99,
         output_dir=tmp_path / "continuous", seed=77,
+        lr_schedule="cosine", warmup_steps=1, total_steps=4, min_lr_ratio=0.1,
     )
     torch.manual_seed(123)
     continuous = Trainer(create_model(_glimmer_config()), _dataset(), config)

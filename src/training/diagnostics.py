@@ -10,6 +10,47 @@ from src.models.bit.model import BitLinear
 from src.models.common import AmarkenCausalLM
 
 
+class TernaryTransitionTracker:
+    """Track discrete trit churn between successful optimizer updates."""
+
+    def __init__(self, model: AmarkenCausalLM):
+        self.previous: dict[str, torch.Tensor] = {}
+        self.reset(model)
+
+    @torch.no_grad()
+    def reset(self, model: AmarkenCausalLM) -> None:
+        # CPU snapshots avoid permanently consuming scarce accelerator memory;
+        # they are reconstructible telemetry rather than checkpoint trajectory state.
+        self.previous = {
+            name: module.quantized()[0].cpu()
+            for name, module in model.named_modules()
+            if isinstance(module, BitLinear)
+        }
+
+    @torch.no_grad()
+    def measure(self, model: AmarkenCausalLM) -> dict[str, float]:
+        if not self.previous:
+            return {}
+        total = changed = sign_flips = into_zero = out_of_zero = 0
+        for name, module in model.named_modules():
+            if not isinstance(module, BitLinear):
+                continue
+            current = module.quantized()[0].cpu()
+            prior = self.previous[name]
+            total += current.numel()
+            changed += int((current != prior).sum())
+            sign_flips += int(((current * prior) == -1).sum())
+            into_zero += int(((current == 0) & (prior != 0)).sum())
+            out_of_zero += int(((current != 0) & (prior == 0)).sum())
+            self.previous[name] = current
+        return {
+            "ternary_transition_fraction": changed / total,
+            "ternary_sign_flip_fraction": sign_flips / total,
+            "ternary_into_zero_fraction": into_zero / total,
+            "ternary_out_of_zero_fraction": out_of_zero / total,
+        }
+
+
 def gradient_health(model: AmarkenCausalLM) -> dict[str, float]:
     total = finite = zeros = 0
     squared_norm = maximum = 0.0
@@ -52,7 +93,9 @@ def ternary_statistics(model: AmarkenCausalLM) -> dict[str, float]:
             ternary_grad_finite += int(torch.isfinite(gradient).sum())
             ternary_grad_zero += int((gradient == 0).sum())
     total = sum(trit_counts.values())
-    scale_tensor = torch.stack(scales)
+    # Channel-wise experiments produce differently-sized vectors; flattening and
+    # concatenating reports the distribution over actual stored scale metadata.
+    scale_tensor = torch.cat([scale.reshape(-1) for scale in scales])
     return {
         "ternary_zero_fraction": trit_counts[0] / total,
         "ternary_negative_fraction": trit_counts[-1] / total,

@@ -65,6 +65,12 @@ def run(config_path: Path, report_path: Path) -> dict:
     if device.type == "cuda" and not torch.cuda.is_available():
         raise ValueError("configured CUDA device is unavailable")
     torch.use_deterministic_algorithms(True)
+    lr_selections = {}
+    if config.get("lr_screen_report"):
+        lr_report = json.loads(Path(config["lr_screen_report"]).read_text(encoding="utf-8"))
+        if not lr_report.get("passed"):
+            raise ValueError("LR-screen report did not pass its token/update gates")
+        lr_selections = lr_report["selections"]
     processor = spm.SentencePieceProcessor(model_file=config["tokenizer"])
     if processor.vocab_size() != 12_000:
         raise ValueError("scaling tournament requires the fixed 12k tokenizer")
@@ -76,24 +82,39 @@ def run(config_path: Path, report_path: Path) -> dict:
         _tokenize(Path(config["validation_data"]), processor, config["validation_token_budget"]),
         config["sequence_length"], processor.eos_id(), processor.pad_id(),
     )
-    optimizer_config = OptimizerConfig(
-        learning_rate=config["learning_rate"], weight_decay=config["weight_decay"],
-        bit_learning_rate_multiplier=1.0, bit_weight_decay=config["weight_decay"],
-    )
     results = []
     for scale, model_configs in config["scales"].items():
+        # v2 scales contain named arms; legacy scales map the three model types
+        # directly. Normalizing here keeps historical configs executable.
+        arms = model_configs.get("variants") if "variants" in model_configs else {
+            name: {"model_type": name, "config": value}
+            for name, value in model_configs.items()
+        }
         for seed_index, seed in enumerate(config["seeds"]):
-            for model_type in _rotated_order(seed_index):
+            ordered_names = list(arms)
+            offset = seed_index % len(ordered_names)
+            for variant_name in ordered_names[offset:] + ordered_names[:offset]:
+                arm = arms[variant_name]
+                model_type = arm["model_type"]
                 random.seed(seed)
                 torch.manual_seed(seed)
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed_all(seed)
                     torch.cuda.empty_cache()
                     torch.cuda.reset_peak_memory_stats()
-                model_config = create_config(model_type, **model_configs[model_type])
+                model_config = create_config(model_type, **arm["config"])
                 model = create_model(model_config)
                 stats = model.stats(config["sequence_length"])
-                run_dir = Path(config["output_dir"]) / scale / f"seed-{seed}" / model_type
+                run_dir = Path(config["output_dir"]) / scale / f"seed-{seed}" / variant_name
+                learning_rate = arm.get("learning_rate")
+                if learning_rate is None:
+                    if variant_name not in lr_selections:
+                        raise ValueError(f"no selected learning rate for variant {variant_name!r}")
+                    learning_rate = lr_selections[variant_name]["learning_rate"]
+                optimizer_config = OptimizerConfig(
+                    learning_rate=learning_rate, weight_decay=config["weight_decay"],
+                    bit_learning_rate_multiplier=1.0, bit_weight_decay=config["weight_decay"],
+                )
                 trainer = Trainer(
                     model, train_dataset,
                     TrainerConfig(
@@ -104,6 +125,10 @@ def run(config_path: Path, report_path: Path) -> dict:
                         max_grad_norm=config["max_grad_norm"], seed=seed,
                         log_every_steps=1, checkpoint_every_steps=config["optimizer_updates"] + 1,
                         output_dir=run_dir,
+                        lr_schedule=config.get("lr_schedule", "constant"),
+                        warmup_steps=config.get("warmup_steps", 0),
+                        total_steps=config.get("total_steps", config["optimizer_updates"]),
+                        min_lr_ratio=config.get("min_lr_ratio", 0.1),
                     ),
                     optimizer_config, device,
                 )
@@ -120,10 +145,11 @@ def run(config_path: Path, report_path: Path) -> dict:
                 if seed == config["retain_model_only_seed"]:
                     checkpoint = _save_model_only(
                         run_dir / "final-model-only.pt", trainer, seed,
-                        {"scale": scale, "config_sha256": _sha256(config_path)},
+                        {"scale": scale, "variant": variant_name, "config_sha256": _sha256(config_path)},
                     )
                 results.append({
-                    "scale": scale, "seed": seed, "model_type": model_type,
+                    "scale": scale, "seed": seed, "variant": variant_name,
+                    "model_type": model_type, "learning_rate": learning_rate,
                     "model_config": asdict(model_config), "stats": asdict(stats),
                     "initial_validation_loss": initial_validation,
                     "final_validation_loss": final_validation,
@@ -137,15 +163,16 @@ def run(config_path: Path, report_path: Path) -> dict:
                     "final_ternary_statistics": {key: value for key, value in records[-1].items() if key.startswith("ternary_")},
                     "checkpoint": checkpoint,
                 })
-                print(scale, seed, model_type, f"val={final_validation:.6f}", f"tok/s={trainer.state.consumed_tokens/elapsed:.1f}", flush=True)
+                print(scale, seed, variant_name, f"val={final_validation:.6f}", f"tok/s={trainer.state.consumed_tokens/elapsed:.1f}", flush=True)
                 del trainer, model
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
     aggregates = {}
-    for scale in config["scales"]:
-        for model_type in ("dt", "glimmer", "bit"):
-            values = [result for result in results if result["scale"] == scale and result["model_type"] == model_type]
-            aggregates[f"{scale}:{model_type}"] = {
+    for scale, model_configs in config["scales"].items():
+        variant_names = list(model_configs["variants"]) if "variants" in model_configs else list(model_configs)
+        for variant_name in variant_names:
+            values = [result for result in results if result["scale"] == scale and result["variant"] == variant_name]
+            aggregates[f"{scale}:{variant_name}"] = {
                 "seeds": [value["seed"] for value in values],
                 "final_validation_loss_mean": statistics.fmean(value["final_validation_loss"] for value in values),
                 "final_validation_loss_std_population": statistics.pstdev(value["final_validation_loss"] for value in values),
@@ -159,6 +186,7 @@ def run(config_path: Path, report_path: Path) -> dict:
         "passed": all(result["consumed_tokens"] == expected_tokens and result["optimizer_updates"] == config["optimizer_updates"] for result in results),
         "interpretation": "three-seed scaling optimization preflight; not a capability ranking",
         "config_sha256": _sha256(config_path), "tokenizer_sha256": _sha256(Path(config["tokenizer"])),
+        "lr_screen_report_sha256": _sha256(Path(config["lr_screen_report"])) if config.get("lr_screen_report") else None,
         "train_data_sha256": _sha256(Path(config["train_data"])), "validation_data_sha256": _sha256(Path(config["validation_data"])),
         "environment": {
             "python": platform.python_version(), "torch": torch.__version__, "sentencepiece": spm.__version__,

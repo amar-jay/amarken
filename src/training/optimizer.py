@@ -59,14 +59,15 @@ def parameter_groups(model: AmarkenCausalLM, config: OptimizerConfig) -> list[di
         raise RuntimeError("optimizer grouping did not cover each trainable parameter exactly once")
     result = []
     if grouped["decay"]:
-        result.append({"params": grouped["decay"], "group_name": "decay", "weight_decay": config.weight_decay, "lr": config.learning_rate})
+        result.append({"params": grouped["decay"], "group_name": "decay", "weight_decay": config.weight_decay, "lr": config.learning_rate, "base_lr": config.learning_rate})
     if grouped["no_decay"]:
-        result.append({"params": grouped["no_decay"], "group_name": "no_decay", "weight_decay": 0.0, "lr": config.learning_rate})
+        result.append({"params": grouped["no_decay"], "group_name": "no_decay", "weight_decay": 0.0, "lr": config.learning_rate, "base_lr": config.learning_rate})
     if grouped["ternary_master"]:
         result.append({
             "params": grouped["ternary_master"], "group_name": "ternary_master",
             "weight_decay": config.bit_weight_decay,
             "lr": config.learning_rate * config.bit_learning_rate_multiplier,
+            "base_lr": config.learning_rate * config.bit_learning_rate_multiplier,
         })
     return result
 

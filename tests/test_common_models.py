@@ -98,6 +98,21 @@ def test_generation_contract_and_mode_restoration():
         assert model.training
 
 
+def test_packed_segments_reset_positions_and_block_cross_document_attention():
+    for config in configs():
+        torch.manual_seed(9)
+        model = create_model(config).eval()
+        original = torch.tensor([[4, 5, 6, 7, 8, 9]])
+        changed = original.clone()
+        changed[:, :3] = torch.tensor([20, 21, 22])
+        attention = torch.ones_like(original, dtype=torch.bool)
+        segments = torch.tensor([[0, 0, 0, 1, 1, 1]])
+        with torch.inference_mode():
+            expected = model(original, attention_mask=attention, segment_ids=segments).logits[:, 3:]
+            actual = model(changed, attention_mask=attention, segment_ids=segments).logits[:, 3:]
+        assert torch.allclose(expected, actual, atol=1e-6)
+
+
 def test_checkpoint_model_optimizer_metadata_and_rng_round_trip(tmp_path: Path):
     for config in configs():
         torch.manual_seed(123)

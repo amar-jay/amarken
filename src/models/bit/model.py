@@ -14,16 +14,21 @@ import math
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from .config import BitConfig
-from ..common import AmarkenCausalLM, CausalLMOutput
+from ..common import AmarkenCausalLM, CausalLMOutput, packed_positions
 
 
-def _effective_ternary(weight: Tensor, eps: float) -> tuple[Tensor, Tensor, Tensor]:
-    """Return STE effective weight, integer trits, and scalar absmean scale."""
+def _effective_ternary(weight: Tensor, eps: float, granularity: str) -> tuple[Tensor, Tensor, Tensor]:
+    """Return STE weight, trits, and tensor- or output-channel absmean scales."""
     # Paper equation: gamma=mean(abs(W)); round+clip(W/gamma) gives trits. FP32
     # statistics make thresholds deterministic under mixed-precision autocast.
-    scale = weight.float().abs().mean().clamp_min(eps)
+    scale = (
+        weight.float().abs().mean().clamp_min(eps)
+        if granularity == "tensor"
+        else weight.float().abs().mean(dim=1, keepdim=True).clamp_min(eps)
+    )
     trits = torch.round(weight.float() / scale).clamp(-1, 1)
     quantized = (trits * scale).to(weight.dtype)
     # Forward equals quantized; derivative w.r.t. the FP master weight is identity.
@@ -64,22 +69,23 @@ class RMSNorm(nn.Module):
 class BitLinear(nn.Module):
     """Bias-free linear projection with FP master and ternary effective weights."""
 
-    def __init__(self, in_features: int, out_features: int, eps: float):
+    def __init__(self, in_features: int, out_features: int, eps: float, scale_granularity: str = "tensor"):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.quantization_eps = eps
+        self.scale_granularity = scale_granularity
         # FP masters are necessary during optimization; only exported inference
         # artifacts replace this matrix with packed trits plus one FP scale.
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
 
     def quantized(self) -> tuple[Tensor, Tensor]:
         """Detached integer trits and scale for inspection/export."""
-        _, trits, scale = _effective_ternary(self.weight, self.quantization_eps)
+        _, trits, scale = _effective_ternary(self.weight, self.quantization_eps, self.scale_granularity)
         return trits.detach(), scale.detach()
 
     def forward(self, x: Tensor) -> Tensor:
-        effective, _, _ = _effective_ternary(self.weight, self.quantization_eps)
+        effective, _, _ = _effective_ternary(self.weight, self.quantization_eps, self.scale_granularity)
         return F.linear(x, effective)
 
 
@@ -111,7 +117,9 @@ class BitAttention(nn.Module):
         self.config = config
         q_width = config.num_attention_heads * config.head_dim
         kv_width = config.num_key_value_heads * config.head_dim
-        make = lambda input_width, output_width: BitLinear(input_width, output_width, config.quantization_eps)
+        make = lambda input_width, output_width: BitLinear(
+            input_width, output_width, config.quantization_eps, config.weight_scale_granularity
+        )
         self.q_proj = make(config.hidden_size, q_width)
         self.k_proj = make(config.hidden_size, kv_width)
         self.v_proj = make(config.hidden_size, kv_width)
@@ -147,7 +155,9 @@ class ReLU2GLU(nn.Module):
 
     def __init__(self, config: BitConfig):
         super().__init__()
-        make = lambda input_width, output_width: BitLinear(input_width, output_width, config.quantization_eps)
+        make = lambda input_width, output_width: BitLinear(
+            input_width, output_width, config.quantization_eps, config.weight_scale_granularity
+        )
         self.gate_proj = make(config.hidden_size, config.intermediate_size)
         self.up_proj = make(config.hidden_size, config.intermediate_size)
         self.ffn_sub_norm = RMSNorm(config.intermediate_size, config.rms_norm_eps)
@@ -194,6 +204,7 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         super().__init__()
         config = BitConfig() if config is None else config
         self.config = config
+        self.gradient_checkpointing = False
         # Released BitNet keeps embeddings/output FP; tying makes this one matrix.
         # Quantizing it should be a separate ablation because lookup errors and
         # projection errors otherwise obscure the contribution of BitLinear blocks.
@@ -228,12 +239,16 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         )
         return linear_flops + attention_flops, kv_elements * element_bytes, self.artifact_report(element_bytes).packed_2bit_bytes, ternary
 
-    def _padding_causal_mask(self, attention_mask: Tensor, batch: int, length: int) -> Tensor:
+    def _padding_causal_mask(self, attention_mask: Tensor, batch: int, length: int, segment_ids: Tensor | None = None) -> Tensor:
         if attention_mask.shape != (batch, length):
             raise ValueError("attention_mask must have shape [batch, sequence]")
         valid = attention_mask.to(dtype=torch.bool)
         causal = torch.ones((length, length), device=valid.device, dtype=torch.bool).tril()
         allowed = causal.unsqueeze(0) & valid[:, None, :]
+        if segment_ids is not None:
+            if segment_ids.shape != (batch, length):
+                raise ValueError("segment_ids must have shape [batch, sequence]")
+            allowed &= segment_ids[:, :, None] == segment_ids[:, None, :]
         # Restore padded-query self edges after key masking: avoids all-masked rows
         # and backend-dependent NaNs while ignored padded labels carry no loss.
         allowed |= (~valid)[:, :, None] & torch.eye(length, device=valid.device, dtype=torch.bool).unsqueeze(0)
@@ -244,7 +259,10 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         ternary = sum(module.weight.numel() for module in self.modules() if isinstance(module, BitLinear))
         total = self.parameter_count()
         floating = total - ternary
-        scales = sum(1 for module in self.modules() if isinstance(module, BitLinear))
+        scales = sum(
+            1 if module.scale_granularity == "tensor" else module.out_features
+            for module in self.modules() if isinstance(module, BitLinear)
+        )
         # log2(3) is information-theoretic, while common kernels pack four 2-bit
         # trits per byte. Each BitLinear also needs one FP32 dequantization scale.
         theoretical = math.ceil(ternary * math.log2(3) / 8) + floating * floating_bytes + scales * 4
@@ -266,6 +284,7 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         input_ids: Tensor,
         attention_mask: Tensor | None = None,
         labels: Tensor | None = None,
+        segment_ids: Tensor | None = None,
     ) -> CausalLMOutput:
         if input_ids.ndim != 2:
             raise ValueError("input_ids must have shape [batch, sequence]")
@@ -273,6 +292,8 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         if length > self.config.max_position_embeddings:
             raise ValueError("sequence exceeds max_position_embeddings")
         if attention_mask is None:
+            if segment_ids is not None:
+                raise ValueError("segment_ids require attention_mask")
             # None lets SDPA use its native causal path/Flash kernel without a dense mask.
             positions = torch.arange(length, device=input_ids.device).expand(batch, -1)
             mask = None
@@ -282,12 +303,15 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
             valid = attention_mask.to(device=input_ids.device, dtype=torch.bool)
             # cumsum makes the first real token position zero under left padding;
             # padded slots clamp to zero and are neutralized by the attention mask.
-            positions = (valid.long().cumsum(-1) - 1).clamp_min(0)
-            mask = self._padding_causal_mask(valid, batch, length)
+            positions = packed_positions(valid, segment_ids)
+            mask = self._padding_causal_mask(valid, batch, length, segment_ids)
         hidden = self.token_embedding(input_ids)
         rope = self.rotary_embedding(positions, hidden.dtype)
         for layer in self.layers:
-            hidden = layer(hidden, rope, mask)
+            if self.gradient_checkpointing and self.training:
+                hidden = checkpoint(lambda state, block=layer: block(state, rope, mask), hidden, use_reentrant=False)
+            else:
+                hidden = layer(hidden, rope, mask)
         logits = self.lm_head(self.final_norm(hidden)).float()
         loss = None
         if labels is not None:

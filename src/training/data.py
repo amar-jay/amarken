@@ -26,6 +26,7 @@ class PackedBlock:
     input_ids: tuple[int, ...]
     labels: tuple[int, ...]
     attention_mask: tuple[bool, ...]
+    segment_ids: tuple[int, ...]
 
 
 class PackedSequenceDataset(Sequence[PackedBlock]):
@@ -47,7 +48,9 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
             raise ValueError("sequence_length must be >=2 and token IDs nonnegative")
         tokens: list[int] = []
         labels: list[int] = []
+        segments: list[int] = []
         blocks: list[PackedBlock] = []
+        next_segment = 0
 
         def emit() -> None:
             if not tokens:
@@ -58,13 +61,23 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
             # Position zero has no in-block predecessor. This also handles a long
             # document sliced across blocks, where the preceding token is absent.
             block_labels[0] = -100
+            if not any(label != -100 for label in block_labels[1:]):
+                # A block with no next-token target cannot contribute a gradient;
+                # dropping it prevents random all-masked accumulation windows.
+                tokens.clear()
+                labels.clear()
+                segments.clear()
+                return
             blocks.append(PackedBlock(
                 input_ids=tuple(tokens + [pad_token_id] * padding),
                 labels=tuple(block_labels + [-100] * padding),
                 attention_mask=tuple([True] * valid + [False] * padding),
+                # -1 is reserved for padding and never equals a real document ID.
+                segment_ids=tuple(segments + [-1] * padding),
             ))
             tokens.clear()
             labels.clear()
+            segments.clear()
 
         for example in examples:
             # Long records are sliced rather than discarded. Each slice preserves
@@ -77,11 +90,14 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
             # preceding record's EOS/context. Mask that artificial cross-document
             # transition even when the record starts directly with an assistant.
             stream_labels[0] = -100
+            stream_segments = [next_segment] * len(stream_tokens)
+            next_segment += 1
             offset = 0
             while offset < len(stream_tokens):
                 take = min(sequence_length - len(tokens), len(stream_tokens) - offset)
                 tokens.extend(stream_tokens[offset:offset + take])
                 labels.extend(stream_labels[offset:offset + take])
+                segments.extend(stream_segments[offset:offset + take])
                 offset += take
                 if len(tokens) == sequence_length:
                     emit()
@@ -105,4 +121,5 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
             "input_ids": torch.tensor([block.input_ids for block in selected], dtype=torch.long, device=device),
             "labels": torch.tensor([block.labels for block in selected], dtype=torch.long, device=device),
             "attention_mask": torch.tensor([block.attention_mask for block in selected], dtype=torch.bool, device=device),
+            "segment_ids": torch.tensor([block.segment_ids for block in selected], dtype=torch.long, device=device),
         }

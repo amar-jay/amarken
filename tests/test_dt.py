@@ -1,3 +1,4 @@
+import math
 import torch
 
 from src.models.dt import DTCausalLM, DTConfig
@@ -29,3 +30,12 @@ def test_dt_forward_backward_tying_and_padding_safety():
 
 def test_dt_default_model_stays_below_project_limit():
     assert DTCausalLM().parameter_count() <= 60_000_000
+
+
+def test_residual_projection_initialization_is_depth_scaled():
+    config = tiny_config(num_hidden_layers=8, hidden_size=128, intermediate_size=256,
+                         num_attention_heads=4, head_dim=32)
+    model = DTCausalLM(config)
+    expected = config.initializer_range / math.sqrt(2 * config.num_hidden_layers)
+    assert abs(float(model.layers[0].attention.o_proj.weight.std()) - expected) < expected * 0.15
+    assert abs(float(model.layers[0].mlp.down_proj.weight.std()) - expected) < expected * 0.15
