@@ -18,10 +18,10 @@ import time
 # :4096:8 is the larger documented deterministic workspace and fits this GPU.
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
-import sentencepiece as spm
 import torch
 
 from src.models import create_config, create_model
+from src.tokenization import load_tokenizer, tokenizer_fingerprint
 from .data import PackedSequenceDataset
 from .optimizer import OptimizerConfig
 from .proxy_experiment import _evaluate, _tokenize
@@ -90,7 +90,7 @@ def run(config_path: Path, report_path: Path) -> dict:
         if not lr_report.get("passed"):
             raise ValueError("LR-screen report did not pass its token/update gates")
         lr_selections = lr_report["selections"]
-    processor = spm.SentencePieceProcessor(model_file=config["tokenizer"])
+    processor = load_tokenizer(config["tokenizer"])
     if processor.vocab_size() != 12_000:
         raise ValueError("scaling tournament requires the fixed 12k tokenizer")
     train_dataset = PackedSequenceDataset(
@@ -168,7 +168,12 @@ def run(config_path: Path, report_path: Path) -> dict:
                 if seed == config["retain_model_only_seed"]:
                     checkpoint = _save_model_only(
                         run_dir / "final-model-only.pt", trainer, seed,
-                        {"scale": scale, "variant": variant_name, "config_sha256": _sha256(config_path)},
+                        {
+                            "scale": scale, "variant": variant_name,
+                            "config_sha256": _sha256(config_path),
+                            "tokenizer_fingerprint": tokenizer_fingerprint(processor),
+                            "tokenizer_kind": processor.kind,
+                        },
                     )
                 results.append({
                     "scale": scale, "seed": seed, "variant": variant_name,
@@ -209,7 +214,7 @@ def run(config_path: Path, report_path: Path) -> dict:
         "format_version": 1, "experiment_id": config["experiment_id"],
         "passed": trajectory_passed,
         "interpretation": "three-seed scaling optimization preflight; not a capability ranking",
-        "config_sha256": _sha256(config_path), "tokenizer_sha256": _sha256(Path(config["tokenizer"])),
+        "config_sha256": _sha256(config_path), "tokenizer_sha256": tokenizer_fingerprint(processor),
         "lr_screen_report_sha256": _sha256(Path(config["lr_screen_report"])) if config.get("lr_screen_report") else None,
         "train_data_sha256": _sha256(Path(config["train_data"])), "validation_data_sha256": _sha256(Path(config["validation_data"])),
         "environment": {

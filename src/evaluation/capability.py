@@ -23,7 +23,6 @@ import time
 # evaluation is requested; it is harmless for the default CPU worker.
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
-import sentencepiece as spm
 import torch
 import torch.nn.functional as F
 
@@ -31,6 +30,7 @@ from src.data.proxy import TOKEN, _canonical
 from src.models import create_config, create_model
 from src.training.data import PackedSequenceDataset
 from src.training.proxy_experiment import _tokenize
+from src.tokenization import load_tokenizer, tokenizer_artifact_bytes, tokenizer_fingerprint
 
 
 CHOICES = ("A", "B", "C", "D")
@@ -60,8 +60,8 @@ def _capabilities(model, processor, benchmark: dict) -> tuple[list[dict], dict]:
     details = []
     for task in benchmark["tasks"]:
         suffix = "\nYanıt:" if task["language"] == "tr" else "\nAnswer:"
-        prompt_ids = processor.encode(task["prompt"] + suffix, out_type=int)
-        scores = [_score_choice(model, prompt_ids, processor.encode(" " + choice, out_type=int), model.config.max_position_embeddings) for choice in CHOICES]
+        prompt_ids = processor.encode(task["prompt"] + suffix)
+        scores = [_score_choice(model, prompt_ids, processor.encode(" " + choice), model.config.max_position_embeddings) for choice in CHOICES]
         probabilities = torch.softmax(torch.tensor(scores, dtype=torch.float64), dim=0).tolist()
         prediction_index = max(range(len(CHOICES)), key=lambda index: (probabilities[index], -index))
         target_index = CHOICES.index(task["target"])
@@ -201,11 +201,11 @@ def _worker(checkpoint: Path, tokenizer_path: Path, benchmark_path: Path, valida
     # inference resident set. ru_maxrss separately discloses their load-time peak.
     del payload
     gc.collect()
-    processor = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
+    processor = load_tokenizer(tokenizer_path)
     benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
     validation = PackedSequenceDataset(_tokenize(validation_path, processor, 8_192), 64, processor.eos_id(), processor.pad_id())
     details, capability = _capabilities(model, processor, benchmark)
-    tokenizer_bytes = tokenizer_path.stat().st_size + tokenizer_path.with_suffix(".vocab").stat().st_size
+    tokenizer_bytes = tokenizer_artifact_bytes(processor)
     result = {
         "model_type": model_type, "checkpoint": str(checkpoint),
         "variant": variant,
@@ -270,8 +270,8 @@ def run(proxy_report_path: Path, benchmark_path: Path, report_path: Path, device
         "interpretation": "deterministic proxy diagnostics; not a capability claim",
         "benchmark_sha256": _sha256(benchmark_path), "proxy_experiment_sha256": _sha256(proxy_report_path),
         "train_data_sha256": _sha256(train_data), "validation_data_sha256": _sha256(validation_data),
-        "tokenizer_sha256": _sha256(tokenizer), "contamination": contamination,
-        "environment": {"python": platform.python_version(), "torch": torch.__version__, "sentencepiece": spm.__version__, "device": device, "torch_threads": 1},
+        "tokenizer_sha256": tokenizer_fingerprint(load_tokenizer(tokenizer)), "contamination": contamination,
+        "environment": {"python": platform.python_version(), "torch": torch.__version__, "tokenizer_kind": load_tokenizer(tokenizer).kind, "device": device, "torch_threads": 1},
         "results": results,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)

@@ -13,10 +13,10 @@ import random
 import statistics
 import time
 
-import sentencepiece as spm
 import torch
 
 from src.models import create_config, create_model
+from src.tokenization import RuntimeTokenizer, load_tokenizer, tokenizer_fingerprint
 from .data import PackedSequenceDataset, TokenizedExample
 from .optimizer import OptimizerConfig
 from .trainer import Trainer, TrainerConfig
@@ -30,13 +30,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _tokenize(path: Path, processor: spm.SentencePieceProcessor, token_budget: int) -> list[TokenizedExample]:
+def _tokenize(path: Path, processor: RuntimeTokenizer, token_budget: int) -> list[TokenizedExample]:
     """Read stable JSONL order until exactly `token_budget` source tokens exist."""
     examples, consumed = [], 0
     with path.open("r", encoding="utf-8", errors="strict") as stream:
         for line in stream:
             text = json.loads(line)["text"]
-            ids = processor.encode(text, out_type=int)
+            ids = processor.encode(text)
             remaining = token_budget - consumed
             if not ids or remaining <= 0:
                 break
@@ -86,7 +86,7 @@ def run(config_path: Path, report_path: Path) -> dict:
     # PyTorch selects the deterministic SDPA backend where the active device needs it.
     torch.use_deterministic_algorithms(True)
     tokenizer_path = Path(config["tokenizer"])
-    processor = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
+    processor = load_tokenizer(tokenizer_path)
     if processor.vocab_size() != 12_000:
         raise ValueError("proxy tournament requires the selected matched 12k tokenizer")
     train_examples = _tokenize(Path(config["train_data"]), processor, config["train_token_budget"])
@@ -101,7 +101,7 @@ def run(config_path: Path, report_path: Path) -> dict:
     )
     output_root = Path(config["output_dir"])
     results = []
-    for model_type in ("dt", "glimmer", "bit"):
+    for model_type in config["models"]:
         random.seed(config["seed"])
         torch.manual_seed(config["seed"])
         if torch.cuda.is_available():
@@ -130,7 +130,13 @@ def run(config_path: Path, report_path: Path) -> dict:
         training_seconds = time.perf_counter() - started
         final_validation_loss = _evaluate(model, validation_dataset, device, config["precision"])
         final_checkpoint = output_root / model_type / "final.pt"
-        trainer.save_checkpoint(final_checkpoint)
+        trainer.save_checkpoint(final_checkpoint, metadata={
+            "tokenizer_fingerprint": tokenizer_fingerprint(processor),
+            "tokenizer_kind": processor.kind,
+            "tokenizer_path": str(tokenizer_path),
+            "train_data_sha256": _sha256(Path(config["train_data"])),
+            "validation_data_sha256": _sha256(Path(config["validation_data"])),
+        })
         results.append({
             "model_type": model_type, "model_config": asdict(model_config), "stats": asdict(stats),
             "initial_validation_loss": initial_validation_loss,
@@ -152,10 +158,10 @@ def run(config_path: Path, report_path: Path) -> dict:
     report = {
         "format_version": 1, "experiment_id": config["experiment_id"], "passed": matched,
         "interpretation": "smoke-scale optimization comparison; not a capability ranking",
-        "config_sha256": _sha256(config_path), "tokenizer_sha256": _sha256(tokenizer_path),
+        "config_sha256": _sha256(config_path), "tokenizer_sha256": tokenizer_fingerprint(processor),
         "train_data_sha256": _sha256(Path(config["train_data"])),
         "validation_data_sha256": _sha256(Path(config["validation_data"])),
-        "torch_version": torch.__version__, "sentencepiece_version": spm.__version__,
+        "torch_version": torch.__version__, "tokenizer_kind": processor.kind,
         "python_version": platform.python_version(), "shared": {key: value for key, value in config.items() if key not in {"models"}},
         "train_blocks": len(train_dataset), "validation_blocks": len(validation_dataset),
         "results": results,

@@ -1,0 +1,38 @@
+{
+  "experiment_id": "tokenizer-probe-dt-10m-cpu-preflight-v1",
+  "interpretation": "CPU execution/optimization preflight only; insufficient token exposure for tokenizer promotion",
+  "device": "cpu",
+  "precision": "fp32",
+  "seeds": [2026],
+  "learning_rates": [0.001, 0.0015],
+  "sequence_length": 64,
+  "train_token_budget": 8192,
+  "validation_token_budget": 4096,
+  "batch_size": 1,
+  "gradient_accumulation_steps": 2,
+  "optimizer_updates": 64,
+  "weight_decay": 0.1,
+  "gradient_checkpointing": false,
+  "max_grad_norm": 1.0,
+  "train_data": "data/processed/proxy-v2-clean/train.jsonl",
+  "validation_data": "data/processed/proxy-v2-clean/validation.jsonl",
+  "dataset_manifest": "data/processed/proxy-v2-clean/manifest.json",
+  "output_dir": "runs/tokenizer-probe-dt-10m-cpu-preflight-v1",
+  "model": {
+    "vocab_size": 12000,
+    "hidden_size": 256,
+    "intermediate_size": 640,
+    "num_hidden_layers": 10,
+    "num_attention_heads": 4,
+    "num_key_value_heads": 1,
+    "head_dim": 64,
+    "max_position_embeddings": 64
+  },
+  "candidates": [
+    {"name": "old-sp-bpe-12k", "path": "artifacts/tokenizers/amarken-en-tr-12k.model"},
+    {"name": "apostrophe-bpe-12k", "path": "artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"},
+    {"name": "tr-weighted-bpe-12k", "path": "artifacts/tokenizers/v2/tiktoken-style-tr-weighted-bpe-12k.json"},
+    {"name": "byte-bpe-12k", "path": "artifacts/tokenizers/v2/byte-bpe-12k.json"},
+    {"name": "sp-unigram-12k", "path": "artifacts/tokenizers/v2/sp-unigram-12k.model"}
+  ]
+}

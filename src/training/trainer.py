@@ -248,8 +248,8 @@ class Trainer:
                 self.save_checkpoint(self.config.output_dir / f"step-{self.state.update_step:08d}.pt")
         return emitted
 
-    def _payload(self) -> dict:
-        return {
+    def _payload(self, metadata: dict | None = None) -> dict:
+        payload = {
             "format_version": self.FORMAT_VERSION,
             "model_type": self.model.config.model_type,
             "model_config": asdict(self.model.config),
@@ -264,16 +264,19 @@ class Trainer:
             "cpu_rng_state": torch.get_rng_state(),
             "cuda_rng_state_all": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
         }
+        if metadata:
+            payload["metadata"] = dict(metadata)
+        return payload
 
     def _trajectory_config(self) -> dict:
         return {field: getattr(self.config, field) for field in self.TRAJECTORY_CONFIG_FIELDS}
 
-    def save_checkpoint(self, path: str | Path) -> None:
+    def save_checkpoint(self, path: str | Path, metadata: dict | None = None) -> None:
         """Atomically persist every state that can affect the next optimizer step."""
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_name(destination.name + ".tmp")
-        torch.save(self._payload(), temporary)
+        torch.save(self._payload(metadata), temporary)
         os.replace(temporary, destination)
 
     def load_checkpoint(self, path: str | Path) -> None:

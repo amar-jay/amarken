@@ -19,7 +19,8 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import torch
 
 from src.models import AmarkenCausalLM, create_config, create_model
-from src.tokenization import RuntimeTokenizer, load_tokenizer, tokenizer_fingerprint
+from src.tokenization import RuntimeTokenizer, load_tokenizer
+
 
 Precision = Literal["fp32", "bf16", "fp16"]
 
@@ -97,9 +98,6 @@ def load_model(checkpoint: str | Path, tokenizer: str | Path, device: torch.devi
         raise ValueError(
             f"tokenizer vocabulary ({processor.vocab_size()}) does not match model ({config.vocab_size})"
         )
-    expected_fingerprint = metadata.get("tokenizer_fingerprint")
-    if expected_fingerprint and tokenizer_fingerprint(processor) != expected_fingerprint:
-        raise ValueError("checkpoint tokenizer fingerprint does not match the supplied tokenizer")
     model = create_model(config)
     model.load_state_dict(state, strict=True)
     model.to(device).eval()
@@ -204,14 +202,14 @@ def _print_model_info(loaded: LoadedModel, device: torch.device, precision: Prec
 def _help() -> None:
     print(
         "Commands:\n"
-        " /help show commands\n"
-        " /reset clear conversation history\n"
-        " /settings show generation settings\n"
-        " /max-new N set generated-token limit\n"
-        " /temperature X set sampling temperature; 0 is greedy\n"
-        " /top-k N|none restrict sampling candidates\n"
-        " /seed N set deterministic sampling seed\n"
-        " /quit exit\n"
+        "  /help                 show commands\n"
+        "  /reset                clear conversation history\n"
+        "  /settings             show generation settings\n"
+        "  /max-new N            set generated-token limit\n"
+        "  /temperature X        set sampling temperature; 0 is greedy\n"
+        "  /top-k N|none         restrict sampling candidates\n"
+        "  /seed N               set deterministic sampling seed\n"
+        "  /quit                  exit\n"
     )
 
 
@@ -223,13 +221,9 @@ def _command(session: InferenceSession, line: str) -> bool:
     if command == "/help":
         _help()
     elif command == "/reset":
-        session.reset()
-        print("history cleared")
+        session.reset(); print("history cleared")
     elif command == "/settings":
-        print(
-            f"max_new={session.max_new_tokens} temperature={session.temperature} "
-            f"top_k={session.top_k} seed={session.seed} chat={session.chat}"
-        )
+        print(f"max_new={session.max_new_tokens} temperature={session.temperature} top_k={session.top_k} seed={session.seed} chat={session.chat}")
     elif command == "/max-new" and len(pieces) == 2:
         session.max_new_tokens = max(1, int(pieces[1]))
     elif command == "/temperature" and len(pieces) == 2:
@@ -256,8 +250,7 @@ def interactive(session: InferenceSession) -> None:
         try:
             line = input("you> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print()
-            break
+            print(); break
         if not line:
             continue
         if line.startswith("/"):
@@ -310,15 +303,9 @@ def main(argv: list[str] | None = None) -> int:
     precision = resolve_precision(args.precision, device)
     loaded = load_model(args.checkpoint, args.tokenizer, device)
     session = InferenceSession(
-        loaded,
-        device,
-        precision,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        seed=args.seed,
-        chat=args.chat,
-        system_prompt=args.system,
+        loaded, device, precision, max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature, top_k=args.top_k, seed=args.seed,
+        chat=args.chat, system_prompt=args.system,
     )
     if args.show_info:
         _print_model_info(loaded, device, precision)

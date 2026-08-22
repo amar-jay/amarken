@@ -16,10 +16,10 @@ import time
 # initializes CUDA; the larger workspace is negligible beside model activations.
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
-import sentencepiece as spm
 import torch
 
 from src.models import create_config, create_model
+from src.tokenization import load_tokenizer
 from .data import PackedSequenceDataset
 from .optimizer import OptimizerConfig
 from .proxy_experiment import _evaluate, _tokenize
@@ -43,7 +43,7 @@ def run(config_path: Path, report_path: Path) -> dict:
     if device.type == "cuda" and not torch.cuda.is_available():
         raise ValueError("configured CUDA device is unavailable")
     torch.use_deterministic_algorithms(True)
-    processor = spm.SentencePieceProcessor(model_file=config["tokenizer"])
+    processor = load_tokenizer(config["tokenizer"])
     train = PackedSequenceDataset(
         _tokenize(Path(config["train_data"]), processor, config["train_token_budget"]),
         config["sequence_length"], processor.eos_id(), processor.pad_id(),
