@@ -95,3 +95,36 @@ The output directory contains `train.jsonl`, `validation.jsonl`,
 underlying fact or scenario stay in the same split. Every accepted record carries
 its verified target, executable grounding, teacher model digest, decoding
 settings, and response metrics.
+
+## Million-sample A100 generation
+
+The A100 path uses one text-only `Qwen/Qwen3.5-2B` vLLM engine. One engine owns
+the weights and continuously batches up to 256 active sequences; each submitted
+request batch contains up to 4,096 conversations. Invalid outputs are retried in
+later GPU batches. Output uses the same resumable 1,000-record shards as the
+local generator.
+
+Qwen3.5 currently requires the vLLM nightly/main-compatible build. After setting
+up the Brev environment according to the official Qwen model card, benchmark
+10,000 accepted records first:
+
+```bash
+python -m src.distillation.synthetic_pretraining_vllm \
+  --config configs/synthetic_pretraining_1m_a100.json \
+  --max-new 10000
+```
+
+Remove `--max-new` to resume the same output directory toward one million.
+
+For an A100 80GB host with 120GB RAM and 28 vCPUs, use the larger scheduler
+profile:
+
+```bash
+python -m src.distillation.synthetic_pretraining_vllm \
+  --config configs/synthetic_pretraining_1m_a100_80gb.json \
+  --max-new 10000
+```
+
+This starts with 512 active sequences, 32,768 batched tokens, and an 8,192
+conversation submission batch. Run the 10,000-sample benchmark first and remove
+`--max-new` only after checking throughput, rejection rate, and GPU memory.

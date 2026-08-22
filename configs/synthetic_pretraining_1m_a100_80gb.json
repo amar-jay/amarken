@@ -1,0 +1,33 @@
+{
+  "profile_name": "a100-80gb-28vcpu",
+  "host_profile": {
+    "gpu": "NVIDIA A100 80GB",
+    "gpu_vram_gb": 80,
+    "system_ram_gb": 120,
+    "vcpus": 28
+  },
+  "target_accepted": 1000000,
+  "shard_size": 1000,
+  "validation_fraction": 0.01,
+  "seed": 91423,
+  "model": "Qwen/Qwen3.5-2B",
+  "revision": "main",
+  "output_dir": "data/processed/synthetic-pretraining-1m-a100-80gb",
+  "max_attempts": 3,
+  "min_words": 2,
+  "max_words": 72,
+  "temperature": 1.0,
+  "top_p": 1.0,
+  "top_k": 20,
+  "presence_penalty": 2.0,
+  "repetition_penalty": 1.0,
+  "max_model_len": 1024,
+  "max_tokens": 64,
+  "request_batch_size": 8192,
+  "max_num_seqs": 512,
+  "max_num_batched_tokens": 32768,
+  "gpu_memory_utilization": 0.92,
+  "dtype": "bfloat16",
+  "language_model_only": true,
+  "enable_prefix_caching": true
+}
