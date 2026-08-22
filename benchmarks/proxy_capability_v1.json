@@ -1,0 +1,40 @@
+{
+  "format_version": 1,
+  "benchmark_id": "proxy-capability-v1",
+  "tasks": [
+    {"id":"en-if-1","language":"en","category":"instruction_following","prompt":"Follow exactly: choose the second word in 'amber cobalt silver'. A) amber B) cobalt C) silver D) word","target":"B"},
+    {"id":"en-if-2","language":"en","category":"instruction_following","prompt":"Choose the option written in lowercase. A) gentle B) QUIET C) LOUD D) RAPID","target":"A"},
+    {"id":"en-if-3","language":"en","category":"instruction_following","prompt":"Choose the item requested: return the last number, not the largest: 8, 3, 5. A) 8 B) 3 C) 5 D) 16","target":"C"},
+    {"id":"tr-if-1","language":"tr","category":"instruction_following","prompt":"Talimatı uygula: 'kehribar kobalt gümüş' dizisindeki ikinci sözcüğü seç. A) kehribar B) kobalt C) gümüş D) sözcük","target":"B"},
+    {"id":"tr-if-2","language":"tr","category":"instruction_following","prompt":"Küçük harflerle yazılmış seçeneği seç. A) SESSİZ B) HIZLI C) PARLAK D) nazik","target":"D"},
+    {"id":"tr-if-3","language":"tr","category":"instruction_following","prompt":"En büyük olanı değil, son sayıyı seç: 8, 3, 5. A) 8 B) 3 C) 5 D) 16","target":"C"},
+
+    {"id":"en-cr-1","language":"en","category":"compositional_reasoning","prompt":"Add 17 and 8, then multiply the result by 2. A) 33 B) 42 C) 52 D) 50","target":"D"},
+    {"id":"en-cr-2","language":"en","category":"compositional_reasoning","prompt":"A box has 4 rows of 6 marbles. Remove 5 marbles. How many remain? A) 19 B) 20 C) 23 D) 29","target":"A"},
+    {"id":"en-cr-3","language":"en","category":"compositional_reasoning","prompt":"If every dax is a wug and no wug is blue, can a dax be blue? A) always B) yes C) no D) unknown","target":"C"},
+    {"id":"tr-cr-1","language":"tr","category":"compositional_reasoning","prompt":"17 ile 8'i topla, sonra sonucu 2 ile çarp. A) 50 B) 42 C) 33 D) 52","target":"A"},
+    {"id":"tr-cr-2","language":"tr","category":"compositional_reasoning","prompt":"Bir kutuda 6 bilyelik 4 sıra var. 5 bilye çıkarılırsa kaç kalır? A) 19 B) 20 C) 23 D) 29","target":"A"},
+    {"id":"tr-cr-3","language":"tr","category":"compositional_reasoning","prompt":"Her dax bir wug ise ve hiçbir wug mavi değilse bir dax mavi olabilir mi? A) her zaman B) evet C) hayır D) bilinmez","target":"C"},
+
+    {"id":"en-rt-1","language":"en","category":"retrieval","prompt":"Reference: Luma=4817; Taro=2604. Luma? A) 2604 B) 4817 C) 7418 D) 2046","target":"B"},
+    {"id":"en-rt-2","language":"en","category":"retrieval","prompt":"Reference: The cedar package is in bay Q7. The maple package is in bay R2. Where is maple? A) Q7 B) R2 C) Q2 D) R7","target":"B"},
+    {"id":"en-rt-3","language":"en","category":"retrieval","prompt":"Reference: Nira prefers tea; Olek prefers coffee; Sava prefers water. What does Olek prefer? A) water B) juice C) tea D) coffee","target":"D"},
+    {"id":"tr-rt-1","language":"tr","category":"retrieval","prompt":"Kaynak: Luma=4817; Taro=2604. Luma? A) 2604 B) 4817 C) 7418 D) 2046","target":"B"},
+    {"id":"tr-rt-2","language":"tr","category":"retrieval","prompt":"Kaynak: Sedir paketi Q7 bölmesinde. Akçaağaç paketi R2 bölmesinde. Akçaağaç nerede? A) Q7 B) R2 C) Q2 D) R7","target":"B"},
+    {"id":"tr-rt-3","language":"tr","category":"retrieval","prompt":"Kaynak: Nira çayı, Olek kahveyi, Sava suyu tercih eder. Olek neyi tercih eder? A) su B) meyve suyu C) çay D) kahve","target":"D"},
+
+    {"id":"en-st-1","language":"en","category":"state_tracking","prompt":"A light starts off. Toggle it, toggle it again, then toggle it once more. Final state? A) on B) broken C) off D) unknown","target":"A"},
+    {"id":"en-st-2","language":"en","category":"state_tracking","prompt":"Mira holds the coin. She gives it to Jon. Jon gives it to Ada. Who holds it now? A) Mira B) Jon C) nobody D) Ada","target":"D"},
+    {"id":"en-st-3","language":"en","category":"state_tracking","prompt":"Counter starts at 3. Add 4, subtract 2, double it. Final value? A) 5 B) 8 C) 10 D) 12","target":"C"},
+    {"id":"tr-st-1","language":"tr","category":"state_tracking","prompt":"Bir ışık kapalı başlar. Aç/kapat düğmesine üç kez basılır. Son durum? A) kapalı B) bozuk C) bilinmez D) açık","target":"D"},
+    {"id":"tr-st-2","language":"tr","category":"state_tracking","prompt":"Para Mira'dadır. Mira Jon'a, Jon da Ada'ya verir. Para şimdi kimde? A) Mira B) Jon C) hiç kimse D) Ada","target":"D"},
+    {"id":"tr-st-3","language":"tr","category":"state_tracking","prompt":"Sayaç 3 ile başlar. 4 ekle, 2 çıkar, sonra ikiyle çarp. Son değer? A) 5 B) 8 C) 10 D) 12","target":"C"},
+
+    {"id":"en-ts-1","language":"en","category":"tool_syntax","prompt":"Valid JSON? A) {q:x} B) {\"q\":\"x\"} C) q(x) D) [q:x]","target":"B"},
+    {"id":"en-ts-2","language":"en","category":"tool_syntax","prompt":"Valid numeric arguments? A) {\"x\":3,\"y\":4} B) {x:3} C) x=three D) [3]","target":"A"},
+    {"id":"en-ts-3","language":"en","category":"tool_syntax","prompt":"Schema requires tool and arguments. A) {\"tool\":\"w\",\"arguments\":{}} B) w() C) {\"name\":\"w\"} D) [w]","target":"A"},
+    {"id":"tr-ts-1","language":"tr","category":"tool_syntax","prompt":"Geçerli JSON? A) {q:x} B) {\"q\":\"x\"} C) q(x) D) [q:x]","target":"B"},
+    {"id":"tr-ts-2","language":"tr","category":"tool_syntax","prompt":"Geçerli sayısal argümanlar? A) {\"x\":3,\"y\":4} B) {x:3} C) x=üç D) [3]","target":"A"},
+    {"id":"tr-ts-3","language":"tr","category":"tool_syntax","prompt":"Şema tool ve arguments ister. A) {\"name\":\"w\"} B) w() C) {\"tool\":\"w\",\"arguments\":{}} D) [w]","target":"C"}
+  ]
+}

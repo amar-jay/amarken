@@ -57,3 +57,26 @@ records loss, per-group learning rates, token counts, timing, pre-clip gradient
 health, and AMP scale. Bit also records trit sign/zero fractions, the distribution
 of layer absmean scales, and ternary-master gradient finite/zero fractions. These
 statistics diagnose quantizer collapse; they are not quality objectives.
+
+## 10M proxy tournament
+
+Run the first matched control experiment with:
+
+```bash
+python -m src.training.proxy_experiment \
+  --config configs/proxy_10m.json \
+  --report experiments/proxy_10m.json
+```
+
+The configuration fixes the 12k tokenizer, proxy-v1 train/validation hashes,
+64-token context, BF16, AdamW hyperparameters, batch/accumulation schedule,
+optimizer updates and initialization/shuffle seed. DT and Bit use ten 256-wide
+layers; Glimmer uses nine because its attention gate adds a fifth projection.
+This yields 9.57–9.64M parameters and keeps analytical FLOPs/token within 1.1%.
+Bit's named ternary group receives the same LR and weight decay in this control.
+
+The runner evaluates the same first 32 validation blocks before and after
+training, writes per-step metrics and exact-resume checkpoints, and records all
+configuration, tokenizer, data, checkpoint and software hashes. The default
+4,096 consumed tokens per arm are enough to catch optimization failures, not to
+rank language capability or justify architecture promotion.

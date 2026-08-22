@@ -50,6 +50,7 @@
     }
   ],
   "contamination_references": [
+    "benchmarks/**/*.json",
     "tests/**/*.py",
     "data/tokenizer_eval/**/*.json"
   ]

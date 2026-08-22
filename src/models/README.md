@@ -22,3 +22,15 @@ config = create_config("glimmer", vocab_size=12_000)
 model = create_model(config)
 print(model.stats(sequence_length=2048))
 ```
+# Model tournament
+
+All candidates implement `AmarkenCausalLM`; callers use the registry rather than
+architecture-specific forward or checkpoint code. `dt` is the mandatory
+full-precision RMSNorm/RoPE/SwiGLU/GQA control. `glimmer` adds local/global
+alternation, NoPE global layers, QK normalization and gated attention. `bit`
+replaces decoder projections with native ternary `BitLinear` masters.
+
+Parameter matching is approximate, while every report records exact parameters,
+analytical FLOPs/token, floating/ternary counts, artifact bytes and KV bytes.
+Changing an architecture's depth to force identical parameter counts can itself
+be a larger compute/capability confound than a sub-percent count difference.
