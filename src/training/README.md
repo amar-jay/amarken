@@ -80,3 +80,28 @@ training, writes per-step metrics and exact-resume checkpoints, and records all
 configuration, tokenizer, data, checkpoint and software hashes. The default
 4,096 consumed tokens per arm are enough to catch optimization failures, not to
 rank language capability or justify architecture promotion.
+
+## Three-seed scaling preflight
+
+`configs/proxy_scaling.json` repeats the tokenizer, proxy data, 64-token context,
+32-update/4,096-token schedule, AdamW settings and BF16 precision at approximately
+25M and 60M parameters for seeds 2026–2028. Within each scale, parameter and
+analytical FLOP spreads remain below 2%. Architecture order rotates by seed to
+reduce systematic cold-start and thermal bias.
+
+CUDA runs require host GPU access and deterministic cuBLAS workspace setup. The
+runner sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before importing Torch, then enables
+hard deterministic algorithms. Reproducibility is scoped to the recorded Torch,
+CUDA, driver, device and platform; it is not promised across platforms/releases.
+
+```bash
+python -m src.training.scaling_experiment \
+  --config configs/proxy_scaling.json \
+  --report experiments/proxy_scaling.json
+```
+
+Every run retains per-step JSONL metrics. To control disk use, only seed 2026
+retains model-only weights at each scale/architecture. These are evaluation
+artifacts and cannot exactly resume AdamW because optimizer moments are omitted.
+Exact trainer resume remains a blocking gate. No capability promotion may be
+based on this short optimization preflight.

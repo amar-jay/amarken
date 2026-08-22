@@ -21,3 +21,10 @@ it deliberately does not declare a quality winner at this token scale.
 records per-task choice probabilities, category/language accuracy, calibration,
 contamination results, isolated-process latency/RAM, KV memory and deployable
 artifact accounting. Its pass flag verifies evaluation integrity, not quality.
+
+`proxy_scaling.json` records the matched 25M and near-60M three-seed CUDA matrix:
+all 18 per-run metrics, exact parameter/FLOP counts, validation loss, throughput,
+peak CUDA allocation, gradient/ternary health, environment and retained model
+hashes, plus mean and population standard deviation by scale/architecture. Its
+pass flag means every arm consumed the required updates/tokens; it is not a
+capability verdict.
