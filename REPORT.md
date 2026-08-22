@@ -396,7 +396,7 @@ never exposed during model, data-mixture, or hyperparameter selection.
 Artifacts: `benchmarks/meaningful_scale_v2.json`,
 `src/evaluation/meaningful_scale.py`
 
-### 2026-08-22 — Apostrophe-BPE meaningful-scale DT learning curve (active)
+### 2026-08-22 — Apostrophe-BPE meaningful-scale DT learning curve (stopped)
 
 One continuous 9.63M-parameter DT control trajectory is running with the fixed
 apostrophe-BPE tokenizer, clean proxy-v2 data, context 512, BF16, four
@@ -421,45 +421,87 @@ tournament exposure. Gradient values remain finite, although clipping has
 occurred on most updates; this is retained as a post-trajectory ablation target
 and will not be changed mid-protocol.
 
-At the latest report update the active trajectory had passed approximately
-11.4M realized tokens and was progressing toward the 32M milestone.
+The trajectory later passed approximately 21.7M realized tokens but did not
+reach the 32M checkpoint. It is no longer running. The user-facing generations,
+zero exact-match score, and chance-level choice behavior were sufficient to
+reject the current corpus as a route to the intended assistant, regardless of
+whether continued repetition might further reduce validation loss. The 1M and
+8M checkpoints remain useful controls; resuming toward 32M/100M is paused until
+the training-data program changes.
 
 Configuration: `configs/learning_curve_dt_apostrophe_100m.json`
 
 Milestone artifacts:
 `runs/dt-apostrophe-bpe-meaningful-scale-100m-v1/`
 
+### 2026-08-22 — Data-program pivot and local teacher qualification
+
+The product objective is now explicitly limited to concise general English and
+Turkish question answering, short reasoning when necessary, and native tool
+calling. Code generation is out of scope. The current proxy-v2 mixture—small,
+fragmentary OPUS-derived text plus Python standard-library material—is therefore
+not suitable as the primary capability corpus.
+
+The next data program will use a qualified local Ollama teacher to produce
+structured supervised conversations, not copy arbitrary free-running model
+output. The proposed teacher is `qwen3.5:2b-q4_K_M`, run with thinking disabled,
+a 2,048-token context, deterministic decoding for qualification, and a strict
+concise bilingual system contract. Generated records must preserve messages,
+tool schemas, tool calls, tool results, provenance, generator settings, and
+automatic validation decisions. Training examples will be filtered for language,
+answerability, concision, tool necessity, schema validity, and contamination.
+
+A frozen 200-case teacher qualification suite now covers:
+
+- 50 concise English general-QA cases;
+- 50 concise Turkish general-QA cases;
+- 40 exact short-reasoning cases, balanced across EN/TR;
+- 40 tool-routing cases, including unnecessary-tool checks;
+- 20 post-tool-result answer cases.
+
+The runner is deterministic, resumable JSONL, and scores correctness, verbosity,
+tool choice, argument accuracy, and unnecessary tool use. A five-case pilot
+showed that a system-level concision contract is necessary: without it, correct
+answers routinely expanded into unwanted explanations. The contracted pilot
+produced concise correct answers. Full qualification is pending completion of a
+GPU-capable Ollama runtime repair; the existing user-local installation omitted
+the bundled NVIDIA runner libraries and offloaded 0/25 layers despite a healthy
+RTX 3050 driver and UVM device.
+
+Artifacts: `benchmarks/ollama_teacher_qualification_v1.json`,
+`src/distillation/ollama_qualification.py`
+
 ## Current position
 
 The project has progressed from architecture prototypes to a deterministic, provenance-aware tournament harness. The major conclusions supported so far are:
 
 1. `tiktoken-style-apostrophe-bpe-12k` is fixed as the production tokenizer for
-   the EN/TR/code objective. Unigram is diagnostic only.
+   the EN/TR assistant objective. Unigram is diagnostic only.
 2. Clean proxy-v2, tokenizer fingerprints, shared runtime loading, exact resume,
    and expanded deterministic evaluation operate end to end.
 3. The completed generation-1 tournament established Glimmer as the strongest
    loss optimizer at 10M/context-512, but no architecture demonstrated capability
    above chance after approximately one million tokens.
-4. The new DT learning curve shows substantial held-out LM improvement through
-   8M tokens without multiple-choice or generative capability emergence.
-5. DT remains the control and reference-speed model; Glimmer, DT, and Bit should
-   not be retested at scale until the control curve identifies a meaningful
-   exposure.
-6. Final claims require both the frozen development suites and a separately held
+4. The DT learning curve shows substantial held-out LM improvement through 8M
+   tokens without capability emergence; the current corpus is rejected for the
+   intended assistant and the 32M/100M continuation is paused.
+5. A local-teacher SFT data program is now the critical path. Teacher capability
+   and filtering quality must be measured before bulk generation.
+6. DT remains the control and reference-speed model; architecture retesting is
+   deferred until the new data produces capability at a meaningful exposure.
+7. Final claims require both the frozen development suites and a separately held
    secret evaluation.
 
 ## Immediate next actions
 
-1. Allow the active apostrophe-BPE DT trajectory to reach 32M and 100M without
-   changing its optimizer, clipping, data, scheduling, or evaluation protocol.
-2. Emit and hash the final learning-curve report with realized exposure, corpus
-   passes, checkpoint hashes, v1 regression results, v2 permutation/generative
-   results, and EN/TR/code continuation metrics at every milestone.
-3. Determine the first exposure at which capability reliably exceeds chance; if
-   none does by 100M, diagnose data/task mismatch before spending on another
-   architecture tournament.
-4. Run a post-trajectory LR/gradient-clipping ablation because clipping is active
-   on most updates.
-5. Rerun the 10M DT/Glimmer/Bit architecture tournament only at the established
-   meaningful exposure, then promote distinct Pareto winners for quality,
-   artifact size, KV memory, and runtime.
+1. Repair Ollama's missing NVIDIA runtime, verify GPU placement with `ollama ps`,
+   and complete the frozen 200-case Qwen teacher qualification.
+2. Inspect failure clusters manually and set explicit promotion gates for EN,
+   TR, reasoning, tool routing, post-tool answers, and concision.
+3. If the teacher passes, generate a small auditable pilot dataset with no code,
+   validate every record, deduplicate it, and manually review stratified samples
+   before any bulk generation.
+4. Train an apostrophe-BPE DT control on the pilot and require capability gains
+   on frozen held-out tasks before scaling synthetic-data volume.
+5. Only after that gate, expand the balanced EN/TR general-QA, short-reasoning,
+   and tool-use corpus and re-establish the 1M/8M/32M learning curve.
