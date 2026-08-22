@@ -24,7 +24,8 @@ DEFAULT_SUITE = ROOT / "benchmarks" / "ollama_teacher_qualification_v1.json"
 DEFAULT_OUTPUT = ROOT / "experiments" / "ollama_teacher_qwen3_5_2b.jsonl"
 SYSTEM_PROMPT = (
     "You are a concise bilingual English/Turkish assistant. Answer only what was "
-    "asked, normally in one short sentence. Do not explain unless explicitly asked. "
+    "asked and obey the user's requested output format exactly. Otherwise use one short "
+    "sentence. Do not explain unless explicitly asked. "
     "Use a provided tool only when external/current information or an action is needed."
 )
 
@@ -184,11 +185,17 @@ def run(args: argparse.Namespace) -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     mode = "w" if args.restart else "a"
     with args.output.open(mode) as output:
-        selected = suite["cases"][: args.limit] if args.limit else suite["cases"]
+        selected = suite["cases"]
+        if args.category:
+            selected = [case for case in selected if case["category"] in args.category]
+        if args.limit:
+            selected = selected[: args.limit]
         for number, case in enumerate(selected, 1):
             if case["id"] in done: continue
             messages = [{"role": "system", "content": SYSTEM_PROMPT}, *case["messages"]]
-            payload = {"model": args.model, "messages": messages, "stream": False, "think": False, "options": {"seed": args.seed, "temperature": 0, "num_ctx": 2048, "num_predict": 48}}
+            reasoning = case["category"].startswith("reasoning")
+            think: bool | str = args.reasoning_think if reasoning and args.reasoning_think != "false" else False
+            payload = {"model": args.model, "messages": messages, "stream": False, "think": think, "options": {"seed": args.seed, "temperature": 0, "num_ctx": 2048, "num_predict": 512 if reasoning and think else 48}}
             if case.get("tools"): payload["tools"] = case["tools"]
             started = time.monotonic()
             try:
@@ -212,7 +219,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build"); build.add_argument("--output", type=Path, default=DEFAULT_SUITE)
-    qualify = sub.add_parser("run"); qualify.add_argument("--suite", type=Path, default=DEFAULT_SUITE); qualify.add_argument("--output", type=Path, default=DEFAULT_OUTPUT); qualify.add_argument("--model", default="qwen3.5:2b-q4_K_M"); qualify.add_argument("--base-url", default="http://127.0.0.1:11434"); qualify.add_argument("--seed", type=int, default=3407); qualify.add_argument("--timeout", type=int, default=180); qualify.add_argument("--limit", type=int); qualify.add_argument("--restart", action="store_true")
+    qualify = sub.add_parser("run"); qualify.add_argument("--suite", type=Path, default=DEFAULT_SUITE); qualify.add_argument("--output", type=Path, default=DEFAULT_OUTPUT); qualify.add_argument("--model", default="qwen3.5:2b-q4_K_M"); qualify.add_argument("--base-url", default="http://127.0.0.1:11434"); qualify.add_argument("--seed", type=int, default=3407); qualify.add_argument("--timeout", type=int, default=180); qualify.add_argument("--limit", type=int); qualify.add_argument("--category", action="append"); qualify.add_argument("--reasoning-think", choices=("false", "low", "medium", "high"), default="false"); qualify.add_argument("--restart", action="store_true")
     args = parser.parse_args()
     if args.command == "build":
         args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(build_suite(), indent=2, ensure_ascii=False) + "\n"); print(args.output)

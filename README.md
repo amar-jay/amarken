@@ -2,10 +2,29 @@
 # Amarken
 Goal: best measured chat intelligence under `P <= 60M`; secondary objective: intelligence/artifact-bit and intelligence/runtime-byte. No architecture privileged. Unlimited sequential experiments; fixed tests decide.
 
+## Current status (2026-08-22)
+
+The repository now contains a deterministic EN/TR model-tournament harness, three
+implemented decoder families (`dt`, `glimmer`, and native-ternary `bit`), shared
+training/checkpointing, tokenizer runtime support, and deterministic evaluation.
+The first matched 10M/context-512 tournament is complete: Glimmer achieved the
+best mean validation loss, but every architecture remained at chance-level
+capability on the small proxy benchmark. This is therefore **not** a released
+assistant or a model-quality claim.
+
+The selected production tokenizer is `tiktoken-style-apostrophe-bpe-12k`; the
+legacy SentencePiece tokenizer remains an experimental control. The proxy-v2
+learning curve is paused: although validation loss improved, the OPUS/Python
+proxy corpus did not produce the intended concise EN/TR assistant behavior. The
+current critical path is qualifying a local teacher and building an auditable,
+filtered SFT corpus for concise English/Turkish QA, short reasoning, and tool
+calling. Code generation is out of scope. See [REPORT.md](REPORT.md) for
+results, provenance, and next gated actions.
+
 ## Development
 
-Install the test-only dependencies into an activated virtual environment, then
-run the repository's configured correctness suite:
+Install the runtime dependencies plus the test dependencies into an activated
+virtual environment, then run the repository's configured correctness suite:
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -19,41 +38,49 @@ to `tests/test_*.py` so generated corpora and experiment artifacts are excluded.
 
 The same interface loads exact trainer checkpoints, standalone checkpoints, and
 model-only tournament artifacts. CUDA and BF16 are selected automatically when
-available; use `--device cpu --precision fp32` for a portable fallback.
+available; use `--device cpu --precision fp32` for a portable fallback. Pass the
+tokenizer used to train the checkpoint; newer checkpoints reject a mismatched
+tokenizer fingerprint.
 
 ```bash
 # One-shot, script-friendly generation.
 python -m src.inference.cli \
-  --checkpoint runs/proxy-tournament-10m-context512-1m-v1/10m/seed-2026/glimmer/final-model-only.pt \
+  --checkpoint MODEL.pt \
+  --tokenizer artifacts/tokenizers/v2/tiktoken-style-apostrophe-bpe-12k.json \
   --prompt "Türkiye'nin başkenti" --max-new-tokens 32 --show-info --show-stats
 
 # Interactive terminal session with retained plain-text turns.
 python -m src.inference.cli \
-  --checkpoint runs/proxy-tournament-10m-context512-1m-v1/10m/seed-2026/glimmer/final-model-only.pt \
+  --checkpoint MODEL.pt \
+  --tokenizer artifacts/tokenizers/v2/tiktoken-style-apostrophe-bpe-12k.json \
   --chat
 
 # Pipe a prompt and keep stdout suitable for another program.
-printf 'def fibonacci(n):' | python -m src.inference.cli --checkpoint MODEL.pt
+printf 'Türkiye’nin başkenti nedir?' | python -m src.inference.cli \
+  --checkpoint MODEL.pt \
+  --tokenizer artifacts/tokenizers/v2/tiktoken-style-apostrophe-bpe-12k.json
 ```
 
 Interactive commands are `/help`, `/reset`, `/settings`, `/max-new N`,
-`/temperature X`, `/top-k N|none`, `/seed N`, and `/quit`. These tournament
-weights are base pretrained models, not instruction-tuned assistants; `--chat`
+`/temperature X`, `/top-k N|none`, `/seed N`, and `/quit`. Current retained
+weights are experimental base models, not instruction-tuned assistants; `--chat`
 only supplies consistent `User:`/`Assistant:` text and cannot create capabilities
 the checkpoint has not learned.
 
-## Tokenizer v2 tournament
+## Tokenizer v2: selected artifact and controls
 
-The v2 sweep trains compact tokenizers—including base, apostrophe-aware, and
-Turkish-weighted tiktoken-regex byte-BPE candidates—on fixed English, Turkish,
-and Python slices, then compares them with a revision-pinned SmolLM2 49k control:
+The completed v2 sweep trained compact tokenizers—including base,
+apostrophe-aware, and Turkish-weighted tiktoken-regex byte-BPE candidates—on
+fixed English, Turkish, and Python slices, then compared them with a
+revision-pinned SmolLM2 49k control. It selected the apostrophe-aware 12k
+artifact for the current EN/TR assistant objective:
 
 ```bash
 python -m src.tokenization.v2_sweep --config configs/tokenizer_v2.json
 ```
 
 Use `--evaluate-only` to regenerate metrics from existing artifacts without
-retraining deterministic SentencePiece models. The report includes realized
+retraining deterministic models. The report includes realized
 training-token shares, EN/TR fertility, code token density, whitespace and byte
 behavior, Turkish morphology fragmentation, exact round trips, indentation
 overhead, vocabulary/embedding cost, artifact hashes, a provisional metric-only
@@ -85,22 +112,42 @@ does not load the 89MB JSONL dataset into memory.
 - Final selection uses hidden, contamination-checked EN/TR chat tests: instruction following, compositional reasoning, state tracking, grounded QA, tool routing, calibration, fluency; plus latency/RAM/energy.
 - Never select on teacher/judge score alone. Deterministic tests > blinded humans > multiple independent judges.
 
-## Student tournament
+## Architecture tournament
 
-Matched tokenizer, tokens, optimizer-compute, data, context and evaluation:
+The completed first generation matched tokenizer, tokens, optimizer-compute,
+data, context, and evaluation across DT, Glimmer, and two Bit scaling variants.
+It established an optimization-loss result only; architecture promotion is
+deferred until the replacement data program demonstrates capability. Current
+implemented and planned candidates are:
 
 - **Amarken-DT**: deep-thin RMSNorm/RoPE/SwiGLU/GQA Transformer; baseline near `18L × 512d × 1344ff × 8Q/2KV`, ~57M.
-- **Amarken-Share**: fewer unique blocks, recurrent/immediate block reuse; spend saved parameters on width/depth; report logical and unique layers.
-- **Amarken-SSM**: gated state-space/convolutional mixer; matched parameters and FLOPs. sparse attention layers interleaved with recurrent/SSM layers if necessary.
 - **Amarken-Glimmer**: repeat `(Local-RoPE, Local-RoPE, Local-RoPE, Global-NoPE)`; local-window sweep `256/512/1024`; gated-GQA sweep `8:1/16:1`; per-head RMS QK-norm + learned query scale. Hypothesis: local layers learn order/composition cheaply; periodic position-free global layers carry long-range content without RoPE distance distortion.
-- **Amarken-MoE**: <=60M total sparse experts; matched active FLOPs; only survives if total-byte score wins.
 - **Amarken-Bit**: natively ternary weights; FP activations/norms; compare with post-trained INT4 DT winner.
 
-Run 10M/25M proxy sweeps; promote Pareto winners to 60M. Ablate depth, width, FFN ratio, Q:KV ratio, sharing pattern, context, tokenizer, positional scheme. Repeat finalists across >=3 seeds.
+The completed 10M/context-512 sweep used three seeds and approximately one
+million tokens per arm. Earlier 10M/25M/60M short runs are retained as optimizer
+preflights, not model rankings. Future architecture sweeps resume only after a
+DT control proves capability gains with the new data program.
 
 Muse Glimmer provenance: released decoder = 52 layers of `(SWA-RoPE ×3, Full-NoPE ×1)`, 32Q/2KV gated GQA, per-head RMS QK-norm, extra query scaling. Transfer only these testable components. Optional DFlash improves decoding speed, not student intelligence, and counts against artifact parameters/bytes if tested. Release states Spark→Glimmer distillation but publishes no reproducible method; it supplies no Amarken distillation recipe. Sources: [model card](https://huggingface.co/meta-models/Muse-Glimmer-30B/blob/main/README.md), [architecture](https://huggingface.co/blog/muse-glimmer#architecture).
 
 ## Distillation: executable definition
+
+This section records the target data/training policy; bulk distillation has not
+started. The implemented next gate is a frozen, resumable 200-case local-teacher
+qualification suite for concise EN/TR QA, short reasoning, tool routing, and
+post-tool answers. It deliberately excludes code-generation tasks:
+
+```bash
+# Rebuild the frozen suite if required.
+python -m src.distillation.ollama_qualification build
+
+# Qualify a local Ollama teacher (the default is qwen3.5:2b-q4_K_M).
+python -m src.distillation.ollama_qualification run
+```
+
+Qualification is pending a GPU-capable Ollama runtime; do not generate a bulk
+training corpus until its results and filter gates are reviewed.
 
 ### Teachers
 
