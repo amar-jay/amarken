@@ -15,6 +15,50 @@ python -m pytest
 Pytest configuration lives in `pytest.toml`; discovery is deliberately limited
 to `tests/test_*.py` so generated corpora and experiment artifacts are excluded.
 
+## Local inference CLI/TUI
+
+The same interface loads exact trainer checkpoints, standalone checkpoints, and
+model-only tournament artifacts. CUDA and BF16 are selected automatically when
+available; use `--device cpu --precision fp32` for a portable fallback.
+
+```bash
+# One-shot, script-friendly generation.
+python -m src.inference.cli \
+  --checkpoint runs/proxy-tournament-10m-context512-1m-v1/10m/seed-2026/glimmer/final-model-only.pt \
+  --prompt "Türkiye'nin başkenti" --max-new-tokens 32 --show-info --show-stats
+
+# Interactive terminal session with retained plain-text turns.
+python -m src.inference.cli \
+  --checkpoint runs/proxy-tournament-10m-context512-1m-v1/10m/seed-2026/glimmer/final-model-only.pt \
+  --chat
+
+# Pipe a prompt and keep stdout suitable for another program.
+printf 'def fibonacci(n):' | python -m src.inference.cli --checkpoint MODEL.pt
+```
+
+Interactive commands are `/help`, `/reset`, `/settings`, `/max-new N`,
+`/temperature X`, `/top-k N|none`, `/seed N`, and `/quit`. These tournament
+weights are base pretrained models, not instruction-tuned assistants; `--chat`
+only supplies consistent `User:`/`Assistant:` text and cannot create capabilities
+the checkpoint has not learned.
+
+## Tokenizer v2 tournament
+
+The v2 sweep trains four compact tokenizers on equal 8MB English, Turkish, and
+Python slices, then compares them with a revision-pinned SmolLM2 49k control:
+
+```bash
+python -m src.tokenization.v2_sweep --config configs/tokenizer_v2.json
+```
+
+Use `--evaluate-only` to regenerate metrics from existing artifacts without
+retraining deterministic SentencePiece models. The report includes realized
+training-token shares, EN/TR fertility, code token density, whitespace and byte
+behavior, Turkish morphology fragmentation, exact round trips, indentation
+overhead, vocabulary/embedding cost, artifact hashes, a provisional metric-only
+choice, and candidates promoted to a downstream control-model probe. Tokenizer
+metrics alone never authorize an architecture tournament.
+
 ## Invariants
 
 - Decoder LM unless an alternative wins.

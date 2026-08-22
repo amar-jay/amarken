@@ -6,7 +6,7 @@
   "precision": "bf16",
   "sequence_length": 512,
   "train_token_budget": 2097152,
-  "validation_token_budget": 65536,
+  "validation_token_budget": 32768,
   "validation_batches": 32,
   "batch_size": 1,
   "gradient_accumulation_steps": 4,

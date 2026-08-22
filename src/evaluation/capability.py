@@ -9,6 +9,7 @@ import hashlib
 import gc
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import resource
@@ -17,6 +18,10 @@ import subprocess
 import sys
 import tempfile
 import time
+
+# This must precede torch's CUDA initialization when deterministic GPU
+# evaluation is requested; it is harmless for the default CPU worker.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import sentencepiece as spm
 import torch
@@ -122,23 +127,33 @@ def _current_rss_bytes() -> int:
     return int(Path("/proc/self/statm").read_text().split()[1]) * resource.getpagesize()
 
 
+def _synchronize(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
 def _systems(model, dataset: PackedSequenceDataset, tokenizer_bytes: int, baseline_rss_bytes: int) -> dict:
     model.eval()
-    batch = dataset.batch([0], next(model.parameters()).device)
+    device = next(model.parameters()).device
+    batch = dataset.batch([0], device)
     for _ in range(3):
         with torch.inference_mode():
             model(batch["input_ids"], attention_mask=batch["attention_mask"])
     forward_times = []
     for _ in range(15):
+        _synchronize(device)
         started = time.perf_counter_ns()
         with torch.inference_mode():
             model(batch["input_ids"], attention_mask=batch["attention_mask"])
+        _synchronize(device)
         forward_times.append((time.perf_counter_ns() - started) / 1e6)
     generation_times = []
     prompt = batch["input_ids"][:, :16]
     for _ in range(5):
+        _synchronize(device)
         started = time.perf_counter_ns()
         model.generate(prompt, max_new_tokens=8, temperature=0.0)
+        _synchronize(device)
         generation_times.append((time.perf_counter_ns() - started) / 1e6)
     ordered = sorted(forward_times)
     stats = model.stats(dataset.sequence_length, element_bytes=2)
@@ -159,18 +174,28 @@ def _systems(model, dataset: PackedSequenceDataset, tokenizer_bytes: int, baseli
         "tokenizer_bytes": tokenizer_bytes,
         "deploy_model_plus_tokenizer_bytes": stats.artifact_bytes + tokenizer_bytes,
         "training_parameter_bytes": stats.training_parameter_bytes,
+        "peak_cuda_allocated_bytes": torch.cuda.max_memory_allocated(device) if device.type == "cuda" else None,
+        "peak_cuda_reserved_bytes": torch.cuda.max_memory_reserved(device) if device.type == "cuda" else None,
     }
 
 
-def _worker(checkpoint: Path, tokenizer_path: Path, benchmark_path: Path, validation_path: Path, output: Path) -> None:
+def _worker(checkpoint: Path, tokenizer_path: Path, benchmark_path: Path, validation_path: Path, output: Path, device_name: str = "cpu") -> None:
     torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
+    device = torch.device(device_name)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA evaluation requested but unavailable")
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
     # Baseline includes imported Python/PyTorch/SentencePiece libraries but no
     # tokenizer, model, checkpoint tensors, validation blocks, or benchmark.
     baseline_rss_bytes = _current_rss_bytes()
-    payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    payload = torch.load(checkpoint, map_location=device, weights_only=True)
     model_type = payload["model_type"]
-    model = create_model(create_config(model_type, **payload["model_config"]))
+    # Copy scalar identity before deleting the potentially optimizer-heavy payload
+    # so resident inference memory excludes checkpoint-only objects.
+    variant = payload.get("metadata", {}).get("variant", model_type)
+    model = create_model(create_config(model_type, **payload["model_config"])).to(device)
     model.load_state_dict(payload["model_state"], strict=True)
     # Trainer checkpoints include Adam moments; release them before measuring the
     # inference resident set. ru_maxrss separately discloses their load-time peak.
@@ -183,6 +208,7 @@ def _worker(checkpoint: Path, tokenizer_path: Path, benchmark_path: Path, valida
     tokenizer_bytes = tokenizer_path.stat().st_size + tokenizer_path.with_suffix(".vocab").stat().st_size
     result = {
         "model_type": model_type, "checkpoint": str(checkpoint),
+        "variant": variant,
         "checkpoint_sha256": _sha256(checkpoint), "checkpoint_bytes": checkpoint.stat().st_size,
         "validation_loss_full": _validation_loss(model, validation),
         "capability": capability, "task_details": details,
@@ -215,7 +241,7 @@ def _contamination_scan(train_path: Path, benchmark_path: Path, n: int = 13) -> 
     return {"ngram_tokens": n, "matching_documents": len(matches), "matches": matches}
 
 
-def run(proxy_report_path: Path, benchmark_path: Path, report_path: Path) -> dict:
+def run(proxy_report_path: Path, benchmark_path: Path, report_path: Path, device: str = "cpu") -> dict:
     proxy = json.loads(proxy_report_path.read_text(encoding="utf-8"))
     tokenizer = Path(proxy["shared"]["tokenizer"])
     train_data = Path(proxy["shared"]["train_data"])
@@ -224,11 +250,17 @@ def run(proxy_report_path: Path, benchmark_path: Path, report_path: Path) -> dic
     results = []
     with tempfile.TemporaryDirectory(prefix="amarken-eval-") as directory:
         for candidate in proxy["results"]:
-            output = Path(directory) / f"{candidate['model_type']}.json"
+            # Scaling reports intentionally retain inference weights for only one
+            # seed; rows without a checkpoint are training statistics, not evaluable.
+            if not candidate.get("checkpoint"):
+                continue
+            variant = candidate.get("variant", candidate["model_type"])
+            output = Path(directory) / f"{variant}-seed-{candidate.get('seed', 'single')}.json"
             command = [
                 sys.executable, "-m", "src.evaluation.capability", "--worker",
                 "--checkpoint", candidate["checkpoint"]["path"], "--tokenizer", str(tokenizer),
                 "--benchmark", str(benchmark_path), "--validation", str(validation_data), "--worker-output", str(output),
+                "--device", device,
             ]
             subprocess.run(command, check=True)
             results.append(json.loads(output.read_text(encoding="utf-8")))
@@ -239,7 +271,7 @@ def run(proxy_report_path: Path, benchmark_path: Path, report_path: Path) -> dic
         "benchmark_sha256": _sha256(benchmark_path), "proxy_experiment_sha256": _sha256(proxy_report_path),
         "train_data_sha256": _sha256(train_data), "validation_data_sha256": _sha256(validation_data),
         "tokenizer_sha256": _sha256(tokenizer), "contamination": contamination,
-        "environment": {"python": platform.python_version(), "torch": torch.__version__, "sentencepiece": spm.__version__, "device": "cpu", "torch_threads": 1},
+        "environment": {"python": platform.python_version(), "torch": torch.__version__, "sentencepiece": spm.__version__, "device": device, "torch_threads": 1},
         "results": results,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -259,11 +291,12 @@ def _main() -> int:
     parser.add_argument("--tokenizer", type=Path)
     parser.add_argument("--validation", type=Path)
     parser.add_argument("--worker-output", type=Path)
+    parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     if args.worker:
-        _worker(args.checkpoint, args.tokenizer, args.benchmark, args.validation, args.worker_output)
+        _worker(args.checkpoint, args.tokenizer, args.benchmark, args.validation, args.worker_output, args.device)
         return 0
-    report = run(args.proxy_report, args.benchmark, args.report)
+    report = run(args.proxy_report, args.benchmark, args.report, args.device)
     for result in report["results"]:
         print(result["model_type"], result["validation_loss_full"], result["capability"]["overall"]["accuracy"])
     return 0 if report["passed"] else 1

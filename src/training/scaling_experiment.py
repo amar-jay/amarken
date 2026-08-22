@@ -57,6 +57,25 @@ def _rotated_order(seed_index: int) -> tuple[str, ...]:
     return names[offset:] + names[:offset]
 
 
+def _trajectory_gate(results: list[dict], updates: int) -> tuple[bool, dict[str, int]]:
+    """Require matched realized tokens within each seed and exact update counts.
+
+    Packed datasets may contain one deterministic partial final block. Different
+    seed shuffles can encounter it a different number of times, so nominal
+    batch*context tokens is only an upper bound; architecture fairness requires
+    equality among arms sharing a seed, not equality across different shuffles.
+    """
+    by_seed: dict[str, list[int]] = {}
+    for result in results:
+        by_seed.setdefault(str(result["seed"]), []).append(result["consumed_tokens"])
+    realized = {seed: values[0] for seed, values in by_seed.items() if len(set(values)) == 1}
+    passed = (
+        len(realized) == len(by_seed)
+        and all(result["optimizer_updates"] == updates for result in results)
+    )
+    return passed, realized
+
+
 def run(config_path: Path, report_path: Path) -> dict:
     config = json.loads(config_path.read_text(encoding="utf-8"))
     if config.get("format_version") != 1:
@@ -108,9 +127,13 @@ def run(config_path: Path, report_path: Path) -> dict:
                 run_dir = Path(config["output_dir"]) / scale / f"seed-{seed}" / variant_name
                 learning_rate = arm.get("learning_rate")
                 if learning_rate is None:
-                    if variant_name not in lr_selections:
+                    if variant_name in lr_selections:
+                        learning_rate = lr_selections[variant_name]["learning_rate"]
+                    elif config.get("learning_rate") is not None:
+                        # Backward-compatible path for the original shared-LR run.
+                        learning_rate = config["learning_rate"]
+                    else:
                         raise ValueError(f"no selected learning rate for variant {variant_name!r}")
-                    learning_rate = lr_selections[variant_name]["learning_rate"]
                 optimizer_config = OptimizerConfig(
                     learning_rate=learning_rate, weight_decay=config["weight_decay"],
                     bit_learning_rate_multiplier=1.0, bit_weight_decay=config["weight_decay"],
@@ -181,9 +204,10 @@ def run(config_path: Path, report_path: Path) -> dict:
                 "peak_cuda_allocated_bytes_max": max(value["peak_cuda_allocated_bytes"] for value in values),
             }
     expected_tokens = config["optimizer_updates"] * config["gradient_accumulation_steps"] * config["batch_size"] * config["sequence_length"]
+    trajectory_passed, realized_tokens = _trajectory_gate(results, config["optimizer_updates"])
     report = {
         "format_version": 1, "experiment_id": config["experiment_id"],
-        "passed": all(result["consumed_tokens"] == expected_tokens and result["optimizer_updates"] == config["optimizer_updates"] for result in results),
+        "passed": trajectory_passed,
         "interpretation": "three-seed scaling optimization preflight; not a capability ranking",
         "config_sha256": _sha256(config_path), "tokenizer_sha256": _sha256(Path(config["tokenizer"])),
         "lr_screen_report_sha256": _sha256(Path(config["lr_screen_report"])) if config.get("lr_screen_report") else None,
@@ -194,6 +218,7 @@ def run(config_path: Path, report_path: Path) -> dict:
         },
         "shared": {key: value for key, value in config.items() if key != "scales"},
         "expected_consumed_tokens_per_run": expected_tokens,
+        "realized_consumed_tokens_by_seed": realized_tokens,
         "results": results, "aggregates": aggregates,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,11 +228,27 @@ def run(config_path: Path, report_path: Path) -> dict:
     return report
 
 
+def audit_existing(report_path: Path) -> dict:
+    """Re-evaluate trajectory gates without rerunning completed model training."""
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    updates = report["shared"]["optimizer_updates"]
+    passed, realized = _trajectory_gate(report["results"], updates)
+    report["passed"] = passed
+    report["realized_consumed_tokens_by_seed"] = realized
+    temporary = report_path.with_name(report_path.name + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, report_path)
+    return report
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/proxy_scaling.json"))
     parser.add_argument("--report", type=Path, default=Path("experiments/proxy_scaling.json"))
+    parser.add_argument("--audit-existing", action="store_true")
     args = parser.parse_args()
+    if args.audit_existing:
+        return 0 if audit_existing(args.report)["passed"] else 1
     return 0 if run(args.config, args.report)["passed"] else 1
 
 
