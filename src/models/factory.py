@@ -7,10 +7,12 @@ from typing import Any
 
 from .bit import BitCausalLM, BitConfig
 from .common import AmarkenCausalLM, ModelConfig
+from .dt import DTCausalLM, DTConfig
 from .glimmer import GlimmerCausalLM, GlimmerConfig
 
 
 MODEL_REGISTRY = {
+    DTConfig.model_type: (DTConfig, DTCausalLM),
     BitConfig.model_type: (BitConfig, BitCausalLM),
     GlimmerConfig.model_type: (GlimmerConfig, GlimmerCausalLM),
 }

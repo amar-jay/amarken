@@ -4,7 +4,7 @@ from src.training.correctness import run_correctness_suite
 def test_full_correctness_suite_passes_both_models():
     result = run_correctness_suite(steps=120, seed=2026, device="cpu")
     assert result.passed
-    assert {model.model_type for model in result.models} == {"glimmer", "bit"}
+    assert {model.model_type for model in result.models} == {"dt", "glimmer", "bit"}
     for model in result.models:
         assert model.passed
         assert model.final_loss < 0.20

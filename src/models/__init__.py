@@ -2,6 +2,7 @@
 
 from .bit import BitCausalLM, BitConfig
 from .common import AmarkenCausalLM, CausalLMOutput, CheckpointInfo, ModelStats
+from .dt import DTCausalLM, DTConfig
 from .factory import MODEL_REGISTRY, create_config, create_model, load_config, save_config
 from .glimmer import GlimmerCausalLM, GlimmerConfig
 
@@ -11,6 +12,8 @@ __all__ = [
     "BitConfig",
     "CausalLMOutput",
     "CheckpointInfo",
+    "DTCausalLM",
+    "DTConfig",
     "GlimmerCausalLM",
     "GlimmerConfig",
     "MODEL_REGISTRY",

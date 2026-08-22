@@ -18,7 +18,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from src.models import BitConfig, GlimmerConfig, ModelStats, create_model
+from src.models import BitConfig, DTConfig, GlimmerConfig, ModelStats, create_model
 
 
 # Four deterministic, intentionally tiny sequences. Some token contexts conflict,
@@ -84,6 +84,7 @@ def _configs():
         attention_dropout=0.0,
     )
     return (
+        DTConfig(**shared),
         GlimmerConfig(**shared, sliding_window=8),
         BitConfig(**shared),
     )

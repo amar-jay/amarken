@@ -9,6 +9,8 @@ from src.models import (
     CausalLMOutput,
     GlimmerCausalLM,
     GlimmerConfig,
+    DTCausalLM,
+    DTConfig,
     create_config,
     create_model,
     load_config,
@@ -18,6 +20,16 @@ from src.models import (
 
 def configs():
     return (
+        DTConfig(
+            vocab_size=67,
+            hidden_size=32,
+            intermediate_size=72,
+            num_hidden_layers=3,
+            num_attention_heads=4,
+            num_key_value_heads=1,
+            head_dim=8,
+            max_position_embeddings=32,
+        ),
         GlimmerConfig(
             vocab_size=67,
             hidden_size=32,
@@ -63,14 +75,14 @@ def test_registry_config_json_round_trip(tmp_path: Path):
 
 
 def test_shared_stats_schema_is_architecture_aware():
-    glimmer, bit = (create_model(config) for config in configs())
-    for model in (glimmer, bit):
+    dt, glimmer, bit = (create_model(config) for config in configs())
+    for model in (dt, glimmer, bit):
         stats = model.stats(sequence_length=16)
         assert stats.total_parameters == model.parameter_count()
         assert stats.active_parameters == stats.total_parameters
         assert stats.forward_flops > 0 and stats.flops_per_token == stats.forward_flops / 16
         assert stats.artifact_bytes > 0 and stats.kv_cache_bytes > 0
-    assert glimmer.stats(16).ternary_parameters == 0
+    assert dt.stats(16).ternary_parameters == glimmer.stats(16).ternary_parameters == 0
     assert bit.stats(16).ternary_parameters > 0
     assert bit.stats(16).artifact_bytes < bit.stats(16).training_parameter_bytes
 
@@ -100,7 +112,7 @@ def test_checkpoint_model_optimizer_metadata_and_rng_round_trip(tmp_path: Path):
         path = tmp_path / f"{config.model_type}.pt"
         model.save_checkpoint(path, optimizer=optimizer, step=17, metadata={"seed": 123})
 
-        model_class = GlimmerCausalLM if config.model_type == "glimmer" else BitCausalLM
+        model_class = {"dt": DTCausalLM, "glimmer": GlimmerCausalLM, "bit": BitCausalLM}[config.model_type]
         restored, info = model_class.from_checkpoint(path)
         assert info.step == 17 and info.metadata == {"seed": 123}
         assert torch.equal(restored(tokens).logits, expected)
