@@ -18,3 +18,42 @@ It also reports analytical model statistics and measured training throughput.
 This is a blocking implementation gate, not a capability benchmark. Passing only
 shows that a model can learn and that the surrounding experiment machinery is
 coherent. Tokenizer/data/evaluation gates remain separate.
+
+## Shared trainer
+
+`Trainer` is the sole optimizer loop for Glimmer and Bit. Callers provide
+`TokenizedExample` records with an explicit assistant-target mask, pack them, and
+then pass the same dataset and trainer configuration to either registered model:
+
+```python
+from pathlib import Path
+from src.models import create_model, load_config
+from src.training import PackedSequenceDataset, TokenizedExample, Trainer, TrainerConfig
+
+examples = [TokenizedExample((1, 20, 21, 2), (False, False, True, True))]
+dataset = PackedSequenceDataset(examples, sequence_length=2048, eos_token_id=2, pad_token_id=3)
+model = create_model(load_config("configs/model.json"))
+trainer = Trainer(model, dataset, TrainerConfig(output_dir=Path("runs/proxy")), device="cuda")
+trainer.train(1_000)
+```
+
+Packing masks padding, inserted EOS targets, every record's first token, every
+block's first token, and all non-assistant tokens with label `-100`. Documents
+may share a causal context block for efficiency, but no loss crosses a document
+or block boundary. Validation should use separately constructed validation
+blocks; the trainer never mixes dataset objects or invents a split.
+
+The loop uses AdamW, token-weighted gradient accumulation, unified `torch.amp`,
+global-norm clipping, and optional non-reentrant whole-model activation
+checkpointing with RNG preservation. Glimmer separates decayed matrices from
+norm/embedding parameters. Bit additionally isolates every `BitLinear` FP master
+in a named group with independent learning-rate multiplier and decay settings.
+
+Atomic checkpoints are written only after completed optimizer updates. They
+contain model weights/config, optimizer groups and moments, AMP scaler, data
+epoch/block cursor, dataset fingerprint, counters, and Python/CPU/CUDA RNG state.
+Loading rejects model, optimizer-policy, or dataset mismatches. `metrics.jsonl`
+records loss, per-group learning rates, token counts, timing, pre-clip gradient
+health, and AMP scale. Bit also records trit sign/zero fractions, the distribution
+of layer absmean scales, and ternary-master gradient finite/zero fractions. These
+statistics diagnose quantizer collapse; they are not quality objectives.

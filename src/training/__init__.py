@@ -1,5 +1,14 @@
-"""Training and preflight correctness infrastructure.
+"""Shared training and blocking correctness infrastructure.
 
-Import the runner from ``src.training.correctness``. Keeping package import free
-of eager runner imports also makes ``python -m src.training.correctness`` clean.
+The correctness runner stays in ``src.training.correctness`` so invoking it as a
+module does not encounter an eager-import warning.
 """
+
+from .data import PackedSequenceDataset, TokenizedExample
+from .optimizer import OptimizerConfig, create_optimizer
+from .trainer import Trainer, TrainerConfig, TrainerState
+
+__all__ = [
+    "OptimizerConfig", "PackedSequenceDataset", "TokenizedExample", "Trainer",
+    "TrainerConfig", "TrainerState", "create_optimizer",
+]

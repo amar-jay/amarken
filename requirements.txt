@@ -1,0 +1,7 @@
+# Model runtime and training primitives. Keep this minor line aligned with the
+# version recorded by experiments/correctness_gates.json.
+torch>=2.7.0,<2.8
+
+# Tokenizer training/evaluation runtime. Keep this aligned with the version
+# recorded by experiments/tokenizer_sweep.json.
+sentencepiece>=0.2.1,<0.3
