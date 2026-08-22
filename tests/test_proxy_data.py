@@ -1,7 +1,22 @@
 import json
 from pathlib import Path
 
-from src.data.proxy import build
+from src.data.proxy import build, repair_text_encoding
+
+
+def test_encoding_repair_precedes_normalization_and_rejects_residual_damage():
+    broken = "Ä±sÄ±nma gerÃ§ek tÃ¼ketimi aÅ\x9ftÄ±"
+    repaired, status = repair_text_encoding(broken)
+    assert repaired == "ısınma gerçek tüketimi aştı"
+    assert status == "repaired"
+
+    valid, status = repair_text_encoding("Mûsâ ve İbrâhim")
+    assert valid == "Mûsâ ve İbrâhim"
+    assert status == "unchanged"
+
+    rejected, status = repair_text_encoding('damaged SÃ"retÃ©')
+    assert rejected is None
+    assert status == "rejected_residual_mojibake"
 
 
 def _write_config(root: Path) -> Path:
@@ -45,6 +60,7 @@ def test_proxy_build_is_deterministic_grouped_and_contamination_clean(tmp_path):
     assert first["removed"]["exact_duplicate"] == 1
     assert first["contaminated_documents"] == 1
     assert first["distillation"] is False
+    assert first["outputs"]["encoding_rejections.jsonl"]["lines"] == 0
 
     clean = _jsonl(tmp_path / "out-a/train.jsonl") + _jsonl(tmp_path / "out-a/validation.jsonl")
     assert all("secret benchmark" not in record["text"] for record in clean)

@@ -44,8 +44,9 @@ the checkpoint has not learned.
 
 ## Tokenizer v2 tournament
 
-The v2 sweep trains four compact tokenizers on equal 8MB English, Turkish, and
-Python slices, then compares them with a revision-pinned SmolLM2 49k control:
+The v2 sweep trains compact tokenizers—including base, apostrophe-aware, and
+Turkish-weighted tiktoken-regex byte-BPE candidates—on fixed English, Turkish,
+and Python slices, then compares them with a revision-pinned SmolLM2 49k control:
 
 ```bash
 python -m src.tokenization.v2_sweep --config configs/tokenizer_v2.json
@@ -58,6 +59,23 @@ behavior, Turkish morphology fragmentation, exact round trips, indentation
 overhead, vocabulary/embedding cost, artifact hashes, a provisional metric-only
 choice, and candidates promoted to a downstream control-model probe. Tokenizer
 metrics alone never authorize an architecture tournament.
+
+Visualize deterministic random dataset samples with colored token boundaries:
+
+```bash
+python -m src.tokenization.visualize --samples 3 --language tr --legend
+
+# Compare candidates on the exact same random documents.
+python -m src.tokenization.visualize \
+  --tokenizer tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-weighted-bpe-12k.json \
+  --tokenizer sentencepiece=artifacts/tokenizers/v2/sp-bpe-12k.model \
+  --language tr --samples 5
+```
+
+Whitespace is rendered visibly (`·`, `→`, `↵`), repeated `--tokenizer` arguments
+share the same sampled documents, and `--no-color` emits bracketed boundaries for
+logs or redirected output. Sampling uses a fixed-seed streaming reservoir, so it
+does not load the 89MB JSONL dataset into memory.
 
 ## Invariants
 

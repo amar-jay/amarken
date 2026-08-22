@@ -15,13 +15,33 @@ import time
 from typing import Iterable, Protocol
 
 import sentencepiece as spm
-from tokenizers import Tokenizer, decoders, models, pre_tokenizers, processors, trainers
+from tokenizers import Regex, Tokenizer, decoders, models, pre_tokenizers, processors, trainers
+
+from src.data.proxy import repair_text_encoding
 
 
 SPECIAL_TOKENS = (
     "<unk>", "<s>", "</s>", "<pad>",
     "<|system|>", "<|user|>", "<|assistant|>", "<|end|>", "<|code|>",
 )
+
+# cl100k-style splitting keeps contractions, short digit groups, punctuation,
+# newlines, and horizontal whitespace in learnable regions before byte BPE.
+TIKTOKEN_PATTERN = (
+    r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+|"
+    r" ?[^\s\p{L}\p{N}]++[\r\n]*+|\s*[\r\n]|\s+(?!\S)|\s+"
+)
+
+# Turkish proper nouns separate productive suffixes with an apostrophe. This
+# branch must precede English 'd/'t contractions or Ankara'da becomes 'd + a.
+# Longest forms come first so İstanbul'dan is not prematurely split as 'da + n.
+TURKISH_APOSTROPHE_SUFFIX = (
+    r"(?i:[’'](?:larımızdan|lerimizden|larımız|lerimiz|"
+    r"dan|den|tan|ten|dır|dir|dur|dür|tır|tir|tur|tür|"
+    r"nın|nin|nun|nün|yı|yi|yu|yü|ya|ye|da|de|ta|te|"
+    r"ın|in|un|ün|la|le|lı|li|lu|lü|a|e))"
+)
+TIKTOKEN_TURKISH_PATTERN = TURKISH_APOSTROPHE_SUFFIX + "|" + TIKTOKEN_PATTERN
 
 
 class Adapter(Protocol):
@@ -113,7 +133,10 @@ def _write_slice(lines: Iterable[str], destination: Path, byte_budget: int) -> d
 
 def _plain_lines(path: Path) -> Iterable[str]:
     with path.open("r", encoding="utf-8", errors="strict") as stream:
-        yield from stream
+        for raw in stream:
+            repaired, _status = repair_text_encoding(raw.rstrip("\n"))
+            if repaired is not None:
+                yield repaired + "\n"
 
 
 def _code_documents(path: Path) -> Iterable[str]:
@@ -144,6 +167,17 @@ def build_training_corpus(config: dict, output_dir: Path) -> tuple[list[Path], d
     return list(paths.values()), manifests
 
 
+def _turkish_weighted_corpus(corpus: list[Path]) -> list[Path]:
+    """Return 25/50/25 EN/TR/code weighting by replaying the fixed TR slice.
+
+    Every base slice has the same byte quota, so a second deterministic pass over
+    tr.txt allocates half of tokenizer-training bytes to agglutinative Turkish
+    without changing or duplicating language-model training examples.
+    """
+    by_name = {path.stem: path for path in corpus}
+    return [by_name["en"], by_name["tr"], by_name["tr"], by_name["code"]]
+
+
 def train_byte_bpe(corpus: list[Path], vocab_size: int, destination: Path) -> HFAdapter:
     tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
     # No synthetic prefix: source starts, indentation, and prompt starts retain the
@@ -161,6 +195,36 @@ def train_byte_bpe(corpus: list[Path], vocab_size: int, destination: Path) -> HF
     tokenizer.train([str(path) for path in corpus], trainer)
     tokenizer.save(str(destination), pretty=True)
     return HFAdapter(f"byte-bpe-{vocab_size // 1000}k", destination)
+
+
+def train_tiktoken_style_bpe(
+    corpus: list[Path],
+    vocab_size: int,
+    destination: Path,
+    *,
+    pattern: str = TIKTOKEN_PATTERN,
+    name: str | None = None,
+) -> HFAdapter:
+    """Train tiktoken-regex byte BPE using the production Rust trainer.
+
+    Native tiktoken's public scratch trainer is educational and repeatedly scans
+    Python lists for every merge. The tokenization semantics under test are the
+    Unicode regex boundaries plus byte-level BPE, not that slow implementation.
+    """
+    tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
+    tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
+        pre_tokenizers.Split(Regex(pattern), behavior="isolated", invert=False),
+        pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=False),
+    ])
+    tokenizer.decoder = decoders.ByteLevel()
+    tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
+    trainer = trainers.BpeTrainer(
+        vocab_size=vocab_size, min_frequency=2, special_tokens=list(SPECIAL_TOKENS),
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(), show_progress=False,
+    )
+    tokenizer.train([str(path) for path in corpus], trainer)
+    tokenizer.save(str(destination), pretty=True)
+    return HFAdapter(name or f"tiktoken-style-bpe-{vocab_size // 1000}k", destination)
 
 
 def train_sentencepiece(corpus: list[Path], model_type: str, destination_prefix: Path) -> SPAdapter:
@@ -198,7 +262,7 @@ def _evaluation_texts(config: dict) -> dict[str, list[str]]:
         result[language] = [
             line.rstrip("\n")
             for filename in sources[language]
-            for line in Path(filename).open("r", encoding="utf-8", errors="strict")
+            for line in _plain_lines(Path(filename))
             if line.strip()
         ]
     code = []
@@ -249,11 +313,13 @@ def _token_metrics(adapter: Adapter, texts: list[str]) -> dict:
     }
 
 
-def _training_token_shares(adapter: Adapter, corpus: list[Path]) -> dict[str, float]:
+def _training_token_shares(adapter: Adapter, corpus: list[Path], turkish_weighted: bool = False) -> dict[str, float]:
     counts = {
         path.stem: len(adapter.encode(path.read_text(encoding="utf-8")))
         for path in corpus
     }
+    if turkish_weighted:
+        counts["tr"] *= 2
     total = sum(counts.values())
     return {name: count / total for name, count in counts.items()}
 
@@ -286,7 +352,9 @@ def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) 
         "artifact_bytes": artifact_bytes,
         "embedding_parameters_width_256": adapter.vocab_size() * 256,
         "embedding_parameters_width_512": adapter.vocab_size() * 512,
-        "training_token_shares": _training_token_shares(adapter, corpus),
+        "training_token_shares": _training_token_shares(
+            adapter, corpus, turkish_weighted=adapter.name == "tiktoken-style-tr-weighted-bpe-12k"
+        ),
         "slices": slices,
         "turkish_morphology": {
             "forms": len(morphology_counts),
@@ -311,6 +379,28 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
         adapters: list[Adapter] = [
             HFAdapter("byte-bpe-12k", output_dir / "byte-bpe-12k.json"),
             HFAdapter("byte-bpe-16k", output_dir / "byte-bpe-16k.json"),
+            (
+                HFAdapter("tiktoken-style-bpe-12k", output_dir / "tiktoken-style-bpe-12k.json")
+                if (output_dir / "tiktoken-style-bpe-12k.json").is_file()
+                else train_tiktoken_style_bpe(corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json")
+            ),
+            (
+                HFAdapter("tiktoken-style-apostrophe-bpe-12k", output_dir / "tiktoken-style-tr-bpe-12k.json")
+                if (output_dir / "tiktoken-style-tr-bpe-12k.json").is_file()
+                else train_tiktoken_style_bpe(
+                    corpus, 12_000, output_dir / "tiktoken-style-tr-bpe-12k.json",
+                    pattern=TIKTOKEN_TURKISH_PATTERN, name="tiktoken-style-apostrophe-bpe-12k",
+                )
+            ),
+            (
+                HFAdapter("tiktoken-style-tr-weighted-bpe-12k", output_dir / "tiktoken-style-tr-weighted-bpe-12k.json")
+                if (output_dir / "tiktoken-style-tr-weighted-bpe-12k.json").is_file()
+                else train_tiktoken_style_bpe(
+                    _turkish_weighted_corpus(corpus), 12_000,
+                    output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
+                    name="tiktoken-style-tr-weighted-bpe-12k",
+                )
+            ),
             SPAdapter("sp-bpe-12k", output_dir / "sp-bpe-12k.model"),
             SPAdapter("sp-unigram-12k", output_dir / "sp-unigram-12k.model"),
             HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
@@ -319,6 +409,16 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
         adapters = [
             train_byte_bpe(corpus, 12_000, output_dir / "byte-bpe-12k.json"),
             train_byte_bpe(corpus, 16_000, output_dir / "byte-bpe-16k.json"),
+            train_tiktoken_style_bpe(corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json"),
+            train_tiktoken_style_bpe(
+                corpus, 12_000, output_dir / "tiktoken-style-tr-bpe-12k.json",
+                pattern=TIKTOKEN_TURKISH_PATTERN, name="tiktoken-style-apostrophe-bpe-12k",
+            ),
+            train_tiktoken_style_bpe(
+                _turkish_weighted_corpus(corpus), 12_000,
+                output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
+                name="tiktoken-style-tr-weighted-bpe-12k",
+            ),
             train_sentencepiece(corpus, "bpe", output_dir / "sp-bpe-12k"),
             train_sentencepiece(corpus, "unigram", output_dir / "sp-unigram-12k"),
             HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
@@ -345,7 +445,10 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
     # quality. These three cover the strongest fixed-12k code/morphology option,
     # the balanced 12k unigram option, and the higher-capacity byte-BPE endpoint.
     probe_finalists = [
-        name for name in ("sp-bpe-12k", "sp-unigram-12k", "byte-bpe-16k")
+        name for name in (
+            "sp-bpe-12k", "sp-unigram-12k", "byte-bpe-16k", "tiktoken-style-bpe-12k"
+            , "tiktoken-style-tr-weighted-bpe-12k"
+        )
         if any(row["name"] == name and row["qualified"] for row in candidates)
     ]
     report = {

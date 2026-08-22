@@ -23,10 +23,17 @@ import time
 import unicodedata
 from typing import Iterable, Iterator
 
+from ftfy import fix_encoding
+from ftfy.badness import badness
+
 
 TOKEN = re.compile(r"[\w]+|[^\w\s]", re.UNICODE)
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 SPACE = re.compile(r"[ \t\r\n]+")
+# These characters are normal Unicode in some languages, but not in this
+# EN/TR corpus. After ftfy has attempted a conservative encoding-only repair,
+# their survival in prose is strong evidence of an irrecoverably damaged row.
+RESIDUAL_MOJIBAKE = re.compile(r"[\u0080-\u009fÃÄÅ]")
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,28 @@ def _normalize(text: str, *, code: bool) -> str:
     return SPACE.sub(" ", text).strip()
 
 
+def repair_text_encoding(text: str) -> tuple[str | None, str]:
+    """Repair recoverable mojibake; reject suspicious residual prose.
+
+    ftfy's encoding-only path preserves typography and HTML literally, unlike
+    its broader ``fix_text`` operation. Repair must precede NFKC because NFKC
+    decomposes mojibake such as ``Ã¼`` into ``Ã1⁄4``, destroying the byte pattern
+    needed to recover ``ü``. A row is accepted as repaired only when ftfy's
+    badness score strictly improves. Residual C1 controls or UTF-8-as-Latin-1
+    lead characters are quarantined rather than guessed.
+    """
+    original_badness = badness(text)
+    repaired = fix_encoding(text)
+    if repaired != text and badness(repaired) < original_badness:
+        text = repaired
+        status = "repaired"
+    else:
+        status = "unchanged"
+    if RESIDUAL_MOJIBAKE.search(text):
+        return None, "rejected_residual_mojibake"
+    return text, status
+
+
 def _canonical(text: str) -> str:
     # Casefolding is used only for duplicate/contamination fingerprints; emitted
     # text retains original case, including the distinct Turkish dotted letters.
@@ -94,7 +123,13 @@ def _source_paths(root: Path, source: dict) -> tuple[list[Path], Path]:
     raise ValueError(f"unsupported source kind: {kind}")
 
 
-def _iter_source(root: Path, source: dict, seed: str) -> Iterator[Document]:
+def _iter_source(
+    root: Path,
+    source: dict,
+    seed: str,
+    encoding_quality: Counter,
+    encoding_rejections: list[dict],
+) -> Iterator[Document]:
     kind, pattern = source["kind"], source["path"]
     paths, source_base = _source_paths(root, source)
     for path in paths:
@@ -105,7 +140,21 @@ def _iter_source(root: Path, source: dict, seed: str) -> Iterator[Document]:
             with path.open("r", encoding="utf-8", errors="strict") as handle:
                 stream = enumerate(handle, 1)
                 for line_number, raw in stream:
-                    text = _normalize(raw.rstrip("\n"), code=False)
+                    raw_text = raw.rstrip("\n")
+                    repaired, repair_status = repair_text_encoding(raw_text)
+                    encoding_quality[(source["id"], repair_status)] += 1
+                    if repaired is None:
+                        encoding_rejections.append({
+                            "id": _stable_hash(seed, f"encoding-rejection:{source['id']}:{line_number}"),
+                            "source_id": source["id"],
+                            "locator": f"{path.relative_to(root)}:{line_number}",
+                            "language": source["language"],
+                            "domain": source["domain"],
+                            "reason": repair_status,
+                            "text": raw_text,
+                        })
+                        continue
+                    text = _normalize(repaired, code=False)
                     if not text:
                         continue
                     locator = f"{path.relative_to(root)}:{line_number}"
@@ -238,12 +287,17 @@ def build(config_path: Path, output_dir: Path, root: Path = Path(".")) -> dict:
         raise ValueError("validation_basis_points must be between 1 and 9999")
     started = time.perf_counter()
     source_manifest, documents = [], []
+    encoding_quality: Counter = Counter()
+    encoding_rejections: list[dict] = []
     for source in config["sources"]:
         path_matches, source_base = _source_paths(root, source)
         path_matches = [path for path in path_matches if path.is_file()]
         if not path_matches:
             raise FileNotFoundError(source["path"])
-        sampled = _sample(_iter_source(root, source, config["seed"]), source.get("max_documents"), config["seed"])
+        sampled = _sample(
+            _iter_source(root, source, config["seed"], encoding_quality, encoding_rejections),
+            source.get("max_documents"), config["seed"],
+        )
         documents.extend(sampled)
         license_paths = [source_base / "LICENSE.txt"] if source["kind"] == "python_stdlib" else []
         source_manifest.append({
@@ -277,11 +331,16 @@ def build(config_path: Path, output_dir: Path, root: Path = Path(".")) -> dict:
     with contamination_path.open("w", encoding="utf-8") as handle:
         for document in sorted(contaminated, key=lambda value: value.id):
             handle.write(json.dumps({**asdict(document), "reason": "reference_ngram_or_exact_match"}, ensure_ascii=False, sort_keys=True) + "\n")
+    encoding_rejections_path = output_dir / "encoding_rejections.jsonl"
+    with encoding_rejections_path.open("w", encoding="utf-8") as handle:
+        for rejection in sorted(encoding_rejections, key=lambda value: value["id"]):
+            handle.write(json.dumps(rejection, ensure_ascii=False, sort_keys=True) + "\n")
     manifest = {
         "schema_version": config["schema_version"], "seed": config["seed"],
         "config_sha256": _sha256_file(config_path), "distillation": False,
         "policies": {
-            "normalization": "NFKC; prose whitespace collapsed; code indentation/newlines retained",
+            "encoding_quality": "ftfy encoding-only repair before normalization; residual prose mojibake rejected",
+            "normalization": "NFKC after encoding repair; prose whitespace collapsed; code indentation/newlines retained",
             "sampling": "lowest seeded document hashes per source",
             "deduplication": f"language-local canonical exact hash plus 64-bit trigram SimHash <= {config['near_duplicate_hamming_distance']}",
             "split": f"group-hash; {config['validation_basis_points']} validation basis points",
@@ -291,10 +350,18 @@ def build(config_path: Path, output_dir: Path, root: Path = Path(".")) -> dict:
         "input_sampled_documents": len(documents), "deduplicated_documents": len(deduplicated),
         "clean_documents": len(clean), "contaminated_documents": len(contaminated),
         "removed": dict(removed),
+        "raw_line_encoding_quality": {
+            source_id: {
+                status: encoding_quality[(source_id, status)]
+                for status in ("unchanged", "repaired", "rejected_residual_mojibake")
+                if encoding_quality[(source_id, status)]
+            }
+            for source_id in sorted({source_id for source_id, _status in encoding_quality})
+        },
         "split_language_counts": {f"{split}:{language}": count for (split, language), count in sorted(counts.items())},
         "outputs": {}, "elapsed_seconds": time.perf_counter() - started,
     }
-    for name in ("train.jsonl", "validation.jsonl", "contamination.jsonl"):
+    for name in ("train.jsonl", "validation.jsonl", "contamination.jsonl", "encoding_rejections.jsonl"):
         path = output_dir / name
         manifest["outputs"][name] = {"bytes": path.stat().st_size, "sha256": _sha256_file(path), "lines": sum(1 for _ in path.open("rb"))}
     manifest_path = output_dir / "manifest.json"
