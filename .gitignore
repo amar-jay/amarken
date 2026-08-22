@@ -59,6 +59,9 @@ logs/
 # Experiment and data dumps (keep directory READMEs)
 data/*
 !data/README.md
+!data/grounded/
+data/grounded/*
+!data/grounded/answer_keys_v1.json
 experiments/*
 !experiments/README.md
 wandb/

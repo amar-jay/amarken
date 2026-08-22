@@ -76,3 +76,22 @@ quarantines rejected documents for audit rather than silently deleting them.
 
 The builder accepts only `lines`, `glob`, and `python_stdlib` source kinds. There
 is deliberately no synthetic or distillation adapter in proxy-v1.
+
+## Grounded assistant pilot
+
+The grounded pilot contains no code tasks. Its truth is independent of the
+local teacher: bilingual QA uses project-authored answer keys, arithmetic uses a
+restricted deterministic calculator, and tool results come from local fixture
+executors. Qwen only writes the final concise surface form; outputs that change
+required entities or values are rejected.
+
+```bash
+python -m src.distillation.grounded_pilot \
+  --config configs/grounded_pilot_v1.json
+```
+
+The output directory contains `train.jsonl`, `validation.jsonl`,
+`rejections.jsonl`, and a hash-bound `manifest.json`. EN/TR variants sharing an
+underlying fact or scenario stay in the same split. Every accepted record carries
+its verified target, executable grounding, teacher model digest, decoding
+settings, and response metrics.

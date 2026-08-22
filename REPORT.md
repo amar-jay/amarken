@@ -496,6 +496,28 @@ Artifacts: `benchmarks/ollama_teacher_qualification_v1.json`,
 `experiments/ollama_teacher_qwen3_5_2b.jsonl`,
 `experiments/ollama_teacher_qwen3_5_2b.summary.json`
 
+### 2026-08-22 — Grounded assistant pilot v1
+
+The first grounded, no-code SFT pilot was generated with Qwen restricted to
+surface realization. Truth was supplied by 16 paired EN/TR authored answer
+keys, a restricted deterministic arithmetic evaluator, and executable weather
+and calculator tool fixtures. EN/TR variants of the same fact or scenario are
+kept in the same split. Exact prompt contamination checks against both retained
+student benchmarks run before generation, and a second audit replays every
+calculation and tool call after generation.
+
+Of 96 requested conversations, 95 passed all gates: 75 train and 20 validation.
+The accepted set contains all 32 reasoning and all 32 tool conversations, 16/16
+English QA, and 15/16 Turkish QA. The single exhausted item was rejected because
+Qwen repeatedly corrupted the verified Turkish phrase for “blue whale.” The
+post-generation audit passed 95/95 accepted records with zero exact prompt
+overlaps against the retained benchmarks. The rejection is a desired result:
+the verifier, not the teacher, controls admission.
+
+Artifacts: `data/grounded/answer_keys_v1.json`,
+`configs/grounded_pilot_v1.json`, `src/distillation/grounded_pilot.py`,
+`data/processed/grounded-pilot-v1/manifest.json`
+
 ## Current position
 
 The project has progressed from architecture prototypes to a deterministic, provenance-aware tournament harness. The major conclusions supported so far are:
