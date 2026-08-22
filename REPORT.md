@@ -86,6 +86,60 @@ Artifacts: `artifacts/tokenizers/`, `experiments/tokenizer_sweep.json`
 
 Commit: `73d6545` (`Implemented and completed the EN/TR tokenizer sweep`)
 
+### 2026-08-22 — Tokenizer v2 visual audit and final selection
+
+The original SentencePiece-only selection was reopened after inference and
+token-boundary visualization showed that aggregate fertility did not adequately
+measure boundary quality. The v2 sweep compared byte-level BPE, tiktoken-style
+regex BPE, a Turkish-apostrophe-aware tiktoken variant, a Turkish-weighted
+tiktoken variant, corrected SentencePiece BPE/unigram candidates, and the
+SmolLM2 tokenizer as an external reference. All compact finalists used a 12k
+vocabulary except the explicit 16k byte-BPE capacity control.
+
+The final tokenizer for the Amarken EN/TR/code use case is
+`tiktoken-style-apostrophe-bpe-12k`. It provides the best overall balance:
+
+- English fertility is effectively tied with byte-BPE 12k: 1.551 versus 1.544
+  tokens per word.
+- Turkish fertility is also effectively tied: 1.966 tokens per word for both.
+- Code fertility is materially better: 2.895 versus 3.188 tokens per word,
+  approximately 9.2% fewer tokens.
+- Its pre-tokenization prevents cross-word pieces while retaining useful code
+  units such as `_config`, `.get`, and `_time`.
+- The Turkish apostrophe branch keeps productive proper-noun suffixes such as
+  `'dan`, `'da`, and `'nin` coherent without treating ordinary agglutinative
+  suffixation as apostrophe-dependent.
+- It uses the compact 12k embedding vocabulary and passes unknown-token,
+  byte-fallback, indentation, and exact round-trip gates.
+
+The settled ranking is:
+
+1. **Tiktoken apostrophe 12k — selected production tokenizer.** Best overall
+   balance across English, Turkish, code, structural boundaries, and embedding
+   cost.
+2. **Tiktoken TR-weighted 12k — retained Turkish-first option.** It achieves
+   the best Turkish fertility (1.895 tokens/word) and morphology result (3.60
+   mean tokens/form), but gives back English efficiency and does not use the
+   apostrophe-specific pre-tokenization branch.
+3. **Byte-BPE 12k — retained structural control.** It has highly regular,
+   conservative boundaries and zero cross-word pieces, but fragments code more
+   heavily than both tiktoken variants.
+4. **SentencePiece unigram 12k — rejected.** Its favorable aggregate token
+   count is partly obtained through structurally undesirable pieces spanning
+   words, indentation, and lexemes. On a deterministic 250-document-per-domain
+   audit, 12.263% of English tokens, 4.516% of Turkish tokens, and 3.983% of code
+   tokens crossed internal word boundaries; 4.749% of code tokens combined
+   indentation with a lexeme. The selected tiktoken and byte-BPE candidates had
+   zero such cross-word pieces.
+
+The 16k byte-BPE candidate was not selected because its modest fertility gain
+does not justify 4,000 additional embedding rows under the fixed model-parameter
+budget. Visual inspection is treated here as a diagnostic backed by explicit
+structural-boundary measurements, not as a substitute for downstream language-
+model evaluation.
+
+Artifacts: `artifacts/tokenizers/v2/`, `experiments/tokenizer_v2.json`
+
 ### 2026-08-21 — Proxy dataset v1
 
 A deterministic, non-distilled English/Turkish/code proxy corpus was built with:
@@ -250,12 +304,15 @@ These results must remain provisional until all 12 arms complete and the final h
 
 The project has progressed from architecture prototypes to a deterministic, provenance-aware tournament harness. The major conclusions supported so far are:
 
-1. The tokenizer, data, model, training, resume, evaluation, and scaling paths operate end to end.
-2. The 4k-token runs were useful health checks but could not support capability selection.
-3. Learning-rate tuning and one-million-token exposure materially changed the apparent ordering: Glimmer is the provisional quality leader in the active 10M/context-512 tournament.
-4. DT remains the essential full-precision control and reference-speed leader.
-5. Bit remains the artifact-efficiency candidate; tensor versus channel scaling is unresolved.
-6. Final promotion must wait for the complete three-seed report and deterministic capability/system evaluation of retained checkpoints.
+1. `tiktoken-style-apostrophe-bpe-12k` is the selected production tokenizer;
+   the Turkish-weighted tiktoken variant and byte-BPE 12k remain the Turkish-first
+   and structural-control alternatives, respectively.
+2. The tokenizer, data, model, training, resume, evaluation, and scaling paths operate end to end.
+3. The 4k-token runs were useful health checks but could not support capability selection.
+4. Learning-rate tuning and one-million-token exposure materially changed the apparent ordering: Glimmer is the provisional quality leader in the active 10M/context-512 tournament.
+5. DT remains the essential full-precision control and reference-speed leader.
+6. Bit remains the artifact-efficiency candidate; tensor versus channel scaling is unresolved.
+7. Final promotion must wait for the complete three-seed report and deterministic capability/system evaluation of retained checkpoints.
 
 ## Immediate next actions
 
@@ -265,4 +322,3 @@ The project has progressed from architecture prototypes to a deterministic, prov
 4. Report paired per-seed differences: Glimmer−DT, Bit tensor−DT, Bit channel−DT, and Bit channel−Bit tensor.
 5. Run the frozen deterministic capability and systems evaluator on retained checkpoints.
 6. Promote distinct Pareto winners for quality, artifact size, KV memory, and runtime rather than collapsing all objectives into one score.
-
