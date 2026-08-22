@@ -1,0 +1,4886 @@
+{
+  "benchmark_id": "meaningful-scale-v2",
+  "format_version": 2,
+  "generative": [
+    {
+      "answers": [
+        "39"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-00",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 33 + 6. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "23"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-01",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 20 + 3. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "39"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-02",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 21 + 18. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "30"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-03",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 19 + 11. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "25"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-04",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 11 + 14. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "19"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-05",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 3 + 16. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "24"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-06",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 22 + 2. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "45"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-07",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 38 + 7. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "44"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-08",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 27 + 17. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "27"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-09",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 10 + 17. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "44"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-10",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 36 + 8. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "49"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-11",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 33 + 16. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "31"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-12",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 28 + 3. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "18"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-13",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 9 + 9. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "39"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-14",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 34 + 5. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "9"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-15",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 5 + 4. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "27"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-16",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 16 + 11. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "10"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-17",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 6 + 4. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "21"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-18",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 8 + 13. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "29"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-19",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 10 + 19. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "28"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-20",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 19 + 9. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "36"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-21",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 24 + 12. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "54"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-22",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 40 + 14. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "46"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-23",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 28 + 18. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "37"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-24",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 35 + 2. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "49"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-25",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 36 + 13. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "18"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-26",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 2 + 16. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "39"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-27",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 25 + 14. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "44"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-28",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 27 + 17. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "38"
+      ],
+      "category": "arithmetic_exact",
+      "id": "en-gen-math-29",
+      "language": "en",
+      "max_new_tokens": 4,
+      "prompt": "Calculate 32 + 6. Answer with digits only:"
+    },
+    {
+      "answers": [
+        "cobalt"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-00",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: cobalt\nAnswer:"
+    },
+    {
+      "answers": [
+        "silver"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-01",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: silver\nAnswer:"
+    },
+    {
+      "answers": [
+        "amber"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-02",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: amber\nAnswer:"
+    },
+    {
+      "answers": [
+        "violet"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-03",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: violet\nAnswer:"
+    },
+    {
+      "answers": [
+        "cobalt"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-04",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: cobalt\nAnswer:"
+    },
+    {
+      "answers": [
+        "silver"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-05",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: silver\nAnswer:"
+    },
+    {
+      "answers": [
+        "amber"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-06",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: amber\nAnswer:"
+    },
+    {
+      "answers": [
+        "violet"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-07",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: violet\nAnswer:"
+    },
+    {
+      "answers": [
+        "cobalt"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-08",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: cobalt\nAnswer:"
+    },
+    {
+      "answers": [
+        "silver"
+      ],
+      "category": "copy_exact",
+      "id": "en-gen-copy-09",
+      "language": "en",
+      "max_new_tokens": 8,
+      "prompt": "Repeat exactly this word: silver\nAnswer:"
+    },
+    {
+      "answers": [
+        "39"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-00",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "27 + 12 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "20"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-01",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "11 + 9 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "5"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-02",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "2 + 3 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "51"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-03",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "38 + 13 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "23"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-04",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "19 + 4 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "38"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-05",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "29 + 9 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "40"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-06",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "35 + 5 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "35"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-07",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "25 + 10 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "39"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-08",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "32 + 7 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "37"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-09",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "22 + 15 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "43"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-10",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "36 + 7 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "34"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-11",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "25 + 9 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "37"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-12",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "17 + 20 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "17"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-13",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "15 + 2 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "46"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-14",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "30 + 16 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "37"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-15",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "33 + 4 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "28"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-16",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "14 + 14 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "21"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-17",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "15 + 6 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "41"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-18",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "22 + 19 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "23"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-19",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "19 + 4 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "30"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-20",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "12 + 18 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "37"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-21",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "29 + 8 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "31"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-22",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "14 + 17 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "48"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-23",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "40 + 8 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "23"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-24",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "14 + 9 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "23"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-25",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "11 + 12 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "40"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-26",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "35 + 5 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "44"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-27",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "32 + 12 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "22"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-28",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "4 + 18 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "57"
+      ],
+      "category": "arithmetic_exact",
+      "id": "tr-gen-math-29",
+      "language": "tr",
+      "max_new_tokens": 4,
+      "prompt": "38 + 19 işlemini hesapla. Yalnızca rakamlarla yanıtla:"
+    },
+    {
+      "answers": [
+        "kobalt"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-00",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: kobalt\nYanıt:"
+    },
+    {
+      "answers": [
+        "gümüş"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-01",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: gümüş\nYanıt:"
+    },
+    {
+      "answers": [
+        "kehribar"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-02",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: kehribar\nYanıt:"
+    },
+    {
+      "answers": [
+        "mor"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-03",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: mor\nYanıt:"
+    },
+    {
+      "answers": [
+        "kobalt"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-04",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: kobalt\nYanıt:"
+    },
+    {
+      "answers": [
+        "gümüş"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-05",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: gümüş\nYanıt:"
+    },
+    {
+      "answers": [
+        "kehribar"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-06",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: kehribar\nYanıt:"
+    },
+    {
+      "answers": [
+        "mor"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-07",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: mor\nYanıt:"
+    },
+    {
+      "answers": [
+        "kobalt"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-08",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: kobalt\nYanıt:"
+    },
+    {
+      "answers": [
+        "gümüş"
+      ],
+      "category": "copy_exact",
+      "id": "tr-gen-copy-09",
+      "language": "tr",
+      "max_new_tokens": 8,
+      "prompt": "Bu sözcüğü aynen tekrarla: gümüş\nYanıt:"
+    },
+    {
+      "answers": [
+        "value_0"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-00",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_0 = 0\nresult = "
+    },
+    {
+      "answers": [
+        "value_1"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-01",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_1 = 1\nresult = "
+    },
+    {
+      "answers": [
+        "value_2"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-02",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_2 = 2\nresult = "
+    },
+    {
+      "answers": [
+        "value_3"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-03",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_3 = 3\nresult = "
+    },
+    {
+      "answers": [
+        "value_4"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-04",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_4 = 4\nresult = "
+    },
+    {
+      "answers": [
+        "value_5"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-05",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_5 = 5\nresult = "
+    },
+    {
+      "answers": [
+        "value_6"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-06",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_6 = 6\nresult = "
+    },
+    {
+      "answers": [
+        "value_7"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-07",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_7 = 7\nresult = "
+    },
+    {
+      "answers": [
+        "value_8"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-08",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_8 = 8\nresult = "
+    },
+    {
+      "answers": [
+        "value_9"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-09",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_9 = 9\nresult = "
+    },
+    {
+      "answers": [
+        "value_10"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-10",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_10 = 10\nresult = "
+    },
+    {
+      "answers": [
+        "value_11"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-11",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_11 = 11\nresult = "
+    },
+    {
+      "answers": [
+        "value_12"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-12",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_12 = 12\nresult = "
+    },
+    {
+      "answers": [
+        "value_13"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-13",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_13 = 13\nresult = "
+    },
+    {
+      "answers": [
+        "value_14"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-14",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_14 = 14\nresult = "
+    },
+    {
+      "answers": [
+        "value_15"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-15",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_15 = 15\nresult = "
+    },
+    {
+      "answers": [
+        "value_16"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-16",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_16 = 16\nresult = "
+    },
+    {
+      "answers": [
+        "value_17"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-17",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_17 = 17\nresult = "
+    },
+    {
+      "answers": [
+        "value_18"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-18",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_18 = 18\nresult = "
+    },
+    {
+      "answers": [
+        "value_19"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-19",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_19 = 19\nresult = "
+    },
+    {
+      "answers": [
+        "value_20"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-20",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_20 = 20\nresult = "
+    },
+    {
+      "answers": [
+        "value_21"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-21",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_21 = 21\nresult = "
+    },
+    {
+      "answers": [
+        "value_22"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-22",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_22 = 22\nresult = "
+    },
+    {
+      "answers": [
+        "value_23"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-23",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_23 = 23\nresult = "
+    },
+    {
+      "answers": [
+        "value_24"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-24",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_24 = 24\nresult = "
+    },
+    {
+      "answers": [
+        "value_25"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-25",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_25 = 25\nresult = "
+    },
+    {
+      "answers": [
+        "value_26"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-26",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_26 = 26\nresult = "
+    },
+    {
+      "answers": [
+        "value_27"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-27",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_27 = 27\nresult = "
+    },
+    {
+      "answers": [
+        "value_28"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-28",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_28 = 28\nresult = "
+    },
+    {
+      "answers": [
+        "value_29"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-29",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_29 = 29\nresult = "
+    },
+    {
+      "answers": [
+        "value_30"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-30",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_30 = 30\nresult = "
+    },
+    {
+      "answers": [
+        "value_31"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-31",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_31 = 31\nresult = "
+    },
+    {
+      "answers": [
+        "value_32"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-32",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_32 = 32\nresult = "
+    },
+    {
+      "answers": [
+        "value_33"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-33",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_33 = 33\nresult = "
+    },
+    {
+      "answers": [
+        "value_34"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-34",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_34 = 34\nresult = "
+    },
+    {
+      "answers": [
+        "value_35"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-35",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_35 = 35\nresult = "
+    },
+    {
+      "answers": [
+        "value_36"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-36",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_36 = 36\nresult = "
+    },
+    {
+      "answers": [
+        "value_37"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-37",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_37 = 37\nresult = "
+    },
+    {
+      "answers": [
+        "value_38"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-38",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_38 = 38\nresult = "
+    },
+    {
+      "answers": [
+        "value_39"
+      ],
+      "category": "code_completion",
+      "id": "code-gen-39",
+      "language": "code",
+      "max_new_tokens": 12,
+      "prompt": "Complete the Python expression with the identifier only.\nvalue_39 = 39\nresult = "
+    }
+  ],
+  "language_model": [
+    {
+      "category": "heldout_continuation",
+      "continuation": "staring at me, holding one of my shirts in his hand.",
+      "document_id": "f6f14a979078086c9e0ce23fe42ff5c77ed9db64e8eba7fcdd8b69faff41444c",
+      "id": "en-lm-00",
+      "language": "en",
+      "prefix": "I woke up and... there was this guy, standing there "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ff and it'll be available in about three weeks.",
+      "document_id": "05a339e41a26a6a8e1dabcc29ce49a55f7f4367e71cdd959716be95fdb730080",
+      "id": "en-lm-01",
+      "language": "en",
+      "prefix": "Our initial run pumped out two tons of this stu"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "the international community with his speech Monday.",
+      "document_id": "8ddd79dcd6a16654adc884b91aeb7a245264ab6347398d3fcfa3c89e90ad2e7a",
+      "id": "en-lm-02",
+      "language": "en",
+      "prefix": "Syria's president failed to impress opponents and "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " you've been the one person I could count on.",
+      "document_id": "a2cbfe31af868ea8fff2eb86ef931e663bbf313864828b74ab93aecf2e64b0c7",
+      "id": "en-lm-03",
+      "language": "en",
+      "prefix": "Every since I had Lucas, before that even..."
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "rayer)!\" They bow not down (offer not their prayers).",
+      "document_id": "1e1cb2dde0c57f75af4c580d5a5aa15cd55bd40e0cec17cdb664ee55c8fb0fe3",
+      "id": "en-lm-04",
+      "language": "en",
+      "prefix": "And when it is said to them: \"Bow down yourself (in p"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "e in charge but that the people's desires are in charge.",
+      "document_id": "c8c3fcd2e772398906e00dcd242de61cb6474508a436e7a3fe8bd0af0d7af45f",
+      "id": "en-lm-05",
+      "language": "en",
+      "prefix": "-HistorianofPublicRelations- It's not that the people ar"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " and the smile he's always got plastered on.",
+      "document_id": "203c33f2924964803e3cce6261bef6c88cba3278d3d4649e64401cf04d42f43e",
+      "id": "en-lm-06",
+      "language": "en",
+      "prefix": "I mean, with the fancy suits, and the hair,"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "nged before that a conquest near [at hand].",
+      "document_id": "2a613841093880e6cf39b03b3833b38bbfc5029f114c2f432d9bd072b9f9bc1c",
+      "id": "en-lm-07",
+      "language": "en",
+      "prefix": "He knew what you did not know and has arra"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "racter. I don't get why he's got all this hatred for keith.",
+      "document_id": "f0753412621e4bf20f384a09e5bcc7d274c3ff1b1caf34b78d15b51259a0bbb3",
+      "id": "en-lm-08",
+      "language": "en",
+      "prefix": "- Hey, man, i am trying to wrap my head around this dan cha"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "led the store owner and his little grandson.",
+      "document_id": "2acd7f4989a38107dc408755c6e9ccf717fff3250bb57295c6facfe341772d0c",
+      "id": "en-lm-09",
+      "language": "en",
+      "prefix": "Turell walked into a protected store and kil"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " leave the house, enters, and waits for them.",
+      "document_id": "ec213a2bf9f51defdcfdc2d2aa85347aec38ad82474f38c8120c6bdf59fd155f",
+      "id": "en-lm-10",
+      "language": "en",
+      "prefix": "The perpetrator, rapist watches for women to"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "you can't let one bad experience put you off.",
+      "document_id": "af3c5d15f3978ca0a7f228e544c177f510b18ec0a8763d6f33acc9cf4db889aa",
+      "id": "en-lm-11",
+      "language": "en",
+      "prefix": "Yeah, I know you got framed for murder, but "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " [against you] from Allah and His Messenger.",
+      "document_id": "ca4935a3a19864b275118acbbdce7d889912deb5322806de406c55db7e4e8543",
+      "id": "en-lm-12",
+      "language": "en",
+      "prefix": "And if you do not, then be informed of a war"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "se nasty mosquitoes that bite your legs, make you itch.",
+      "document_id": "e7323084616d46a1b80675a44e490ab21596814ed5917bf893b1520f7639c9e0",
+      "id": "en-lm-13",
+      "language": "en",
+      "prefix": "And bats eat a lot of insects too, they get rid of tho"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " three months of dating, you'd propose at Yankee Stadium.",
+      "document_id": "cf634eaa27646c9ee9852e166f926a6aa2abb65bd5f87c5de90c56770bcfd9dd",
+      "id": "en-lm-14",
+      "language": "en",
+      "prefix": "- And I never guessed in a million years that after only"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ybe 20, 25, 30 thousand dollars on a movie.",
+      "document_id": "b88798848c8ddac17e429a95dc780466e5932444cbe6543acea09cc68eff2652",
+      "id": "en-lm-15",
+      "language": "en",
+      "prefix": "Before you turn around... you' ve spent ma"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "hen, we might be able to find out who killed her now.",
+      "document_id": "e436cba424a454fa7f6561b19ab3373f557a36ede1a618eae9f865c332165536",
+      "id": "en-lm-16",
+      "language": "en",
+      "prefix": "And if we can figure out who tried to kill her back t"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "y were laughing at me because of my work.",
+      "document_id": "b1827d4aa94df891aa821f423e61031533c39fc8c7993e54a198149ccbfeff19",
+      "id": "en-lm-17",
+      "language": "en",
+      "prefix": "I thought you were gonna tell me that the"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " to confess it, but I could not just ignore him.",
+      "document_id": "4ac9cef8e2ebf3ceae18bfba986e7dfe78afe6e1b4e26fc314618ec7f3b0f601",
+      "id": "en-lm-18",
+      "language": "en",
+      "prefix": "Well I'm not a particularly brave person, I have"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "you'll get a pension, who needs him? Well, say something.",
+      "document_id": "4c243a807e6b87d146eb9bbb368cbb689dc3f91377a5cf16163f77a392c37e10",
+      "id": "en-lm-19",
+      "language": "en",
+      "prefix": "You'll see, you'll get a job, work for 20 years and then "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "dering you just let yourself in with a key.",
+      "document_id": "a6a2280f3f1fae875c99b20a048a8a53bbf100db843a43035709228df7dcc94e",
+      "id": "en-lm-20",
+      "language": "en",
+      "prefix": "I'm pretty sure that's not possible, consi"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "eos have already done much to further the cause of diversity in a world that tends increasingly towards homogeneity.",
+      "document_id": "8dbf5601e06d5686d2682e7471300e81f90b4ecef95fef7b5b5b8c8e4d397076",
+      "id": "en-lm-21",
+      "language": "en",
+      "prefix": "While videos from Georgia, Turkmenistan and Uzbekistan are still needed to complete the collection, the existing vid"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "e negatives I took of you for a certain sum of money.",
+      "document_id": "631f35a6f2b95a785c3f54dbd3922ec8e522a1ea37154cad00f029067b915452",
+      "id": "en-lm-22",
+      "language": "en",
+      "prefix": "I give you the original driving license and all thos"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": ", ejected from the same plane twice, yeah, I'm... I'm doing quite well.",
+      "document_id": "65540dd2ccff5611e014943835b0a54e13341e4a905887ff8667d0c88185460c",
+      "id": "en-lm-23",
+      "language": "en",
+      "prefix": "Well, considering I've been betrayed today, hunted, locked in a freezer"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "cQueen the season start just two weeks away there's still no official announcement but with number 95 coming off his worst year on record",
+      "document_id": "e7d49ab6a9111d3bd75770e490fe1f186ece07b496c00359664855e23dcc9954",
+      "id": "en-lm-24",
+      "language": "en",
+      "prefix": "Welcome back to piston cup talks around-the-clock where we do nothing but talk racing let's get to it starting of course with Lightning M"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "rms, and this perception is reflected in the polls.",
+      "document_id": "8f44ce231319f8a8d7bdd57c9ab49a2305674c4caa8e5cadead4da1a9ad69ffa",
+      "id": "en-lm-25",
+      "language": "en",
+      "prefix": "Some citizens relate these phenomena to market refo"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ns, but the first and latest are covered.",
+      "document_id": "7e1eaf8f13878dcde31f9fbfadca3172b78cfa9eadf28995cdc7cf41d7de4c4c",
+      "id": "en-lm-26",
+      "language": "en",
+      "prefix": "He spared the second victim the mutilatio"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "s here, we were really hurt not to be invited.",
+      "document_id": "df24a748d033c9bf6bb7cb54aa8b29675db15f6db5d3fe89f9570b9872caf572",
+      "id": "en-lm-27",
+      "language": "en",
+      "prefix": "Well, you know, since we're all throwing stone"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "iers have been injured in Thursday's action.",
+      "document_id": "8ac40637e67087c7ec27b9533bec46911b07ded4590bad73cba256e108a397a5",
+      "id": "en-lm-28",
+      "language": "en",
+      "prefix": "KFOR reports that at least eight of its sold"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ame, but I had no idea it could look so beautiful.",
+      "document_id": "ad1e9d35e153f75bffbea2c05d2030ed366da8ecbdf9fb603c44a08951327ad2",
+      "id": "en-lm-29",
+      "language": "en",
+      "prefix": "I knew what the wagons were carrying, when they c"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ulse\" adlı oyunu, Mac , Windows ve Xbox platformunda boy gösterdi.",
+      "document_id": "02c5be4fd1f07e252e28bfcae888b8a6c00cfc204d338aac7f3c2f798e4b8539",
+      "id": "tr-lm-00",
+      "language": "tr",
+      "prefix": "Aspyr'nin Wideload Games' Stubbs the Zombie in \"Rebel Without a P"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "aslında Guadalupe'nin bebeğinin babasıymış.",
+      "document_id": "998568defc1246ac8166a33339f36a57d3dbd75d6571dbd786c172f40bce2432",
+      "id": "tr-lm-01",
+      "language": "tr",
+      "prefix": "Bak, anlaşılan Pepe'nin ikiz kardeşi Peppi "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "zı, daha çok işlemci gücü harcanması demektir.",
+      "document_id": "07864f30f2a3a26720b69a3954aca941c6fbd8e871fdcc4ebf4ee2366b51c99c",
+      "id": "tr-lm-02",
+      "language": "tr",
+      "prefix": "Tazeleme hızını belirleyin. Yüksek tazeleme hı"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ncak maalesef bir kafede çalışabilmek için fazla çirkinsin.",
+      "document_id": "0f47ecfe65a3a4304cb21f38581cfa5a2539d020eff9719acc30960df1323ba3",
+      "id": "tr-lm-03",
+      "language": "tr",
+      "prefix": "Şimdi şöyle ki tatlım bu iş için fazlasıyla niteliklisin a"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "adam, geri dönüp yeniden başlayabilir mi?",
+      "document_id": "1995937e445a39414005a99a24588c00998012e0128fe953e7441630ae756a64",
+      "id": "tr-lm-04",
+      "language": "tr",
+      "prefix": "44 yaşında, kendisinden hoşlanmayan bir "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " miktarı uçak tutması için alınandan çok daha fazlaydı.",
+      "document_id": "c52f7ba6c20d7beadb3536f1c78defa9bfc4fe77d5e0e60fbce848f13c6c8d98",
+      "id": "tr-lm-05",
+      "language": "tr",
+      "prefix": "İki kadının otopsisinde ortaya çıkan sakinleştiricinin"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "m ama senin oynadığın bu oyun çok tehlikeli",
+      "document_id": "96b30de0f231e15290b6faa36df36f004d8aac4e46472d8b07abdbbd1c598bdc",
+      "id": "tr-lm-06",
+      "language": "tr",
+      "prefix": "Ben senin, iyi bir yönetici olduğunu biliri"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "kişiyi tehdit olarak görüyor ve tırnaklarını çıkarıyor.",
+      "document_id": "277a1539ed860205762e2f55f60b60b0b968bbe97f645fdfd1f6bdcd1bf9eb1e",
+      "id": "tr-lm-07",
+      "language": "tr",
+      "prefix": "Ona karşı gelebilen kararlı biriyle karşılaştığında o "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "lerinde Allah'ın yarattığını gizlemeleri kendilerine helal olmaz.",
+      "document_id": "2a7d166f6454b1d21ba22f095380647027750446b9f69004d38588f8fb32feaa",
+      "id": "tr-lm-08",
+      "language": "tr",
+      "prefix": "Eğer onlar Allah'a ve ahiret gününe gerçekten inanmışlarsa, rahim"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "iyasasını yaratmış fakat seri numaraları yok tabii.",
+      "document_id": "2c47b7721ffcd47241f5e60db57c6def51d0672d2bc59c833c1a0c82479c0bbd",
+      "id": "tr-lm-09",
+      "language": "tr",
+      "prefix": "Ekonominin çökeceğinden korkan insanlar bunun da p"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "medik. Muhtemelen, çoktan kasabadan ayrılmıştır.",
+      "document_id": "32e530c09e1f38d5616ff6862631c99cc57e7cc1d09f3f66094e8c576abc706b",
+      "id": "tr-lm-10",
+      "language": "tr",
+      "prefix": "On gün önce gibiydi, ve ondan sonra bir daha gör"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " sizi duydum. Yani sizin yanınıza gelecektim.",
+      "document_id": "34a96b2acddb0d0618a2a50c6264107b15d422d45aa31cafff116a1bbf3f799c",
+      "id": "tr-lm-11",
+      "language": "tr",
+      "prefix": "Ama sonra Tony'nin çığlığını duydum ve sonra"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "lir ama Frasier tamponunda \"Smith Wesson tarafından...\"",
+      "document_id": "35a0a9239a2a05a1373a06d640d07e78bd9ef6eafe1be3e39eb260c3ae910665",
+      "id": "tr-lm-12",
+      "language": "tr",
+      "prefix": "İnanlar aynı hareketi Frasier'a sürekli yapıyor. Olabi"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " bu düşler her gün filizlenmeyi sürdürüyor.",
+      "document_id": "a259618199594039fe7e6c5c1d9421d19bfe048dd8a279af69b436276e08622d",
+      "id": "tr-lm-13",
+      "language": "tr",
+      "prefix": "Atlas Polisler ve Çocuklar gibi salonlarda"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "yetini değiştirirken Cece'nin aklının başında olmadığı olur.",
+      "document_id": "8ceb5a89500a8d418f249964b5f98912f3cce04957acf853436affa691255215",
+      "id": "tr-lm-14",
+      "language": "tr",
+      "prefix": "Başvurabileceğiniz tek yöntem, eğer ispatlayabilirseniz vasi"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "erir ve Allah'ın lütfü boldur, o her şeyi bilir.",
+      "document_id": "43511d2967808f4fc1a7219acc7176163ba295d63d39fe7ce1e2369cada12045",
+      "id": "tr-lm-15",
+      "language": "tr",
+      "prefix": "Bu, Allah'ın lütfü ve inayetidir ki dilediğine v"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "bunun tam ortasına sokmak ve nektara ulaşmak için nektar tüpünün içine doğru indirmek.",
+      "document_id": "440dff8744f746df653dc3269eb946994861ffe9bbad45b7136f0942b5c8d751",
+      "id": "tr-lm-16",
+      "language": "tr",
+      "prefix": "Ve temel olarak böceğin yapmak zorunda olduğu - çiçeğin ortasındayız- küçük hortumunu "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "iz dünya pazarlarındaki çöküşler arasında.",
+      "document_id": "4ce1f4def303ad9d5904ea231b3f0c3f32345719caaa4eab3f88fc0232abd861",
+      "id": "tr-lm-17",
+      "language": "tr",
+      "prefix": "Yani, işte çevresel bozulma ve bahsettiğin"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "kuruna geldim ve ne kadar minnettar olduğuna bir bak.",
+      "document_id": "4d71df4eefaa40d9f7c4e8f9416ef516bd634d555ba8b5c3a817ba7e66d3801a",
+      "id": "tr-lm-18",
+      "language": "tr",
+      "prefix": "Senin için adını bile söyleyemediğim bu lanet bok çu"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "uştum ve beni beysbol sopasıyla beni kolumdan avladı.",
+      "document_id": "536ad9545c0a442b16e1c7e3274af1bfdc63bde29fb4c3873acdea9b79a815e1",
+      "id": "tr-lm-19",
+      "language": "tr",
+      "prefix": "Eğer bilmek istiyorsan pezevengin biriyle kavgaya tut"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "r, tüm lütuf ALLAH'ın elindedir, onu dilediğine ve/veya dileyene verir.",
+      "document_id": "d2c81fc304030da4af2890aa12ad8da494bbc5ceaf1879c96701ee11b1b51121",
+      "id": "tr-lm-20",
+      "language": "tr",
+      "prefix": "Böylece kitap halkı bilsin ki, onlar ALLAH'ın lütfunu tekelleştiremezle"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "i desteklemeyeceğini, ancak seçimleri boykot çağrısında da bulunmayacaklarını belirtti.",
+      "document_id": "57fda5d4b7bcdc7e47ed9208807d4629bb85e527fc59d5384c6768c80191dc6c",
+      "id": "tr-lm-21",
+      "language": "tr",
+      "prefix": "Bu arada Arnavut Demokrat Partisi lideri Arben Caferi de partisinin adaylardan hiçbirin"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " yüzden terketmiş ve adam buna çok sinirlenmiş.",
+      "document_id": "595695700e1d370686794ef5aa806fb977feab6ea4191fb4283abd4a9a755642",
+      "id": "tr-lm-22",
+      "language": "tr",
+      "prefix": "Aptal ve sıkıcı bir adam varmış. Karısı onu bu"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "den yanında götürmek istediğini anlamıyorum... ya da o, çok... özel bir hedef.",
+      "document_id": "d8978f8656a5ba16f4306b7de0d33313a8c1dd4ae7ea8e96dc9c7a341efcf83e",
+      "id": "tr-lm-23",
+      "language": "tr",
+      "prefix": "Eğer bu durum değiştiyse ya bu senin son dileğin -ki öyle bir durumda beni ne"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ğimi bilmiyorum ama bu size biraz pahalıya patlar.",
+      "document_id": "6e5427eb8b233009b909e26fa39bbbdee4e5dfaf4c2fd79045ef8bba3c5450bf",
+      "id": "tr-lm-24",
+      "language": "tr",
+      "prefix": "Bunu duygusuz biri gibi görünmeden nasıl söyleyece"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ürmeyin, sizi de ancak biz rızıklandırırız, onları da ve açığa çıkan kötülüklere de yaklaşmayın, gizli kalan kötülüklere de ve hiçbir cana kıymayın, çünkü Allah",
+      "document_id": "db29fae58a55a294a901c8caecd4086d3c3e04ac27d820935d8ce75e7a04bbf9",
+      "id": "tr-lm-25",
+      "language": "tr",
+      "prefix": "De ki: Gelin de Rabbiniz, size neleri haram etti, ben okuyup anlatayım: Sakın ona hiçbir şeyi eş ve ortak saymayın, ananıza, babanıza karşı iyilikte bulunun ve yoksulluk korkusuyla çocuklarınızı öld"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "üzerinde yoğunlaşan bir değerlendirme ile...",
+      "document_id": "774064ea869be9a8771a50156879e1527092f8f6c0eb5441fea7b4c1645b5f6c",
+      "id": "tr-lm-26",
+      "language": "tr",
+      "prefix": "Londra borsasında bir artış vardı NASDAQ'ın "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "mevcut videolar türdeşliğe doğru giden bir dünyada çeşitliliği ilerletmek için katkıda bulundu.",
+      "document_id": "b513f48beb55eef596a43aa095e59ebfdb5c72a3f7262db3414041b45990db4f",
+      "id": "tr-lm-27",
+      "language": "tr",
+      "prefix": "Koleksiyonu tamamlamak için Gürcistan, Türkmenistan ve Özbekistan'dan videolara gerek olsa da, "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "iş organlarına destek amaçlı uzun süreli operasyonlarda kullanabiliriz, \"dedi.",
+      "document_id": "acb41ec9ff49bbcc0fbd0a6c119a625991f51626a57868fb1681a602a81a6be9",
+      "id": "tr-lm-28",
+      "language": "tr",
+      "prefix": "Helikopterlerimizi, gözetim becerilerimizi ve kapasitemizi polis ve diğer asay"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "lları denedim ama bizi Fitchburg'de kıstırdılar.",
+      "document_id": "ca10d2782148a526293ef6152c05e9da0366490a55fcd9ea6f3774a8a0de4109",
+      "id": "tr-lm-29",
+      "language": "tr",
+      "prefix": "Onları uzaklaştırmak için aklıma gelen bütün yo"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " lines.\n\n        For long sequences of the same frame and line, the first few\n        repetitions are shown, followed by a summary line stating the exact\n      ",
+      "document_id": "0cfe88f43015f32feb759d742a0e0e44a27c2f32928709b28c2fe9297c2d4d45",
+      "id": "code-lm-00",
+      "language": "code",
+      "prefix": "\"\"\"Extract, format and print information about Python stack traces.\"\"\"\n\nimport collections.abc\nimport itertools\nimport linecache\nimport sys\nimport textwrap\nfrom contextlib import suppress\n\n__all__ = ['extract_stack', 'extract_tb', 'format_exception',\n           'format_exception_only', 'format_list', 'format_stack',\n           'format_tb', 'print_exc', 'format_exc', 'print_exception',\n           'print_last', 'print_stack', 'print_tb', 'clear_frames',\n           'FrameSummary', 'StackSummary', 'TracebackException',\n           'walk_stack', 'walk_tb']\n\n#\n# Formatting and printing lists of traceback lines.\n#\n\ndef print_list(extracted_list, file=None):\n    \"\"\"Print the list of tuples as returned by extract_tb() or\n    extract_stack() as a formatted stack trace to the given file.\"\"\"\n    if file is None:\n        file = sys.stderr\n    for item in StackSummary.from_list(extracted_list).format():\n        print(item, file=file, end=\"\")\n\ndef format_list(extracted_list):\n    \"\"\"Format a list of tuples or FrameSummary objects for printing.\n\n    Given a list of tuples or FrameSummary objects as returned by\n    extract_tb() or extract_stack(), return a list of strings ready\n    for printing.\n\n    Each string in the resulting list corresponds to the item with the\n    same index in the argument list.  Each string ends in a newline;\n    the strings may contain internal newlines as well, for those items\n    whose source text line is not None.\n    \"\"\"\n    return StackSummary.from_list(extracted_list).format()\n\n#\n# Printing and Extracting Tracebacks.\n#\n\ndef print_tb(tb, limit=None, file=None):\n    \"\"\"Print up to 'limit' stack trace entries from the traceback 'tb'.\n\n    If 'limit' is omitted or None, all entries are printed.  If 'file'\n    is omitted or None, the output goes to sys.stderr; otherwise\n    'file' should be an open file or file-like object with a write()\n    method.\n    \"\"\"\n    print_list(extract_tb(tb, limit=limit), file=file)\n\ndef format_tb(tb, limit=None):\n    \"\"\"A shorthand for 'format_list(extract_tb(tb, limit))'.\"\"\"\n    return extract_tb(tb, limit=limit).format()\n\ndef extract_tb(tb, limit=None):\n    \"\"\"\n    Return a StackSummary object representing a list of\n    pre-processed entries from traceback.\n\n    This is useful for alternate formatting of stack traces.  If\n    'limit' is omitted or None, all entries are extracted.  A\n    pre-processed stack trace entry is a FrameSummary object\n    containing attributes filename, lineno, name, and line\n    representing the information that is usually printed for a stack\n    trace.  The line is a string with leading and trailing\n    whitespace stripped; if the source is not available it is None.\n    \"\"\"\n    return StackSummary._extract_from_extended_frame_gen(\n        _walk_tb_with_full_positions(tb), limit=limit)\n\n#\n# Exception formatting and output.\n#\n\n_cause_message = (\n    \"\\nThe above exception was the direct cause \"\n    \"of the following exception:\\n\\n\")\n\n_context_message = (\n    \"\\nDuring handling of the above exception, \"\n    \"another exception occurred:\\n\\n\")\n\n\nclass _Sentinel:\n    def __repr__(self):\n        return \"<implicit>\"\n\n_sentinel = _Sentinel()\n\ndef _parse_value_tb(exc, value, tb):\n    if (value is _sentinel) != (tb is _sentinel):\n        raise ValueError(\"Both or neither of value and tb must be given\")\n    if value is tb is _sentinel:\n        if exc is not None:\n            if isinstance(exc, BaseException):\n                return exc, exc.__traceback__\n\n            raise TypeError(f'Exception expected for value, '\n                            f'{type(exc).__name__} found')\n        else:\n            return None, None\n    return value, tb\n\n\ndef print_exception(exc, /, value=_sentinel, tb=_sentinel, limit=None, \\\n                    file=None, chain=True):\n    \"\"\"Print exception up to 'limit' stack trace entries from 'tb' to 'file'.\n\n    This differs from print_tb() in the following ways: (1) if\n    traceback is not None, it prints a header \"Traceback (most recent\n    call last):\"; (2) it prints the exception type and value after the\n    stack trace; (3) if type is SyntaxError and value has the\n    appropriate format, it prints the line where the syntax error\n    occurred with a caret on the next line indicating the approximate\n    position of the error.\n    \"\"\"\n    value, tb = _parse_value_tb(exc, value, tb)\n    te = TracebackException(type(value), value, tb, limit=limit, compact=True)\n    te.print(file=file, chain=chain)\n\n\ndef format_exception(exc, /, value=_sentinel, tb=_sentinel, limit=None, \\\n                     chain=True):\n    \"\"\"Format a stack trace and the exception information.\n\n    The arguments have the same meaning as the corresponding arguments\n    to print_exception().  The return value is a list of strings, each\n    ending in a newline and some containing internal newlines.  When\n    these lines are concatenated and printed, exactly the same text is\n    printed as does print_exception().\n    \"\"\"\n    value, tb = _parse_value_tb(exc, value, tb)\n    te = TracebackException(type(value), value, tb, limit=limit, compact=True)\n    return list(te.format(chain=chain))\n\n\ndef format_exception_only(exc, /, value=_sentinel):\n    \"\"\"Format the exception part of a traceback.\n\n    The return value is a list of strings, each ending in a newline.\n\n    The list contains the exception's message, which is\n    normally a single string; however, for :exc:`SyntaxError` exceptions, it\n    contains several lines that (when printed) display detailed information\n    about where the syntax error occurred. Following the message, the list\n    contains the exception's ``__notes__``.\n    \"\"\"\n    if value is _sentinel:\n        value = exc\n    te = TracebackException(type(value), value, None, compact=True)\n    return list(te.format_exception_only())\n\n\n# -- not official API but folk probably use these two functions.\n\ndef _format_final_exc_line(etype, value):\n    valuestr = _safe_string(value, 'exception')\n    if value is None or not valuestr:\n        line = \"%s\\n\" % etype\n    else:\n        line = \"%s: %s\\n\" % (etype, valuestr)\n    return line\n\ndef _safe_string(value, what, func=str):\n    try:\n        return func(value)\n    except:\n        return f'<{what} {func.__name__}() failed>'\n\n# --\n\ndef print_exc(limit=None, file=None, chain=True):\n    \"\"\"Shorthand for 'print_exception(*sys.exc_info(), limit, file)'.\"\"\"\n    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)\n\ndef format_exc(limit=None, chain=True):\n    \"\"\"Like print_exc() but return a string.\"\"\"\n    return \"\".join(format_exception(*sys.exc_info(), limit=limit, chain=chain))\n\ndef print_last(limit=None, file=None, chain=True):\n    \"\"\"This is a shorthand for 'print_exception(sys.last_type,\n    sys.last_value, sys.last_traceback, limit, file)'.\"\"\"\n    if not hasattr(sys, \"last_type\"):\n        raise ValueError(\"no last exception\")\n    print_exception(sys.last_type, sys.last_value, sys.last_traceback,\n                    limit, file, chain)\n\n#\n# Printing and Extracting Stacks.\n#\n\ndef print_stack(f=None, limit=None, file=None):\n    \"\"\"Print a stack trace from its invocation point.\n\n    The optional 'f' argument can be used to specify an alternate\n    stack frame at which to start. The optional 'limit' and 'file'\n    arguments have the same meaning as for print_exception().\n    \"\"\"\n    if f is None:\n        f = sys._getframe().f_back\n    print_list(extract_stack(f, limit=limit), file=file)\n\n\ndef format_stack(f=None, limit=None):\n    \"\"\"Shorthand for 'format_list(extract_stack(f, limit))'.\"\"\"\n    if f is None:\n        f = sys._getframe().f_back\n    return format_list(extract_stack(f, limit=limit))\n\n\ndef extract_stack(f=None, limit=None):\n    \"\"\"Extract the raw traceback from the current stack frame.\n\n    The return value has the same format as for extract_tb().  The\n    optional 'f' and 'limit' arguments have the same meaning as for\n    print_stack().  Each item in the list is a quadruple (filename,\n    line number, function name, text), and the entries are in order\n    from oldest to newest stack frame.\n    \"\"\"\n    if f is None:\n        f = sys._getframe().f_back\n    stack = StackSummary.extract(walk_stack(f), limit=limit)\n    stack.reverse()\n    return stack\n\n\ndef clear_frames(tb):\n    \"Clear all references to local variables in the frames of a traceback.\"\n    while tb is not None:\n        try:\n            tb.tb_frame.clear()\n        except RuntimeError:\n            # Ignore the exception raised if the frame is still executing.\n            pass\n        tb = tb.tb_next\n\n\nclass FrameSummary:\n    \"\"\"Information about a single frame from a traceback.\n\n    - :attr:`filename` The filename for the frame.\n    - :attr:`lineno` The line within filename for the frame that was\n      active when the frame was captured.\n    - :attr:`name` The name of the function or method that was executing\n      when the frame was captured.\n    - :attr:`line` The text from the linecache module for the\n      of code that was running when the frame was captured.\n    - :attr:`locals` Either None if locals were not supplied, or a dict\n      mapping the name to the repr() of the variable.\n    \"\"\"\n\n    __slots__ = ('filename', 'lineno', 'end_lineno', 'colno', 'end_colno',\n                 'name', '_line', 'locals')\n\n    def __init__(self, filename, lineno, name, *, lookup_line=True,\n            locals=None, line=None,\n            end_lineno=None, colno=None, end_colno=None):\n        \"\"\"Construct a FrameSummary.\n\n        :param lookup_line: If True, `linecache` is consulted for the source\n            code line. Otherwise, the line will be looked up when first needed.\n        :param locals: If supplied the frame locals, which will be captured as\n            object representations.\n        :param line: If provided, use this instead of looking up the line in\n            the linecache.\n        \"\"\"\n        self.filename = filename\n        self.lineno = lineno\n        self.name = name\n        self._line = line\n        if lookup_line:\n            self.line\n        self.locals = {k: repr(v) for k, v in locals.items()} if locals else None\n        self.end_lineno = end_lineno\n        self.colno = colno\n        self.end_colno = end_colno\n\n    def __eq__(self, other):\n        if isinstance(other, FrameSummary):\n            return (self.filename == other.filename and\n                    self.lineno == other.lineno and\n                    self.name == other.name and\n                    self.locals == other.locals)\n        if isinstance(other, tuple):\n            return (self.filename, self.lineno, self.name, self.line) == other\n        return NotImplemented\n\n    def __getitem__(self, pos):\n        return (self.filename, self.lineno, self.name, self.line)[pos]\n\n    def __iter__(self):\n        return iter([self.filename, self.lineno, self.name, self.line])\n\n    def __repr__(self):\n        return \"<FrameSummary file {filename}, line {lineno} in {name}>\".format(\n            filename=self.filename, lineno=self.lineno, name=self.name)\n\n    def __len__(self):\n        return 4\n\n    @property\n    def _original_line(self):\n        # Returns the line as-is from the source, without modifying whitespace.\n        self.line\n        return self._line\n\n    @property\n    def line(self):\n        if self._line is None:\n            if self.lineno is None:\n                return None\n            self._line = linecache.getline(self.filename, self.lineno)\n        return self._line.strip()\n\n\ndef walk_stack(f):\n    \"\"\"Walk a stack yielding the frame and line number for each frame.\n\n    This will follow f.f_back from the given frame. If no frame is given, the\n    current stack is used. Usually used with StackSummary.extract.\n    \"\"\"\n    if f is None:\n        f = sys._getframe().f_back.f_back.f_back.f_back\n    while f is not None:\n        yield f, f.f_lineno\n        f = f.f_back\n\n\ndef walk_tb(tb):\n    \"\"\"Walk a traceback yielding the frame and line number for each frame.\n\n    This will follow tb.tb_next (and thus is in the opposite order to\n    walk_stack). Usually used with StackSummary.extract.\n    \"\"\"\n    while tb is not None:\n        yield tb.tb_frame, tb.tb_lineno\n        tb = tb.tb_next\n\n\ndef _walk_tb_with_full_positions(tb):\n    # Internal version of walk_tb that yields full code positions including\n    # end line and column information.\n    while tb is not None:\n        positions = _get_code_position(tb.tb_frame.f_code, tb.tb_lasti)\n        # Yield tb_lineno when co_positions does not have a line number to\n        # maintain behavior with walk_tb.\n        if positions[0] is None:\n            yield tb.tb_frame, (tb.tb_lineno, ) + positions[1:]\n        else:\n            yield tb.tb_frame, positions\n        tb = tb.tb_next\n\n\ndef _get_code_position(code, instruction_index):\n    if instruction_index < 0:\n        return (None, None, None, None)\n    positions_gen = code.co_positions()\n    return next(itertools.islice(positions_gen, instruction_index // 2, None))\n\n\n_RECURSIVE_CUTOFF = 3 # Also hardcoded in traceback.c.\n\nclass StackSummary(list):\n    \"\"\"A list of FrameSummary objects, representing a stack of frames.\"\"\"\n\n    @classmethod\n    def extract(klass, frame_gen, *, limit=None, lookup_lines=True,\n            capture_locals=False):\n        \"\"\"Create a StackSummary from a traceback or stack object.\n\n        :param frame_gen: A generator that yields (frame, lineno) tuples\n            whose summaries are to be included in the stack.\n        :param limit: None to include all frames or the number of frames to\n            include.\n        :param lookup_lines: If True, lookup lines for each frame immediately,\n            otherwise lookup is deferred until the frame is rendered.\n        :param capture_locals: If True, the local variables from each frame will\n            be captured as object representations into the FrameSummary.\n        \"\"\"\n        def extended_frame_gen():\n            for f, lineno in frame_gen:\n                yield f, (lineno, None, None, None)\n\n        return klass._extract_from_extended_frame_gen(\n            extended_frame_gen(), limit=limit, lookup_lines=lookup_lines,\n            capture_locals=capture_locals)\n\n    @classmethod\n    def _extract_from_extended_frame_gen(klass, frame_gen, *, limit=None,\n            lookup_lines=True, capture_locals=False):\n        # Same as extract but operates on a frame generator that yields\n        # (frame, (lineno, end_lineno, colno, end_colno)) in the stack.\n        # Only lineno is required, the remaining fields can be None if the\n        # information is not available.\n        if limit is None:\n            limit = getattr(sys, 'tracebacklimit', None)\n            if limit is not None and limit < 0:\n                limit = 0\n        if limit is not None:\n            if limit >= 0:\n                frame_gen = itertools.islice(frame_gen, limit)\n            else:\n                frame_gen = collections.deque(frame_gen, maxlen=-limit)\n\n        result = klass()\n        fnames = set()\n        for f, (lineno, end_lineno, colno, end_colno) in frame_gen:\n            co = f.f_code\n            filename = co.co_filename\n            name = co.co_name\n\n            fnames.add(filename)\n            linecache.lazycache(filename, f.f_globals)\n            # Must defer line lookups until we have called checkcache.\n            if capture_locals:\n                f_locals = f.f_locals\n            else:\n                f_locals = None\n            result.append(FrameSummary(\n                filename, lineno, name, lookup_line=False, locals=f_locals,\n                end_lineno=end_lineno, colno=colno, end_colno=end_colno))\n        for filename in fnames:\n            linecache.checkcache(filename)\n        # If immediate lookup was desired, trigger lookups now.\n        if lookup_lines:\n            for f in result:\n                f.line\n        return result\n\n    @classmethod\n    def from_list(klass, a_list):\n        \"\"\"\n        Create a StackSummary object from a supplied list of\n        FrameSummary objects or old-style list of tuples.\n        \"\"\"\n        # While doing a fast-path check for isinstance(a_list, StackSummary) is\n        # appealing, idlelib.run.cleanup_traceback and other similar code may\n        # break this by making arbitrary frames plain tuples, so we need to\n        # check on a frame by frame basis.\n        result = StackSummary()\n        for frame in a_list:\n            if isinstance(frame, FrameSummary):\n                result.append(frame)\n            else:\n                filename, lineno, name, line = frame\n                result.append(FrameSummary(filename, lineno, name, line=line))\n        return result\n\n    def format_frame_summary(self, frame_summary):\n        \"\"\"Format the lines for a single FrameSummary.\n\n        Returns a string representing one frame involved in the stack. This\n        gets called for every frame to be printed in the stack summary.\n        \"\"\"\n        row = []\n        row.append('  File \"{}\", line {}, in {}\\n'.format(\n            frame_summary.filename, frame_summary.lineno, frame_summary.name))\n        if frame_summary.line:\n            stripped_line = frame_summary.line.strip()\n            row.append('    {}\\n'.format(stripped_line))\n\n            line = frame_summary._original_line\n            orig_line_len = len(line)\n            frame_line_len = len(frame_summary.line.lstrip())\n            stripped_characters = orig_line_len - frame_line_len\n            if (\n                frame_summary.colno is not None\n                and frame_summary.end_colno is not None\n            ):\n                start_offset = _byte_offset_to_character_offset(\n                    line, frame_summary.colno)\n                end_offset = _byte_offset_to_character_offset(\n                    line, frame_summary.end_colno)\n                code_segment = line[start_offset:end_offset]\n\n                anchors = None\n                if frame_summary.lineno == frame_summary.end_lineno:\n                    with suppress(Exception):\n                        anchors = _extract_caret_anchors_from_line_segment(code_segment)\n                else:\n                    # Don't count the newline since the anchors only need to\n                    # go up until the last character of the line.\n                    end_offset = len(line.rstrip())\n\n                # show indicators if primary char doesn't span the frame line\n                if end_offset - start_offset < len(stripped_line) or (\n                        anchors and anchors.right_start_offset - anchors.left_end_offset > 0):\n                    # When showing this on a terminal, some of the non-ASCII characters\n                    # might be rendered as double-width characters, so we need to take\n                    # that into account when calculating the length of the line.\n                    dp_start_offset = _display_width(line, start_offset) + 1\n                    dp_end_offset = _display_width(line, end_offset) + 1\n\n                    row.append('    ')\n                    row.append(' ' * (dp_start_offset - stripped_characters))\n\n                    if anchors:\n                        dp_left_end_offset = _display_width(code_segment, anchors.left_end_offset)\n                        dp_right_start_offset = _display_width(code_segment, anchors.right_start_offset)\n                        row.append(anchors.primary_char * dp_left_end_offset)\n                        row.append(anchors.secondary_char * (dp_right_start_offset - dp_left_end_offset))\n                        row.append(anchors.primary_char * (dp_end_offset - dp_start_offset - dp_right_start_offset))\n                    else:\n                        row.append('^' * (dp_end_offset - dp_start_offset))\n\n                    row.append('\\n')\n\n        if frame_summary.locals:\n            for name, value in sorted(frame_summary.locals.items()):\n                row.append('    {name} = {value}\\n'.format(name=name, value=value))\n\n        return ''.join(row)\n\n    def format(self):\n        \"\"\"Format the stack ready for printing.\n\n        Returns a list of strings ready for printing.  Each string in the\n        resulting list corresponds to a single frame from the stack.\n        Each string ends in a newline; the strings may contain internal\n        newlines as well, for those items with source text"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " else 0)\n        return self.returncode\n\n    def _send_signal(self, sig):\n        if self.returncode is None:\n            try:\n                os.kill(self.pid,",
+      "document_id": "439c7cd2de5070c2eb6450a191b66362d8a38e90a860bec0a8c12282bbdf8793",
+      "id": "code-lm-01",
+      "language": "code",
+      "prefix": "import os\nimport signal\n\nfrom . import util\n\n__all__ = ['Popen']\n\n#\n# Start child process using fork\n#\n\nclass Popen(object):\n    method = 'fork'\n\n    def __init__(self, process_obj):\n        util._flush_std_streams()\n        self.returncode = None\n        self.finalizer = None\n        self._launch(process_obj)\n\n    def duplicate_for_child(self, fd):\n        return fd\n\n    def poll(self, flag=os.WNOHANG):\n        if self.returncode is None:\n            try:\n                pid, sts = os.waitpid(self.pid, flag)\n            except OSError:\n                # Child process not yet created. See #1731717\n                # e.errno == errno.ECHILD == 10\n                return None\n            if pid == self.pid:\n                self.returncode = os.waitstatus_to_exitcode(sts)\n        return self.returncode\n\n    def wait(self, timeout=None):\n        if self.returncode is None:\n            if timeout is not None:\n                from multiprocessing.connection import wait\n                if not wait([self.sentinel], timeout):\n                    return None\n            # This shouldn't block if wait() returned successfully.\n            return self.poll(os.WNOHANG if timeout == 0.0"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "ecoderLayer(nn.Module):\n    \"\"\"Pre-norm sequential attention/FFN residual block with internal SubLNs.\"\"\"\n\n    def __init__(self, config: BitConfig):\n        sup",
+      "document_id": "455a7437cc107ace0f7dc05184c459ae08b6d16550739762a7293eacd4f77334",
+      "id": "code-lm-02",
+      "language": "code",
+      "prefix": "\"\"\"Native ternary-weight Transformer inspired by BitNet b1.58 2B4T.\n\nTraining retains FP master parameters for the optimizer but every BitLinear\nforward uses absmean-scaled {-1,0,+1} weights through a straight-through\nestimator (STE). This is quantization-aware training from scratch, not PTQ.\nActivations and normalization remain floating point by Amarken's experiment\ndefinition. Efficient packed inference requires a ternary kernel; ordinary\nPyTorch below proves training semantics, not ternary runtime speed.\n\"\"\"\n\nfrom dataclasses import dataclass\nimport math\n\nimport torch\nfrom torch import Tensor, nn\nimport torch.nn.functional as F\nfrom torch.utils.checkpoint import checkpoint\n\nfrom .config import BitConfig\nfrom ..common import AmarkenCausalLM, CausalLMOutput, packed_positions\n\n\ndef _effective_ternary(weight: Tensor, eps: float, granularity: str) -> tuple[Tensor, Tensor, Tensor]:\n    \"\"\"Return STE weight, trits, and tensor- or output-channel absmean scales.\"\"\"\n    # Paper equation: gamma=mean(abs(W)); round+clip(W/gamma) gives trits. FP32\n    # statistics make thresholds deterministic under mixed-precision autocast.\n    scale = (\n        weight.float().abs().mean().clamp_min(eps)\n        if granularity == \"tensor\"\n        else weight.float().abs().mean(dim=1, keepdim=True).clamp_min(eps)\n    )\n    trits = torch.round(weight.float() / scale).clamp(-1, 1)\n    quantized = (trits * scale).to(weight.dtype)\n    # Forward equals quantized; derivative w.r.t. the FP master weight is identity.\n    # Detaching the complete correction intentionally ignores scale/round gradients.\n    effective = weight + (quantized - weight).detach()\n    return effective, trits.to(torch.int8), scale\n\n\ndef pack_ternary(trits: Tensor) -> tuple[Tensor, int]:\n    \"\"\"Pack four {-1,0,+1} values into each uint8; return bytes and pad count.\"\"\"\n    if not torch.all((trits >= -1) & (trits <= 1)):\n        raise ValueError(\"trits must contain only -1, 0, or 1\")\n    # Code mapping -1->0, 0->1, +1->2 leaves code 3 invalid for corruption checks.\n    codes = (trits.to(torch.int16).flatten() + 1).to(torch.uint8)\n    padding = (-codes.numel()) % 4\n    if padding:\n        # Pad with zero-valued weights (code 1); shape metadata removes them on load.\n        codes = F.pad(codes, (0, padding), value=1)\n    codes = codes.view(-1, 4)\n    packed = codes[:, 0] | (codes[:, 1] << 2) | (codes[:, 2] << 4) | (codes[:, 3] << 6)\n    return packed, padding\n\n\nclass RMSNorm(nn.Module):\n    \"\"\"FP learned RMSNorm: no mean subtraction or bias, matching BitNet.\"\"\"\n\n    def __init__(self, width: int, eps: float):\n        super().__init__()\n        self.weight = nn.Parameter(torch.ones(width))\n        self.eps = eps\n\n    def forward(self, x: Tensor) -> Tensor:\n        # FP32 reduction prevents low-precision variance overflow/underflow.\n        y = x.float() * torch.rsqrt(x.float().square().mean(-1, keepdim=True) + self.eps)\n        return (y * self.weight.float()).to(x.dtype)\n\n\nclass BitLinear(nn.Module):\n    \"\"\"Bias-free linear projection with FP master and ternary effective weights.\"\"\"\n\n    def __init__(self, in_features: int, out_features: int, eps: float, scale_granularity: str = \"tensor\"):\n        super().__init__()\n        self.in_features = in_features\n        self.out_features = out_features\n        self.quantization_eps = eps\n        self.scale_granularity = scale_granularity\n        # FP masters are necessary during optimization; only exported inference\n        # artifacts replace this matrix with packed trits plus one FP scale.\n        self.weight = nn.Parameter(torch.empty(out_features, in_features))\n\n    def quantized(self) -> tuple[Tensor, Tensor]:\n        \"\"\"Detached integer trits and scale for inspection/export.\"\"\"\n        _, trits, scale = _effective_ternary(self.weight, self.quantization_eps, self.scale_granularity)\n        return trits.detach(), scale.detach()\n\n    def forward(self, x: Tensor) -> Tensor:\n        effective, _, _ = _effective_ternary(self.weight, self.quantization_eps, self.scale_granularity)\n        return F.linear(x, effective)\n\n\nclass RotaryEmbedding(nn.Module):\n    \"\"\"LLaMA half-split RoPE shared by every attention layer.\"\"\"\n\n    def __init__(self, head_dim: int, theta: float):\n        super().__init__()\n        inv = 1.0 / (theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))\n        self.register_buffer(\"inv_freq\", inv, persistent=False)\n\n    def forward(self, positions: Tensor, dtype: torch.dtype) -> tuple[Tensor, Tensor]:\n        phases = torch.einsum(\"bt,d->btd\", positions.float(), self.inv_freq.float())\n        phases = torch.cat((phases, phases), dim=-1)\n        return phases.cos().to(dtype), phases.sin().to(dtype)\n\n\ndef _apply_rope(x: Tensor, cos: Tensor, sin: Tensor) -> Tensor:\n    first, second = x.chunk(2, dim=-1)\n    rotated = torch.cat((-second, first), dim=-1)\n    return x * cos.unsqueeze(1) + rotated * sin.unsqueeze(1)\n\n\nclass BitAttention(nn.Module):\n    \"\"\"Full causal GQA; all four learned projections are ternary BitLinear.\"\"\"\n\n    def __init__(self, config: BitConfig):\n        super().__init__()\n        self.config = config\n        q_width = config.num_attention_heads * config.head_dim\n        kv_width = config.num_key_value_heads * config.head_dim\n        make = lambda input_width, output_width: BitLinear(\n            input_width, output_width, config.quantization_eps, config.weight_scale_granularity\n        )\n        self.q_proj = make(config.hidden_size, q_width)\n        self.k_proj = make(config.hidden_size, kv_width)\n        self.v_proj = make(config.hidden_size, kv_width)\n        # Released SubLN normalizes concatenated attention features before o_proj;\n        # this stabilizes the distribution entering a heavily quantized matrix.\n        self.attn_sub_norm = RMSNorm(q_width, config.rms_norm_eps)\n        self.o_proj = make(q_width, config.hidden_size)\n\n    def forward(self, x: Tensor, rope: tuple[Tensor, Tensor], mask: Tensor | None) -> Tensor:\n        batch, length, _ = x.shape\n        q = self.q_proj(x).view(batch, length, self.config.num_attention_heads, -1).transpose(1, 2)\n        k = self.k_proj(x).view(batch, length, self.config.num_key_value_heads, -1).transpose(1, 2)\n        v = self.v_proj(x).view(batch, length, self.config.num_key_value_heads, -1).transpose(1, 2)\n        q, k = _apply_rope(q, *rope), _apply_rope(k, *rope)\n        # Repeat is the portable training path. Projection/KV-cache dimensions still\n        # retain GQA savings; optimized inference should use a native grouped kernel.\n        groups = self.config.num_attention_heads // self.config.num_key_value_heads\n        k, v = k.repeat_interleave(groups, 1), v.repeat_interleave(groups, 1)\n        attended = F.scaled_dot_product_attention(\n            q,\n            k,\n            v,\n            attn_mask=mask,\n            is_causal=mask is None,\n            dropout_p=self.config.attention_dropout if self.training else 0.0,\n        )\n        attended = attended.transpose(1, 2).reshape(batch, length, -1)\n        return self.o_proj(self.attn_sub_norm(attended))\n\n\nclass ReLU2GLU(nn.Module):\n    \"\"\"Released FFN: down(SubLN(ReLU(gate)^2 * up)), all projections ternary.\"\"\"\n\n    def __init__(self, config: BitConfig):\n        super().__init__()\n        make = lambda input_width, output_width: BitLinear(\n            input_width, output_width, config.quantization_eps, config.weight_scale_granularity\n        )\n        self.gate_proj = make(config.hidden_size, config.intermediate_size)\n        self.up_proj = make(config.hidden_size, config.intermediate_size)\n        self.ffn_sub_norm = RMSNorm(config.intermediate_size, config.rms_norm_eps)\n        self.down_proj = make(config.intermediate_size, config.hidden_size)\n\n    def forward(self, x: Tensor) -> Tensor:\n        # ReLU2 supplies activation sparsity and avoids SiLU's transcendental cost;\n        # multiplication by an independent up branch retains GLU expressivity.\n        hidden = F.relu(self.gate_proj(x)).square() * self.up_proj(x)\n        return self.down_proj(self.ffn_sub_norm(hidden))\n\n\nclass BitD"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " COLON)\n\n    def transform(self, node, results):\n        new = node.clone()\n        comma = False\n        for child in new.children:\n            if child in sel",
+      "document_id": "47b026e5055d7ac0178ff107878b0ef98a729fd4f7c08c69940103e33fea1e0c",
+      "id": "code-lm-03",
+      "language": "code",
+      "prefix": "\"\"\"Fixer that changes 'a ,b' into 'a, b'.\n\nThis also changes '{a :b}' into '{a: b}', but does not touch other\nuses of colons.  It does not touch other uses of whitespace.\n\n\"\"\"\n\nfrom .. import pytree\nfrom ..pgen2 import token\nfrom .. import fixer_base\n\nclass FixWsComma(fixer_base.BaseFix):\n\n    explicit = True # The user must ask for this fixers\n\n    PATTERN = \"\"\"\n    any<(not(',') any)+ ',' ((not(',') any)+ ',')* [not(',') any]>\n    \"\"\"\n\n    COMMA = pytree.Leaf(token.COMMA, \",\")\n    COLON = pytree.Leaf(token.COLON, \":\")\n    SEPS = (COMMA,"
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "           with _global_lock:\n                if self._loop is None:\n                    self._loop = loop\n        if loop is not self._loop:\n            raise ",
+      "document_id": "5fdb04467a97432b9091649cb284ffb36b2b1a41668ed2deff194ab4c5807102",
+      "id": "code-lm-04",
+      "language": "code",
+      "prefix": "\"\"\"Event loop mixins.\"\"\"\n\nimport threading\nfrom . import events\n\n_global_lock = threading.Lock()\n\n\nclass _LoopBoundMixin:\n    _loop = None\n\n    def _get_loop(self):\n        loop = events._get_running_loop()\n\n        if self._loop is None:\n "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "root.tk.call('after', 'info'):\n            cls.root.after_cancel(id)\n        cls.root.destroy()\n        del cls.root\n\n    def test_new_empty(self):\n        flis",
+      "document_id": "9ba65c68dd8c7964eface1bdbbdf3603f82c22bcecb4a7b68fcfafcbca7de2c3",
+      "id": "code-lm-05",
+      "language": "code",
+      "prefix": "\"Test filelist, coverage 19%.\"\n\nfrom idlelib import filelist\nimport unittest\nfrom test.support import requires\nfrom tkinter import Tk\n\nclass FileListTest(unittest.TestCase):\n\n    @classmethod\n    def setUpClass(cls):\n        requires('gui')\n        cls.root = Tk()\n        cls.root.withdraw()\n\n    @classmethod\n    def tearDownClass(cls):\n        cls.root.update_idletasks()\n        for id in cls."
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": " count = self._semlock._count()\n            elif self._semlock._get_value() == 1:\n                name, count = 'None', 0\n            elif self._semlock._count(",
+      "document_id": "e55607cf161bb215c5c504d768e9ef3bcb3a06ef0db790e716324d64192bd3f7",
+      "id": "code-lm-06",
+      "language": "code",
+      "prefix": "#\n# Module implementing synchronization primitives\n#\n# multiprocessing/synchronize.py\n#\n# Copyright (c) 2006-2008, R Oudkerk\n# Licensed to PSF under a Contributor Agreement.\n#\n\n__all__ = [\n    'Lock', 'RLock', 'Semaphore', 'BoundedSemaphore', 'Condition', 'Event'\n    ]\n\nimport threading\nimport sys\nimport tempfile\nimport _multiprocessing\nimport time\n\nfrom . import context\nfrom . import process\nfrom . import util\n\n# Try to import the mp.synchronize module cleanly, if it fails\n# raise ImportError for platforms lacking a working sem_open implementation.\n# See issue 3770\ntry:\n    from _multiprocessing import SemLock, sem_unlink\nexcept (ImportError):\n    raise ImportError(\"This platform lacks a functioning sem_open\" +\n                      \" implementation, therefore, the required\" +\n                      \" synchronization primitives needed will not\" +\n                      \" function, see issue 3770.\")\n\n#\n# Constants\n#\n\nRECURSIVE_MUTEX, SEMAPHORE = list(range(2))\nSEM_VALUE_MAX = _multiprocessing.SemLock.SEM_VALUE_MAX\n\n#\n# Base class for semaphores and mutexes; wraps `_multiprocessing.SemLock`\n#\n\nclass SemLock(object):\n\n    _rand = tempfile._RandomNameSequence()\n\n    def __init__(self, kind, value, maxvalue, *, ctx):\n        if ctx is None:\n            ctx = context._default_context.get_context()\n        self._is_fork_ctx = ctx.get_start_method() == 'fork'\n        unlink_now = sys.platform == 'win32' or self._is_fork_ctx\n        for i in range(100):\n            try:\n                sl = self._semlock = _multiprocessing.SemLock(\n                    kind, value, maxvalue, self._make_name(),\n                    unlink_now)\n            except FileExistsError:\n                pass\n            else:\n                break\n        else:\n            raise FileExistsError('cannot find name for semaphore')\n\n        util.debug('created semlock with handle %s' % sl.handle)\n        self._make_methods()\n\n        if sys.platform != 'win32':\n            def _after_fork(obj):\n                obj._semlock._after_fork()\n            util.register_after_fork(self, _after_fork)\n\n        if self._semlock.name is not None:\n            # We only get here if we are on Unix with forking\n            # disabled.  When the object is garbage collected or the\n            # process shuts down we unlink the semaphore name\n            from .resource_tracker import register\n            register(self._semlock.name, \"semaphore\")\n            util.Finalize(self, SemLock._cleanup, (self._semlock.name,),\n                          exitpriority=0)\n\n    @staticmethod\n    def _cleanup(name):\n        from .resource_tracker import unregister\n        sem_unlink(name)\n        unregister(name, \"semaphore\")\n\n    def _make_methods(self):\n        self.acquire = self._semlock.acquire\n        self.release = self._semlock.release\n\n    def __enter__(self):\n        return self._semlock.__enter__()\n\n    def __exit__(self, *args):\n        return self._semlock.__exit__(*args)\n\n    def __getstate__(self):\n        context.assert_spawning(self)\n        sl = self._semlock\n        if sys.platform == 'win32':\n            h = context.get_spawning_popen().duplicate_for_child(sl.handle)\n        else:\n            if self._is_fork_ctx:\n                raise RuntimeError('A SemLock created in a fork context is being '\n                                   'shared with a process in a spawn context. This is '\n                                   'not supported. Please use the same context to create '\n                                   'multiprocessing objects and Process.')\n            h = sl.handle\n        return (h, sl.kind, sl.maxvalue, sl.name)\n\n    def __setstate__(self, state):\n        self._semlock = _multiprocessing.SemLock._rebuild(*state)\n        util.debug('recreated blocker with handle %r' % state[0])\n        self._make_methods()\n        # Ensure that deserialized SemLock can be serialized again (gh-108520).\n        self._is_fork_ctx = False\n\n    @staticmethod\n    def _make_name():\n        return '%s-%s' % (process.current_process()._config['semprefix'],\n                          next(SemLock._rand))\n\n#\n# Semaphore\n#\n\nclass Semaphore(SemLock):\n\n    def __init__(self, value=1, *, ctx):\n        SemLock.__init__(self, SEMAPHORE, value, SEM_VALUE_MAX, ctx=ctx)\n\n    def get_value(self):\n        return self._semlock._get_value()\n\n    def __repr__(self):\n        try:\n            value = self._semlock._get_value()\n        except Exception:\n            value = 'unknown'\n        return '<%s(value=%s)>' % (self.__class__.__name__, value)\n\n#\n# Bounded semaphore\n#\n\nclass BoundedSemaphore(Semaphore):\n\n    def __init__(self, value=1, *, ctx):\n        SemLock.__init__(self, SEMAPHORE, value, value, ctx=ctx)\n\n    def __repr__(self):\n        try:\n            value = self._semlock._get_value()\n        except Exception:\n            value = 'unknown'\n        return '<%s(value=%s, maxvalue=%s)>' % \\\n               (self.__class__.__name__, value, self._semlock.maxvalue)\n\n#\n# Non-recursive lock\n#\n\nclass Lock(SemLock):\n\n    def __init__(self, *, ctx):\n        SemLock.__init__(self, SEMAPHORE, 1, 1, ctx=ctx)\n\n    def __repr__(self):\n        try:\n            if self._semlock._is_mine():\n                name = process.current_process().name\n                if threading.current_thread().name != 'MainThread':\n                    name += '|' + threading.current_thread().name\n            elif self._semlock._get_value() == 1:\n                name = 'None'\n            elif self._semlock._count() > 0:\n                name = 'SomeOtherThread'\n            else:\n                name = 'SomeOtherProcess'\n        except Exception:\n            name = 'unknown'\n        return '<%s(owner=%s)>' % (self.__class__.__name__, name)\n\n#\n# Recursive lock\n#\n\nclass RLock(SemLock):\n\n    def __init__(self, *, ctx):\n        SemLock.__init__(self, RECURSIVE_MUTEX, 1, 1, ctx=ctx)\n\n    def __repr__(self):\n        try:\n            if self._semlock._is_mine():\n                name = process.current_process().name\n                if threading.current_thread().name != 'MainThread':\n                    name += '|' + threading.current_thread().name\n               "
+    },
+    {
+      "category": "heldout_continuation",
+      "continuation": "range(10):\n        shapesize(s)\n        p =get_shapepoly()\n        s *= f\n        c *= f\n        tilt(-phi)\n        sh.addcomponent(p, (c, 0.25, 1-c), \"black\")\n",
+      "document_id": "eacfdf2232f9cc9c2f93d45a28c77db862d85132401ad28a25b9ca1ea7e50071",
+      "id": "code-lm-07",
+      "language": "code",
+      "prefix": "\"\"\"      turtle-example-suite:\n\n         tdemo_round_dance.py\n\n(Needs version 1.1 of the turtle module that\ncomes with Python 3.1)\n\nDancing turtles have a compound shape\nconsisting of a series of triangles of\ndecreasing size.\n\nTurtles march along a circle while rotating\npairwise in opposite direction, with one\nexception. Does that breaking of symmetry\nenhance the attractiveness of the example?\n\nPress any key to stop the animation.\n\nTechnically: demonstrates use of compound\nshapes, transformation of shapes as well as\ncloning turtles. The animation is\ncontrolled through update().\n\"\"\"\n\nfrom turtle import *\n\ndef stop():\n    global running\n    running = False\n\ndef main():\n    global running\n    clearscreen()\n    bgcolor(\"gray10\")\n    tracer(False)\n    shape(\"triangle\")\n    f =   0.793402\n    phi = 9.064678\n    s = 5\n    c = 1\n    # create compound shape\n    sh = Shape(\"compound\")\n    for i in "
+    }
+  ],
+  "multiple_choice": [
+    {
+      "answer": "44",
+      "category": "compositional_reasoning",
+      "id": "en-cr-00",
+      "language": "en",
+      "options": [
+        "44",
+        "22",
+        "43",
+        "45"
+      ],
+      "prompt": "Add 19 and 3, then double the result."
+    },
+    {
+      "answer": "36",
+      "category": "compositional_reasoning",
+      "id": "en-cr-01",
+      "language": "en",
+      "options": [
+        "18",
+        "36",
+        "35",
+        "37"
+      ],
+      "prompt": "Add 7 and 11, then double the result."
+    },
+    {
+      "answer": "80",
+      "category": "compositional_reasoning",
+      "id": "en-cr-02",
+      "language": "en",
+      "options": [
+        "40",
+        "79",
+        "80",
+        "81"
+      ],
+      "prompt": "Add 27 and 13, then double the result."
+    },
+    {
+      "answer": "22",
+      "category": "compositional_reasoning",
+      "id": "en-cr-03",
+      "language": "en",
+      "options": [
+        "11",
+        "21",
+        "23",
+        "22"
+      ],
+      "prompt": "Add 7 and 4, then double the result."
+    },
+    {
+      "answer": "18",
+      "category": "compositional_reasoning",
+      "id": "en-cr-04",
+      "language": "en",
+      "options": [
+        "18",
+        "9",
+        "17",
+        "19"
+      ],
+      "prompt": "Add 3 and 6, then double the result."
+    },
+    {
+      "answer": "50",
+      "category": "compositional_reasoning",
+      "id": "en-cr-05",
+      "language": "en",
+      "options": [
+        "25",
+        "50",
+        "49",
+        "51"
+      ],
+      "prompt": "Add 13 and 12, then double the result."
+    },
+    {
+      "answer": "68",
+      "category": "compositional_reasoning",
+      "id": "en-cr-06",
+      "language": "en",
+      "options": [
+        "34",
+        "67",
+        "68",
+        "69"
+      ],
+      "prompt": "Add 29 and 5, then double the result."
+    },
+    {
+      "answer": "28",
+      "category": "compositional_reasoning",
+      "id": "en-cr-07",
+      "language": "en",
+      "options": [
+        "14",
+        "27",
+        "29",
+        "28"
+      ],
+      "prompt": "Add 5 and 9, then double the result."
+    },
+    {
+      "answer": "62",
+      "category": "compositional_reasoning",
+      "id": "en-cr-08",
+      "language": "en",
+      "options": [
+        "62",
+        "31",
+        "61",
+        "63"
+      ],
+      "prompt": "Add 19 and 12, then double the result."
+    },
+    {
+      "answer": "70",
+      "category": "compositional_reasoning",
+      "id": "en-cr-09",
+      "language": "en",
+      "options": [
+        "35",
+        "70",
+        "69",
+        "71"
+      ],
+      "prompt": "Add 24 and 11, then double the result."
+    },
+    {
+      "answer": "20",
+      "category": "compositional_reasoning",
+      "id": "en-cr-10",
+      "language": "en",
+      "options": [
+        "10",
+        "19",
+        "20",
+        "21"
+      ],
+      "prompt": "Add 3 and 7, then double the result."
+    },
+    {
+      "answer": "74",
+      "category": "compositional_reasoning",
+      "id": "en-cr-11",
+      "language": "en",
+      "options": [
+        "37",
+        "73",
+        "75",
+        "74"
+      ],
+      "prompt": "Add 29 and 8, then double the result."
+    },
+    {
+      "answer": "50",
+      "category": "compositional_reasoning",
+      "id": "en-cr-12",
+      "language": "en",
+      "options": [
+        "50",
+        "25",
+        "49",
+        "51"
+      ],
+      "prompt": "Add 23 and 2, then double the result."
+    },
+    {
+      "answer": "50",
+      "category": "compositional_reasoning",
+      "id": "en-cr-13",
+      "language": "en",
+      "options": [
+        "25",
+        "50",
+        "49",
+        "51"
+      ],
+      "prompt": "Add 21 and 4, then double the result."
+    },
+    {
+      "answer": "62",
+      "category": "compositional_reasoning",
+      "id": "en-cr-14",
+      "language": "en",
+      "options": [
+        "31",
+        "61",
+        "62",
+        "63"
+      ],
+      "prompt": "Add 24 and 7, then double the result."
+    },
+    {
+      "answer": "24",
+      "category": "compositional_reasoning",
+      "id": "en-cr-15",
+      "language": "en",
+      "options": [
+        "12",
+        "23",
+        "25",
+        "24"
+      ],
+      "prompt": "Add 6 and 6, then double the result."
+    },
+    {
+      "answer": "78",
+      "category": "compositional_reasoning",
+      "id": "en-cr-16",
+      "language": "en",
+      "options": [
+        "78",
+        "39",
+        "77",
+        "79"
+      ],
+      "prompt": "Add 29 and 10, then double the result."
+    },
+    {
+      "answer": "60",
+      "category": "compositional_reasoning",
+      "id": "en-cr-17",
+      "language": "en",
+      "options": [
+        "30",
+        "60",
+        "59",
+        "61"
+      ],
+      "prompt": "Add 28 and 2, then double the result."
+    },
+    {
+      "answer": "34",
+      "category": "compositional_reasoning",
+      "id": "en-cr-18",
+      "language": "en",
+      "options": [
+        "17",
+        "33",
+        "34",
+        "35"
+      ],
+      "prompt": "Add 15 and 2, then double the result."
+    },
+    {
+      "answer": "48",
+      "category": "compositional_reasoning",
+      "id": "en-cr-19",
+      "language": "en",
+      "options": [
+        "24",
+        "47",
+        "49",
+        "48"
+      ],
+      "prompt": "Add 13 and 11, then double the result."
+    },
+    {
+      "answer": "16",
+      "category": "compositional_reasoning",
+      "id": "en-cr-20",
+      "language": "en",
+      "options": [
+        "16",
+        "8",
+        "15",
+        "17"
+      ],
+      "prompt": "Add 4 and 4, then double the result."
+    },
+    {
+      "answer": "56",
+      "category": "compositional_reasoning",
+      "id": "en-cr-21",
+      "language": "en",
+      "options": [
+        "28",
+        "56",
+        "55",
+        "57"
+      ],
+      "prompt": "Add 23 and 5, then double the result."
+    },
+    {
+      "answer": "58",
+      "category": "compositional_reasoning",
+      "id": "en-cr-22",
+      "language": "en",
+      "options": [
+        "29",
+        "57",
+        "58",
+        "59"
+      ],
+      "prompt": "Add 14 and 15, then double the result."
+    },
+    {
+      "answer": "84",
+      "category": "compositional_reasoning",
+      "id": "en-cr-23",
+      "language": "en",
+      "options": [
+        "42",
+        "83",
+        "85",
+        "84"
+      ],
+      "prompt": "Add 27 and 15, then double the result."
+    },
+    {
+      "answer": "amber",
+      "category": "instruction_following",
+      "id": "en-if-00",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the first word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "cobalt",
+      "category": "instruction_following",
+      "id": "en-if-01",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the second word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "silver",
+      "category": "instruction_following",
+      "id": "en-if-02",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the third word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "violet",
+      "category": "instruction_following",
+      "id": "en-if-03",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the fourth word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "amber",
+      "category": "instruction_following",
+      "id": "en-if-04",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the first word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "cobalt",
+      "category": "instruction_following",
+      "id": "en-if-05",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the second word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "silver",
+      "category": "instruction_following",
+      "id": "en-if-06",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the third word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "violet",
+      "category": "instruction_following",
+      "id": "en-if-07",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the fourth word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "amber",
+      "category": "instruction_following",
+      "id": "en-if-08",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the first word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "cobalt",
+      "category": "instruction_following",
+      "id": "en-if-09",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the second word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "silver",
+      "category": "instruction_following",
+      "id": "en-if-10",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the third word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "violet",
+      "category": "instruction_following",
+      "id": "en-if-11",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the fourth word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "amber",
+      "category": "instruction_following",
+      "id": "en-if-12",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the first word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "cobalt",
+      "category": "instruction_following",
+      "id": "en-if-13",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the second word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "silver",
+      "category": "instruction_following",
+      "id": "en-if-14",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the third word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "violet",
+      "category": "instruction_following",
+      "id": "en-if-15",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the fourth word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "amber",
+      "category": "instruction_following",
+      "id": "en-if-16",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the first word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "cobalt",
+      "category": "instruction_following",
+      "id": "en-if-17",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the second word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "silver",
+      "category": "instruction_following",
+      "id": "en-if-18",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the third word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "violet",
+      "category": "instruction_following",
+      "id": "en-if-19",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the fourth word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "amber",
+      "category": "instruction_following",
+      "id": "en-if-20",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the first word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "cobalt",
+      "category": "instruction_following",
+      "id": "en-if-21",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the second word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "silver",
+      "category": "instruction_following",
+      "id": "en-if-22",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the third word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "violet",
+      "category": "instruction_following",
+      "id": "en-if-23",
+      "language": "en",
+      "options": [
+        "amber",
+        "cobalt",
+        "silver",
+        "violet"
+      ],
+      "prompt": "Return the fourth word, not an alphabetic ordering: amber cobalt silver violet."
+    },
+    {
+      "answer": "Q78",
+      "category": "retrieval",
+      "id": "en-rt-00",
+      "language": "en",
+      "options": [
+        "Q78",
+        "R47",
+        "S27",
+        "87Q"
+      ],
+      "prompt": "Reference: Luma=Q78; Taro=R47; Nira=S27. Luma?"
+    },
+    {
+      "answer": "R75",
+      "category": "retrieval",
+      "id": "en-rt-01",
+      "language": "en",
+      "options": [
+        "Q52",
+        "R75",
+        "S21",
+        "57R"
+      ],
+      "prompt": "Reference: Luma=Q52; Taro=R75; Nira=S21. Taro?"
+    },
+    {
+      "answer": "S64",
+      "category": "retrieval",
+      "id": "en-rt-02",
+      "language": "en",
+      "options": [
+        "Q77",
+        "R16",
+        "S64",
+        "46S"
+      ],
+      "prompt": "Reference: Luma=Q77; Taro=R16; Nira=S64. Nira?"
+    },
+    {
+      "answer": "Q64",
+      "category": "retrieval",
+      "id": "en-rt-03",
+      "language": "en",
+      "options": [
+        "R59",
+        "S34",
+        "46Q",
+        "Q64"
+      ],
+      "prompt": "Reference: Luma=Q64; Taro=R59; Nira=S34. Luma?"
+    },
+    {
+      "answer": "R42",
+      "category": "retrieval",
+      "id": "en-rt-04",
+      "language": "en",
+      "options": [
+        "R42",
+        "Q37",
+        "S53",
+        "24R"
+      ],
+      "prompt": "Reference: Luma=Q37; Taro=R42; Nira=S53. Taro?"
+    },
+    {
+      "answer": "S25",
+      "category": "retrieval",
+      "id": "en-rt-05",
+      "language": "en",
+      "options": [
+        "Q33",
+        "S25",
+        "R99",
+        "52S"
+      ],
+      "prompt": "Reference: Luma=Q33; Taro=R99; Nira=S25. Nira?"
+    },
+    {
+      "answer": "Q74",
+      "category": "retrieval",
+      "id": "en-rt-06",
+      "language": "en",
+      "options": [
+        "R30",
+        "S55",
+        "Q74",
+        "47Q"
+      ],
+      "prompt": "Reference: Luma=Q74; Taro=R30; Nira=S55. Luma?"
+    },
+    {
+      "answer": "R44",
+      "category": "retrieval",
+      "id": "en-rt-07",
+      "language": "en",
+      "options": [
+        "Q67",
+        "S93",
+        "44R",
+        "R44"
+      ],
+      "prompt": "Reference: Luma=Q67; Taro=R44; Nira=S93. Taro?"
+    },
+    {
+      "answer": "S88",
+      "category": "retrieval",
+      "id": "en-rt-08",
+      "language": "en",
+      "options": [
+        "S88",
+        "Q54",
+        "R42",
+        "88S"
+      ],
+      "prompt": "Reference: Luma=Q54; Taro=R42; Nira=S88. Nira?"
+    },
+    {
+      "answer": "Q49",
+      "category": "retrieval",
+      "id": "en-rt-09",
+      "language": "en",
+      "options": [
+        "R19",
+        "Q49",
+        "S51",
+        "94Q"
+      ],
+      "prompt": "Reference: Luma=Q49; Taro=R19; Nira=S51. Luma?"
+    },
+    {
+      "answer": "R74",
+      "category": "retrieval",
+      "id": "en-rt-10",
+      "language": "en",
+      "options": [
+        "Q66",
+        "S65",
+        "R74",
+        "47R"
+      ],
+      "prompt": "Reference: Luma=Q66; Taro=R74; Nira=S65. Taro?"
+    },
+    {
+      "answer": "S16",
+      "category": "retrieval",
+      "id": "en-rt-11",
+      "language": "en",
+      "options": [
+        "Q46",
+        "R85",
+        "61S",
+        "S16"
+      ],
+      "prompt": "Reference: Luma=Q46; Taro=R85; Nira=S16. Nira?"
+    },
+    {
+      "answer": "Q90",
+      "category": "retrieval",
+      "id": "en-rt-12",
+      "language": "en",
+      "options": [
+        "Q90",
+        "R14",
+        "S81",
+        "09Q"
+      ],
+      "prompt": "Reference: Luma=Q90; Taro=R14; Nira=S81. Luma?"
+    },
+    {
+      "answer": "R16",
+      "category": "retrieval",
+      "id": "en-rt-13",
+      "language": "en",
+      "options": [
+        "Q91",
+        "R16",
+        "S30",
+        "61R"
+      ],
+      "prompt": "Reference: Luma=Q91; Taro=R16; Nira=S30. Taro?"
+    },
+    {
+      "answer": "S44",
+      "category": "retrieval",
+      "id": "en-rt-14",
+      "language": "en",
+      "options": [
+        "Q94",
+        "R65",
+        "S44",
+        "44S"
+      ],
+      "prompt": "Reference: Luma=Q94; Taro=R65; Nira=S44. Nira?"
+    },
+    {
+      "answer": "Q60",
+      "category": "retrieval",
+      "id": "en-rt-15",
+      "language": "en",
+      "options": [
+        "R85",
+        "S52",
+        "06Q",
+        "Q60"
+      ],
+      "prompt": "Reference: Luma=Q60; Taro=R85; Nira=S52. Luma?"
+    },
+    {
+      "answer": "R14",
+      "category": "retrieval",
+      "id": "en-rt-16",
+      "language": "en",
+      "options": [
+        "R14",
+        "Q34",
+        "S54",
+        "41R"
+      ],
+      "prompt": "Reference: Luma=Q34; Taro=R14; Nira=S54. Taro?"
+    },
+    {
+      "answer": "S88",
+      "category": "retrieval",
+      "id": "en-rt-17",
+      "language": "en",
+      "options": [
+        "Q85",
+        "S88",
+        "R39",
+        "88S"
+      ],
+      "prompt": "Reference: Luma=Q85; Taro=R39; Nira=S88. Nira?"
+    },
+    {
+      "answer": "Q57",
+      "category": "retrieval",
+      "id": "en-rt-18",
+      "language": "en",
+      "options": [
+        "R26",
+        "S59",
+        "Q57",
+        "75Q"
+      ],
+      "prompt": "Reference: Luma=Q57; Taro=R26; Nira=S59. Luma?"
+    },
+    {
+      "answer": "R89",
+      "category": "retrieval",
+      "id": "en-rt-19",
+      "language": "en",
+      "options": [
+        "Q64",
+        "S52",
+        "98R",
+        "R89"
+      ],
+      "prompt": "Reference: Luma=Q64; Taro=R89; Nira=S52. Taro?"
+    },
+    {
+      "answer": "S44",
+      "category": "retrieval",
+      "id": "en-rt-20",
+      "language": "en",
+      "options": [
+        "S44",
+        "Q76",
+        "R65",
+        "44S"
+      ],
+      "prompt": "Reference: Luma=Q76; Taro=R65; Nira=S44. Nira?"
+    },
+    {
+      "answer": "Q96",
+      "category": "retrieval",
+      "id": "en-rt-21",
+      "language": "en",
+      "options": [
+        "R51",
+        "Q96",
+        "S89",
+        "69Q"
+      ],
+      "prompt": "Reference: Luma=Q96; Taro=R51; Nira=S89. Luma?"
+    },
+    {
+      "answer": "R91",
+      "category": "retrieval",
+      "id": "en-rt-22",
+      "language": "en",
+      "options": [
+        "Q31",
+        "S52",
+        "R91",
+        "19R"
+      ],
+      "prompt": "Reference: Luma=Q31; Taro=R91; Nira=S52. Taro?"
+    },
+    {
+      "answer": "S77",
+      "category": "retrieval",
+      "id": "en-rt-23",
+      "language": "en",
+      "options": [
+        "Q83",
+        "R85",
+        "77S",
+        "S77"
+      ],
+      "prompt": "Reference: Luma=Q83; Taro=R85; Nira=S77. Nira?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-00",
+      "language": "en",
+      "options": [
+        "Ada",
+        "Mira",
+        "Jon",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-01",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Lina",
+        "Jon",
+        "Ada"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-02",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-03",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-04",
+      "language": "en",
+      "options": [
+        "Ada",
+        "Mira",
+        "Jon",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-05",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Lina",
+        "Jon",
+        "Ada"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-06",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-07",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-08",
+      "language": "en",
+      "options": [
+        "Ada",
+        "Mira",
+        "Jon",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-09",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Lina",
+        "Jon",
+        "Ada"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-10",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-11",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-12",
+      "language": "en",
+      "options": [
+        "Ada",
+        "Mira",
+        "Jon",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-13",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Lina",
+        "Jon",
+        "Ada"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-14",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-15",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-16",
+      "language": "en",
+      "options": [
+        "Ada",
+        "Mira",
+        "Jon",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-17",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Lina",
+        "Jon",
+        "Ada"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-18",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-19",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-20",
+      "language": "en",
+      "options": [
+        "Ada",
+        "Mira",
+        "Jon",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-21",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Lina",
+        "Jon",
+        "Ada"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "Ada",
+      "category": "state_tracking",
+      "id": "en-st-22",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Who holds it now?"
+    },
+    {
+      "answer": "Lina",
+      "category": "state_tracking",
+      "id": "en-st-23",
+      "language": "en",
+      "options": [
+        "Mira",
+        "Jon",
+        "Ada",
+        "Lina"
+      ],
+      "prompt": "Mira holds the key. Mira gives it to Jon. Jon gives it to Ada. Ada gives it to Lina. Who holds it now?"
+    },
+    {
+      "answer": "{\"k0\":15}",
+      "category": "tool_syntax",
+      "id": "en-ts-00",
+      "language": "en",
+      "options": [
+        "{\"k0\":15}",
+        "{k0:15}",
+        "{\"k0\":\"15\"}",
+        "k0=15"
+      ],
+      "prompt": "Return the valid JSON object mapping k0 to numeric value 15."
+    },
+    {
+      "answer": "{\"k1\":36}",
+      "category": "tool_syntax",
+      "id": "en-ts-01",
+      "language": "en",
+      "options": [
+        "{k1:36}",
+        "{\"k1\":36}",
+        "{\"k1\":\"36\"}",
+        "k1=36"
+      ],
+      "prompt": "Return the valid JSON object mapping k1 to numeric value 36."
+    },
+    {
+      "answer": "{\"k2\":65}",
+      "category": "tool_syntax",
+      "id": "en-ts-02",
+      "language": "en",
+      "options": [
+        "{k2:65}",
+        "{\"k2\":\"65\"}",
+        "{\"k2\":65}",
+        "k2=65"
+      ],
+      "prompt": "Return the valid JSON object mapping k2 to numeric value 65."
+    },
+    {
+      "answer": "{\"k3\":45}",
+      "category": "tool_syntax",
+      "id": "en-ts-03",
+      "language": "en",
+      "options": [
+        "{k3:45}",
+        "{\"k3\":\"45\"}",
+        "k3=45",
+        "{\"k3\":45}"
+      ],
+      "prompt": "Return the valid JSON object mapping k3 to numeric value 45."
+    },
+    {
+      "answer": "{\"k4\":95}",
+      "category": "tool_syntax",
+      "id": "en-ts-04",
+      "language": "en",
+      "options": [
+        "{\"k4\":95}",
+        "{k4:95}",
+        "{\"k4\":\"95\"}",
+        "k4=95"
+      ],
+      "prompt": "Return the valid JSON object mapping k4 to numeric value 95."
+    },
+    {
+      "answer": "{\"k5\":93}",
+      "category": "tool_syntax",
+      "id": "en-ts-05",
+      "language": "en",
+      "options": [
+        "{k5:93}",
+        "{\"k5\":93}",
+        "{\"k5\":\"93\"}",
+        "k5=93"
+      ],
+      "prompt": "Return the valid JSON object mapping k5 to numeric value 93."
+    },
+    {
+      "answer": "{\"k6\":93}",
+      "category": "tool_syntax",
+      "id": "en-ts-06",
+      "language": "en",
+      "options": [
+        "{k6:93}",
+        "{\"k6\":\"93\"}",
+        "{\"k6\":93}",
+        "k6=93"
+      ],
+      "prompt": "Return the valid JSON object mapping k6 to numeric value 93."
+    },
+    {
+      "answer": "{\"k7\":44}",
+      "category": "tool_syntax",
+      "id": "en-ts-07",
+      "language": "en",
+      "options": [
+        "{k7:44}",
+        "{\"k7\":\"44\"}",
+        "k7=44",
+        "{\"k7\":44}"
+      ],
+      "prompt": "Return the valid JSON object mapping k7 to numeric value 44."
+    },
+    {
+      "answer": "{\"k8\":54}",
+      "category": "tool_syntax",
+      "id": "en-ts-08",
+      "language": "en",
+      "options": [
+        "{\"k8\":54}",
+        "{k8:54}",
+        "{\"k8\":\"54\"}",
+        "k8=54"
+      ],
+      "prompt": "Return the valid JSON object mapping k8 to numeric value 54."
+    },
+    {
+      "answer": "{\"k9\":53}",
+      "category": "tool_syntax",
+      "id": "en-ts-09",
+      "language": "en",
+      "options": [
+        "{k9:53}",
+        "{\"k9\":53}",
+        "{\"k9\":\"53\"}",
+        "k9=53"
+      ],
+      "prompt": "Return the valid JSON object mapping k9 to numeric value 53."
+    },
+    {
+      "answer": "{\"k10\":78}",
+      "category": "tool_syntax",
+      "id": "en-ts-10",
+      "language": "en",
+      "options": [
+        "{k10:78}",
+        "{\"k10\":\"78\"}",
+        "{\"k10\":78}",
+        "k10=78"
+      ],
+      "prompt": "Return the valid JSON object mapping k10 to numeric value 78."
+    },
+    {
+      "answer": "{\"k11\":20}",
+      "category": "tool_syntax",
+      "id": "en-ts-11",
+      "language": "en",
+      "options": [
+        "{k11:20}",
+        "{\"k11\":\"20\"}",
+        "k11=20",
+        "{\"k11\":20}"
+      ],
+      "prompt": "Return the valid JSON object mapping k11 to numeric value 20."
+    },
+    {
+      "answer": "{\"k12\":36}",
+      "category": "tool_syntax",
+      "id": "en-ts-12",
+      "language": "en",
+      "options": [
+        "{\"k12\":36}",
+        "{k12:36}",
+        "{\"k12\":\"36\"}",
+        "k12=36"
+      ],
+      "prompt": "Return the valid JSON object mapping k12 to numeric value 36."
+    },
+    {
+      "answer": "{\"k13\":82}",
+      "category": "tool_syntax",
+      "id": "en-ts-13",
+      "language": "en",
+      "options": [
+        "{k13:82}",
+        "{\"k13\":82}",
+        "{\"k13\":\"82\"}",
+        "k13=82"
+      ],
+      "prompt": "Return the valid JSON object mapping k13 to numeric value 82."
+    },
+    {
+      "answer": "{\"k14\":61}",
+      "category": "tool_syntax",
+      "id": "en-ts-14",
+      "language": "en",
+      "options": [
+        "{k14:61}",
+        "{\"k14\":\"61\"}",
+        "{\"k14\":61}",
+        "k14=61"
+      ],
+      "prompt": "Return the valid JSON object mapping k14 to numeric value 61."
+    },
+    {
+      "answer": "{\"k15\":80}",
+      "category": "tool_syntax",
+      "id": "en-ts-15",
+      "language": "en",
+      "options": [
+        "{k15:80}",
+        "{\"k15\":\"80\"}",
+        "k15=80",
+        "{\"k15\":80}"
+      ],
+      "prompt": "Return the valid JSON object mapping k15 to numeric value 80."
+    },
+    {
+      "answer": "{\"k16\":91}",
+      "category": "tool_syntax",
+      "id": "en-ts-16",
+      "language": "en",
+      "options": [
+        "{\"k16\":91}",
+        "{k16:91}",
+        "{\"k16\":\"91\"}",
+        "k16=91"
+      ],
+      "prompt": "Return the valid JSON object mapping k16 to numeric value 91."
+    },
+    {
+      "answer": "{\"k17\":17}",
+      "category": "tool_syntax",
+      "id": "en-ts-17",
+      "language": "en",
+      "options": [
+        "{k17:17}",
+        "{\"k17\":17}",
+        "{\"k17\":\"17\"}",
+        "k17=17"
+      ],
+      "prompt": "Return the valid JSON object mapping k17 to numeric value 17."
+    },
+    {
+      "answer": "{\"k18\":84}",
+      "category": "tool_syntax",
+      "id": "en-ts-18",
+      "language": "en",
+      "options": [
+        "{k18:84}",
+        "{\"k18\":\"84\"}",
+        "{\"k18\":84}",
+        "k18=84"
+      ],
+      "prompt": "Return the valid JSON object mapping k18 to numeric value 84."
+    },
+    {
+      "answer": "{\"k19\":47}",
+      "category": "tool_syntax",
+      "id": "en-ts-19",
+      "language": "en",
+      "options": [
+        "{k19:47}",
+        "{\"k19\":\"47\"}",
+        "k19=47",
+        "{\"k19\":47}"
+      ],
+      "prompt": "Return the valid JSON object mapping k19 to numeric value 47."
+    },
+    {
+      "answer": "{\"k20\":82}",
+      "category": "tool_syntax",
+      "id": "en-ts-20",
+      "language": "en",
+      "options": [
+        "{\"k20\":82}",
+        "{k20:82}",
+        "{\"k20\":\"82\"}",
+        "k20=82"
+      ],
+      "prompt": "Return the valid JSON object mapping k20 to numeric value 82."
+    },
+    {
+      "answer": "{\"k21\":78}",
+      "category": "tool_syntax",
+      "id": "en-ts-21",
+      "language": "en",
+      "options": [
+        "{k21:78}",
+        "{\"k21\":78}",
+        "{\"k21\":\"78\"}",
+        "k21=78"
+      ],
+      "prompt": "Return the valid JSON object mapping k21 to numeric value 78."
+    },
+    {
+      "answer": "{\"k22\":63}",
+      "category": "tool_syntax",
+      "id": "en-ts-22",
+      "language": "en",
+      "options": [
+        "{k22:63}",
+        "{\"k22\":\"63\"}",
+        "{\"k22\":63}",
+        "k22=63"
+      ],
+      "prompt": "Return the valid JSON object mapping k22 to numeric value 63."
+    },
+    {
+      "answer": "{\"k23\":1}",
+      "category": "tool_syntax",
+      "id": "en-ts-23",
+      "language": "en",
+      "options": [
+        "{k23:1}",
+        "{\"k23\":\"1\"}",
+        "k23=1",
+        "{\"k23\":1}"
+      ],
+      "prompt": "Return the valid JSON object mapping k23 to numeric value 1."
+    },
+    {
+      "answer": "60",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-00",
+      "language": "tr",
+      "options": [
+        "60",
+        "30",
+        "59",
+        "61"
+      ],
+      "prompt": "24 ile 6 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "36",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-01",
+      "language": "tr",
+      "options": [
+        "18",
+        "36",
+        "35",
+        "37"
+      ],
+      "prompt": "9 ile 9 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "78",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-02",
+      "language": "tr",
+      "options": [
+        "39",
+        "77",
+        "78",
+        "79"
+      ],
+      "prompt": "29 ile 10 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "40",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-03",
+      "language": "tr",
+      "options": [
+        "20",
+        "39",
+        "41",
+        "40"
+      ],
+      "prompt": "6 ile 14 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "40",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-04",
+      "language": "tr",
+      "options": [
+        "40",
+        "20",
+        "39",
+        "41"
+      ],
+      "prompt": "11 ile 9 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "32",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-05",
+      "language": "tr",
+      "options": [
+        "16",
+        "32",
+        "31",
+        "33"
+      ],
+      "prompt": "7 ile 9 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "34",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-06",
+      "language": "tr",
+      "options": [
+        "17",
+        "33",
+        "34",
+        "35"
+      ],
+      "prompt": "15 ile 2 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "44",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-07",
+      "language": "tr",
+      "options": [
+        "22",
+        "43",
+        "45",
+        "44"
+      ],
+      "prompt": "18 ile 4 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "20",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-08",
+      "language": "tr",
+      "options": [
+        "20",
+        "10",
+        "19",
+        "21"
+      ],
+      "prompt": "7 ile 3 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "64",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-09",
+      "language": "tr",
+      "options": [
+        "32",
+        "64",
+        "63",
+        "65"
+      ],
+      "prompt": "28 ile 4 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "70",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-10",
+      "language": "tr",
+      "options": [
+        "35",
+        "69",
+        "70",
+        "71"
+      ],
+      "prompt": "25 ile 10 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "36",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-11",
+      "language": "tr",
+      "options": [
+        "18",
+        "35",
+        "37",
+        "36"
+      ],
+      "prompt": "10 ile 8 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "20",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-12",
+      "language": "tr",
+      "options": [
+        "20",
+        "10",
+        "19",
+        "21"
+      ],
+      "prompt": "8 ile 2 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "42",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-13",
+      "language": "tr",
+      "options": [
+        "21",
+        "42",
+        "41",
+        "43"
+      ],
+      "prompt": "8 ile 13 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "64",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-14",
+      "language": "tr",
+      "options": [
+        "32",
+        "63",
+        "64",
+        "65"
+      ],
+      "prompt": "23 ile 9 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "24",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-15",
+      "language": "tr",
+      "options": [
+        "12",
+        "23",
+        "25",
+        "24"
+      ],
+      "prompt": "6 ile 6 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "58",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-16",
+      "language": "tr",
+      "options": [
+        "58",
+        "29",
+        "57",
+        "59"
+      ],
+      "prompt": "18 ile 11 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "56",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-17",
+      "language": "tr",
+      "options": [
+        "28",
+        "56",
+        "55",
+        "57"
+      ],
+      "prompt": "22 ile 6 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "40",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-18",
+      "language": "tr",
+      "options": [
+        "20",
+        "39",
+        "40",
+        "41"
+      ],
+      "prompt": "9 ile 11 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "40",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-19",
+      "language": "tr",
+      "options": [
+        "20",
+        "39",
+        "41",
+        "40"
+      ],
+      "prompt": "16 ile 4 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "36",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-20",
+      "language": "tr",
+      "options": [
+        "36",
+        "18",
+        "35",
+        "37"
+      ],
+      "prompt": "7 ile 11 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "40",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-21",
+      "language": "tr",
+      "options": [
+        "20",
+        "40",
+        "39",
+        "41"
+      ],
+      "prompt": "8 ile 12 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "76",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-22",
+      "language": "tr",
+      "options": [
+        "38",
+        "75",
+        "76",
+        "77"
+      ],
+      "prompt": "29 ile 9 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "24",
+      "category": "compositional_reasoning",
+      "id": "tr-cr-23",
+      "language": "tr",
+      "options": [
+        "12",
+        "23",
+        "25",
+        "24"
+      ],
+      "prompt": "4 ile 8 sayısını topla, sonra sonucu ikiyle çarp."
+    },
+    {
+      "answer": "kehribar",
+      "category": "instruction_following",
+      "id": "tr-if-00",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan birinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kobalt",
+      "category": "instruction_following",
+      "id": "tr-if-01",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan ikinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "gümüş",
+      "category": "instruction_following",
+      "id": "tr-if-02",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan üçüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "mor",
+      "category": "instruction_following",
+      "id": "tr-if-03",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan dördüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kehribar",
+      "category": "instruction_following",
+      "id": "tr-if-04",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan birinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kobalt",
+      "category": "instruction_following",
+      "id": "tr-if-05",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan ikinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "gümüş",
+      "category": "instruction_following",
+      "id": "tr-if-06",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan üçüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "mor",
+      "category": "instruction_following",
+      "id": "tr-if-07",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan dördüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kehribar",
+      "category": "instruction_following",
+      "id": "tr-if-08",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan birinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kobalt",
+      "category": "instruction_following",
+      "id": "tr-if-09",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan ikinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "gümüş",
+      "category": "instruction_following",
+      "id": "tr-if-10",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan üçüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "mor",
+      "category": "instruction_following",
+      "id": "tr-if-11",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan dördüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kehribar",
+      "category": "instruction_following",
+      "id": "tr-if-12",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan birinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kobalt",
+      "category": "instruction_following",
+      "id": "tr-if-13",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan ikinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "gümüş",
+      "category": "instruction_following",
+      "id": "tr-if-14",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan üçüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "mor",
+      "category": "instruction_following",
+      "id": "tr-if-15",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan dördüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kehribar",
+      "category": "instruction_following",
+      "id": "tr-if-16",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan birinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kobalt",
+      "category": "instruction_following",
+      "id": "tr-if-17",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan ikinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "gümüş",
+      "category": "instruction_following",
+      "id": "tr-if-18",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan üçüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "mor",
+      "category": "instruction_following",
+      "id": "tr-if-19",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan dördüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kehribar",
+      "category": "instruction_following",
+      "id": "tr-if-20",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan birinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "kobalt",
+      "category": "instruction_following",
+      "id": "tr-if-21",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan ikinci sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "gümüş",
+      "category": "instruction_following",
+      "id": "tr-if-22",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan üçüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "mor",
+      "category": "instruction_following",
+      "id": "tr-if-23",
+      "language": "tr",
+      "options": [
+        "kehribar",
+        "kobalt",
+        "gümüş",
+        "mor"
+      ],
+      "prompt": "Alfabetik sıralama yapmadan dördüncü sözcüğü döndür: kehribar kobalt gümüş mor."
+    },
+    {
+      "answer": "Q12",
+      "category": "retrieval",
+      "id": "tr-rt-00",
+      "language": "tr",
+      "options": [
+        "Q12",
+        "R29",
+        "S70",
+        "21Q"
+      ],
+      "prompt": "Kaynak: Luma=Q12; Taro=R29; Nira=S70. Luma?"
+    },
+    {
+      "answer": "R46",
+      "category": "retrieval",
+      "id": "tr-rt-01",
+      "language": "tr",
+      "options": [
+        "Q35",
+        "R46",
+        "S46",
+        "64R"
+      ],
+      "prompt": "Kaynak: Luma=Q35; Taro=R46; Nira=S46. Taro?"
+    },
+    {
+      "answer": "S43",
+      "category": "retrieval",
+      "id": "tr-rt-02",
+      "language": "tr",
+      "options": [
+        "Q26",
+        "R66",
+        "S43",
+        "34S"
+      ],
+      "prompt": "Kaynak: Luma=Q26; Taro=R66; Nira=S43. Nira?"
+    },
+    {
+      "answer": "Q38",
+      "category": "retrieval",
+      "id": "tr-rt-03",
+      "language": "tr",
+      "options": [
+        "R73",
+        "S25",
+        "83Q",
+        "Q38"
+      ],
+      "prompt": "Kaynak: Luma=Q38; Taro=R73; Nira=S25. Luma?"
+    },
+    {
+      "answer": "R38",
+      "category": "retrieval",
+      "id": "tr-rt-04",
+      "language": "tr",
+      "options": [
+        "R38",
+        "Q58",
+        "S12",
+        "83R"
+      ],
+      "prompt": "Kaynak: Luma=Q58; Taro=R38; Nira=S12. Taro?"
+    },
+    {
+      "answer": "S87",
+      "category": "retrieval",
+      "id": "tr-rt-05",
+      "language": "tr",
+      "options": [
+        "Q48",
+        "S87",
+        "R30",
+        "78S"
+      ],
+      "prompt": "Kaynak: Luma=Q48; Taro=R30; Nira=S87. Nira?"
+    },
+    {
+      "answer": "Q73",
+      "category": "retrieval",
+      "id": "tr-rt-06",
+      "language": "tr",
+      "options": [
+        "R24",
+        "S60",
+        "Q73",
+        "37Q"
+      ],
+      "prompt": "Kaynak: Luma=Q73; Taro=R24; Nira=S60. Luma?"
+    },
+    {
+      "answer": "R18",
+      "category": "retrieval",
+      "id": "tr-rt-07",
+      "language": "tr",
+      "options": [
+        "Q36",
+        "S64",
+        "81R",
+        "R18"
+      ],
+      "prompt": "Kaynak: Luma=Q36; Taro=R18; Nira=S64. Taro?"
+    },
+    {
+      "answer": "S16",
+      "category": "retrieval",
+      "id": "tr-rt-08",
+      "language": "tr",
+      "options": [
+        "S16",
+        "Q48",
+        "R14",
+        "61S"
+      ],
+      "prompt": "Kaynak: Luma=Q48; Taro=R14; Nira=S16. Nira?"
+    },
+    {
+      "answer": "Q30",
+      "category": "retrieval",
+      "id": "tr-rt-09",
+      "language": "tr",
+      "options": [
+        "R75",
+        "Q30",
+        "S13",
+        "03Q"
+      ],
+      "prompt": "Kaynak: Luma=Q30; Taro=R75; Nira=S13. Luma?"
+    },
+    {
+      "answer": "R82",
+      "category": "retrieval",
+      "id": "tr-rt-10",
+      "language": "tr",
+      "options": [
+        "Q13",
+        "S90",
+        "R82",
+        "28R"
+      ],
+      "prompt": "Kaynak: Luma=Q13; Taro=R82; Nira=S90. Taro?"
+    },
+    {
+      "answer": "S32",
+      "category": "retrieval",
+      "id": "tr-rt-11",
+      "language": "tr",
+      "options": [
+        "Q46",
+        "R77",
+        "23S",
+        "S32"
+      ],
+      "prompt": "Kaynak: Luma=Q46; Taro=R77; Nira=S32. Nira?"
+    },
+    {
+      "answer": "Q44",
+      "category": "retrieval",
+      "id": "tr-rt-12",
+      "language": "tr",
+      "options": [
+        "Q44",
+        "R82",
+        "S44",
+        "44Q"
+      ],
+      "prompt": "Kaynak: Luma=Q44; Taro=R82; Nira=S44. Luma?"
+    },
+    {
+      "answer": "R42",
+      "category": "retrieval",
+      "id": "tr-rt-13",
+      "language": "tr",
+      "options": [
+        "Q39",
+        "R42",
+        "S74",
+        "24R"
+      ],
+      "prompt": "Kaynak: Luma=Q39; Taro=R42; Nira=S74. Taro?"
+    },
+    {
+      "answer": "S63",
+      "category": "retrieval",
+      "id": "tr-rt-14",
+      "language": "tr",
+      "options": [
+        "Q75",
+        "R88",
+        "S63",
+        "36S"
+      ],
+      "prompt": "Kaynak: Luma=Q75; Taro=R88; Nira=S63. Nira?"
+    },
+    {
+      "answer": "Q44",
+      "category": "retrieval",
+      "id": "tr-rt-15",
+      "language": "tr",
+      "options": [
+        "R85",
+        "S57",
+        "44Q",
+        "Q44"
+      ],
+      "prompt": "Kaynak: Luma=Q44; Taro=R85; Nira=S57. Luma?"
+    },
+    {
+      "answer": "R44",
+      "category": "retrieval",
+      "id": "tr-rt-16",
+      "language": "tr",
+      "options": [
+        "R44",
+        "Q86",
+        "S98",
+        "44R"
+      ],
+      "prompt": "Kaynak: Luma=Q86; Taro=R44; Nira=S98. Taro?"
+    },
+    {
+      "answer": "S41",
+      "category": "retrieval",
+      "id": "tr-rt-17",
+      "language": "tr",
+      "options": [
+        "Q20",
+        "S41",
+        "R44",
+        "14S"
+      ],
+      "prompt": "Kaynak: Luma=Q20; Taro=R44; Nira=S41. Nira?"
+    },
+    {
+      "answer": "Q60",
+      "category": "retrieval",
+      "id": "tr-rt-18",
+      "language": "tr",
+      "options": [
+        "R26",
+        "S53",
+        "Q60",
+        "06Q"
+      ],
+      "prompt": "Kaynak: Luma=Q60; Taro=R26; Nira=S53. Luma?"
+    },
+    {
+      "answer": "R86",
+      "category": "retrieval",
+      "id": "tr-rt-19",
+      "language": "tr",
+      "options": [
+        "Q19",
+        "S67",
+        "68R",
+        "R86"
+      ],
+      "prompt": "Kaynak: Luma=Q19; Taro=R86; Nira=S67. Taro?"
+    },
+    {
+      "answer": "S87",
+      "category": "retrieval",
+      "id": "tr-rt-20",
+      "language": "tr",
+      "options": [
+        "S87",
+        "Q96",
+        "R68",
+        "78S"
+      ],
+      "prompt": "Kaynak: Luma=Q96; Taro=R68; Nira=S87. Nira?"
+    },
+    {
+      "answer": "Q82",
+      "category": "retrieval",
+      "id": "tr-rt-21",
+      "language": "tr",
+      "options": [
+        "R20",
+        "Q82",
+        "S83",
+        "28Q"
+      ],
+      "prompt": "Kaynak: Luma=Q82; Taro=R20; Nira=S83. Luma?"
+    },
+    {
+      "answer": "R89",
+      "category": "retrieval",
+      "id": "tr-rt-22",
+      "language": "tr",
+      "options": [
+        "Q21",
+        "S73",
+        "R89",
+        "98R"
+      ],
+      "prompt": "Kaynak: Luma=Q21; Taro=R89; Nira=S73. Taro?"
+    },
+    {
+      "answer": "S10",
+      "category": "retrieval",
+      "id": "tr-rt-23",
+      "language": "tr",
+      "options": [
+        "Q19",
+        "R43",
+        "01S",
+        "S10"
+      ],
+      "prompt": "Kaynak: Luma=Q19; Taro=R43; Nira=S10. Nira?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-00",
+      "language": "tr",
+      "options": [
+        "Bora",
+        "Ece",
+        "Can",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-01",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Duru",
+        "Can",
+        "Bora"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-02",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-03",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-04",
+      "language": "tr",
+      "options": [
+        "Bora",
+        "Ece",
+        "Can",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-05",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Duru",
+        "Can",
+        "Bora"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-06",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-07",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-08",
+      "language": "tr",
+      "options": [
+        "Bora",
+        "Ece",
+        "Can",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-09",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Duru",
+        "Can",
+        "Bora"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-10",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-11",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-12",
+      "language": "tr",
+      "options": [
+        "Bora",
+        "Ece",
+        "Can",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-13",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Duru",
+        "Can",
+        "Bora"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-14",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-15",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-16",
+      "language": "tr",
+      "options": [
+        "Bora",
+        "Ece",
+        "Can",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-17",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Duru",
+        "Can",
+        "Bora"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-18",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-19",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-20",
+      "language": "tr",
+      "options": [
+        "Bora",
+        "Ece",
+        "Can",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-21",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Duru",
+        "Can",
+        "Bora"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Bora",
+      "category": "state_tracking",
+      "id": "tr-st-22",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "Duru",
+      "category": "state_tracking",
+      "id": "tr-st-23",
+      "language": "tr",
+      "options": [
+        "Ece",
+        "Can",
+        "Bora",
+        "Duru"
+      ],
+      "prompt": "Anahtar Ece kişisindedir. Ece anahtarı Can kişisine verir. Can anahtarı Bora kişisine verir. Bora anahtarı Duru kişisine verir. Anahtar şimdi kimde?"
+    },
+    {
+      "answer": "{\"k0\":21}",
+      "category": "tool_syntax",
+      "id": "tr-ts-00",
+      "language": "tr",
+      "options": [
+        "{\"k0\":21}",
+        "{k0:21}",
+        "{\"k0\":\"21\"}",
+        "k0=21"
+      ],
+      "prompt": "k0 anahtarını 21 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k1\":60}",
+      "category": "tool_syntax",
+      "id": "tr-ts-01",
+      "language": "tr",
+      "options": [
+        "{k1:60}",
+        "{\"k1\":60}",
+        "{\"k1\":\"60\"}",
+        "k1=60"
+      ],
+      "prompt": "k1 anahtarını 60 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k2\":39}",
+      "category": "tool_syntax",
+      "id": "tr-ts-02",
+      "language": "tr",
+      "options": [
+        "{k2:39}",
+        "{\"k2\":\"39\"}",
+        "{\"k2\":39}",
+        "k2=39"
+      ],
+      "prompt": "k2 anahtarını 39 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k3\":74}",
+      "category": "tool_syntax",
+      "id": "tr-ts-03",
+      "language": "tr",
+      "options": [
+        "{k3:74}",
+        "{\"k3\":\"74\"}",
+        "k3=74",
+        "{\"k3\":74}"
+      ],
+      "prompt": "k3 anahtarını 74 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k4\":67}",
+      "category": "tool_syntax",
+      "id": "tr-ts-04",
+      "language": "tr",
+      "options": [
+        "{\"k4\":67}",
+        "{k4:67}",
+        "{\"k4\":\"67\"}",
+        "k4=67"
+      ],
+      "prompt": "k4 anahtarını 67 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k5\":93}",
+      "category": "tool_syntax",
+      "id": "tr-ts-05",
+      "language": "tr",
+      "options": [
+        "{k5:93}",
+        "{\"k5\":93}",
+        "{\"k5\":\"93\"}",
+        "k5=93"
+      ],
+      "prompt": "k5 anahtarını 93 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k6\":24}",
+      "category": "tool_syntax",
+      "id": "tr-ts-06",
+      "language": "tr",
+      "options": [
+        "{k6:24}",
+        "{\"k6\":\"24\"}",
+        "{\"k6\":24}",
+        "k6=24"
+      ],
+      "prompt": "k6 anahtarını 24 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k7\":9}",
+      "category": "tool_syntax",
+      "id": "tr-ts-07",
+      "language": "tr",
+      "options": [
+        "{k7:9}",
+        "{\"k7\":\"9\"}",
+        "k7=9",
+        "{\"k7\":9}"
+      ],
+      "prompt": "k7 anahtarını 9 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k8\":3}",
+      "category": "tool_syntax",
+      "id": "tr-ts-08",
+      "language": "tr",
+      "options": [
+        "{\"k8\":3}",
+        "{k8:3}",
+        "{\"k8\":\"3\"}",
+        "k8=3"
+      ],
+      "prompt": "k8 anahtarını 3 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k9\":52}",
+      "category": "tool_syntax",
+      "id": "tr-ts-09",
+      "language": "tr",
+      "options": [
+        "{k9:52}",
+        "{\"k9\":52}",
+        "{\"k9\":\"52\"}",
+        "k9=52"
+      ],
+      "prompt": "k9 anahtarını 52 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k10\":34}",
+      "category": "tool_syntax",
+      "id": "tr-ts-10",
+      "language": "tr",
+      "options": [
+        "{k10:34}",
+        "{\"k10\":\"34\"}",
+        "{\"k10\":34}",
+        "k10=34"
+      ],
+      "prompt": "k10 anahtarını 34 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k11\":18}",
+      "category": "tool_syntax",
+      "id": "tr-ts-11",
+      "language": "tr",
+      "options": [
+        "{k11:18}",
+        "{\"k11\":\"18\"}",
+        "k11=18",
+        "{\"k11\":18}"
+      ],
+      "prompt": "k11 anahtarını 18 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k12\":3}",
+      "category": "tool_syntax",
+      "id": "tr-ts-12",
+      "language": "tr",
+      "options": [
+        "{\"k12\":3}",
+        "{k12:3}",
+        "{\"k12\":\"3\"}",
+        "k12=3"
+      ],
+      "prompt": "k12 anahtarını 3 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k13\":24}",
+      "category": "tool_syntax",
+      "id": "tr-ts-13",
+      "language": "tr",
+      "options": [
+        "{k13:24}",
+        "{\"k13\":24}",
+        "{\"k13\":\"24\"}",
+        "k13=24"
+      ],
+      "prompt": "k13 anahtarını 24 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k14\":74}",
+      "category": "tool_syntax",
+      "id": "tr-ts-14",
+      "language": "tr",
+      "options": [
+        "{k14:74}",
+        "{\"k14\":\"74\"}",
+        "{\"k14\":74}",
+        "k14=74"
+      ],
+      "prompt": "k14 anahtarını 74 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k15\":21}",
+      "category": "tool_syntax",
+      "id": "tr-ts-15",
+      "language": "tr",
+      "options": [
+        "{k15:21}",
+        "{\"k15\":\"21\"}",
+        "k15=21",
+        "{\"k15\":21}"
+      ],
+      "prompt": "k15 anahtarını 21 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k16\":19}",
+      "category": "tool_syntax",
+      "id": "tr-ts-16",
+      "language": "tr",
+      "options": [
+        "{\"k16\":19}",
+        "{k16:19}",
+        "{\"k16\":\"19\"}",
+        "k16=19"
+      ],
+      "prompt": "k16 anahtarını 19 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k17\":70}",
+      "category": "tool_syntax",
+      "id": "tr-ts-17",
+      "language": "tr",
+      "options": [
+        "{k17:70}",
+        "{\"k17\":70}",
+        "{\"k17\":\"70\"}",
+        "k17=70"
+      ],
+      "prompt": "k17 anahtarını 70 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k18\":57}",
+      "category": "tool_syntax",
+      "id": "tr-ts-18",
+      "language": "tr",
+      "options": [
+        "{k18:57}",
+        "{\"k18\":\"57\"}",
+        "{\"k18\":57}",
+        "k18=57"
+      ],
+      "prompt": "k18 anahtarını 57 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k19\":40}",
+      "category": "tool_syntax",
+      "id": "tr-ts-19",
+      "language": "tr",
+      "options": [
+        "{k19:40}",
+        "{\"k19\":\"40\"}",
+        "k19=40",
+        "{\"k19\":40}"
+      ],
+      "prompt": "k19 anahtarını 40 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k20\":64}",
+      "category": "tool_syntax",
+      "id": "tr-ts-20",
+      "language": "tr",
+      "options": [
+        "{\"k20\":64}",
+        "{k20:64}",
+        "{\"k20\":\"64\"}",
+        "k20=64"
+      ],
+      "prompt": "k20 anahtarını 64 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k21\":12}",
+      "category": "tool_syntax",
+      "id": "tr-ts-21",
+      "language": "tr",
+      "options": [
+        "{k21:12}",
+        "{\"k21\":12}",
+        "{\"k21\":\"12\"}",
+        "k21=12"
+      ],
+      "prompt": "k21 anahtarını 12 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k22\":32}",
+      "category": "tool_syntax",
+      "id": "tr-ts-22",
+      "language": "tr",
+      "options": [
+        "{k22:32}",
+        "{\"k22\":\"32\"}",
+        "{\"k22\":32}",
+        "k22=32"
+      ],
+      "prompt": "k22 anahtarını 32 sayısına eşleyen geçerli JSON nesnesini döndür."
+    },
+    {
+      "answer": "{\"k23\":44}",
+      "category": "tool_syntax",
+      "id": "tr-ts-23",
+      "language": "tr",
+      "options": [
+        "{k23:44}",
+        "{\"k23\":\"44\"}",
+        "k23=44",
+        "{\"k23\":44}"
+      ],
+      "prompt": "k23 anahtarını 44 sayısına eşleyen geçerli JSON nesnesini döndür."
+    }
+  ],
+  "permutations": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "scope": "frozen deterministic development suite; keep a separately held secret suite for final claims",
+  "seed": 20260822,
+  "validation_source": {
+    "path": "data/processed/proxy-v2-clean/validation.jsonl",
+    "sha256": "d69a7acb1a86976757ed78e1c24ec27494f62d00bf4e167b733fcd1643a06eb3"
+  }
+}

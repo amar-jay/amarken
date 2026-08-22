@@ -105,3 +105,23 @@ retains model-only weights at each scale/architecture. These are evaluation
 artifacts and cannot exactly resume AdamW because optimizer moments are omitted.
 Exact trainer resume remains a blocking gate. No capability promotion may be
 based on this short optimization preflight.
+
+## Apostrophe-BPE meaningful-scale learning curve
+
+The control-model learning curve is one continuous DT trajectory rather than
+four independently restarted runs. It fixes the clean-v2 dataset and selected
+apostrophe-aware 12k tokenizer, then saves exact-resume checkpoints at
+1,048,576; 8,388,608; 33,554,432; and 104,857,600 nominal tokens:
+
+```bash
+python -m src.training.learning_curve \
+  --config configs/learning_curve_dt_apostrophe_100m.json \
+  --report experiments/learning_curve_dt_apostrophe_100m.json
+```
+
+Each milestone records realized non-padding exposure, full validation loss,
+the retained 30-item v1 regression result, and the meaningful-scale v2 result.
+The runner resumes only checkpoints bound to the exact configuration and
+tokenizer fingerprint. Its cosine schedule is defined over the complete 100M
+trajectory, so milestones describe one learning process rather than four
+independently tuned token budgets.

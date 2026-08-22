@@ -30,3 +30,24 @@ software, not optimized deployment. RAM reports framework-relative resident RSS,
 absolute resident RSS, and trainer-checkpoint load peak. Analytical FP16/ternary
 deploy bytes, tokenizer bytes, training parameter bytes, and 64-token KV bytes
 remain the portable comparison; process RSS includes Python/PyTorch allocators.
+
+## Meaningful-scale v2 development suite
+
+`benchmarks/meaningful_scale_v2.json` is generated deterministically from a
+fixed seed and the hashed clean-v2 validation split:
+
+```bash
+python -m src.evaluation.build_benchmark_v2
+```
+
+It contains 240 EN/TR multiple-choice cases balanced across five categories and
+all four original answer positions, 120 EN/TR/code greedy exact-match cases,
+and held-out continuation probes for every available language/domain. Every
+multiple-choice case is evaluated under four cyclic option permutations.
+Reports include Wilson 95% intervals by language/category, all-permutation
+accuracy, prediction-content invariance, exact-match accuracy, and continuation
+NLL/perplexity.
+
+This is a frozen development suite, not a secret final test. Final capability
+claims still require a separately held benchmark whose concrete items and seed
+were never available during model or mixture selection.

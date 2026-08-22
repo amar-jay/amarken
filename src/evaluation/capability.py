@@ -220,7 +220,8 @@ def _worker(checkpoint: Path, tokenizer_path: Path, benchmark_path: Path, valida
 def _contamination_scan(train_path: Path, benchmark_path: Path, n: int = 13) -> dict:
     benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
     hashes = set()
-    for task in benchmark["tasks"]:
+    tasks = benchmark.get("tasks", []) + benchmark.get("multiple_choice", []) + benchmark.get("generative", [])
+    for task in tasks:
         tokens = TOKEN.findall(_canonical(task["prompt"]))
         for index in range(len(tokens) - n + 1):
             raw = "\x1f".join(tokens[index:index + n]).encode()
