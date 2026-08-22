@@ -2,7 +2,7 @@
 
 Status date: 2026-08-22 (Europe/Istanbul)
 
-This report records the project chronologically. Completed stages are backed by repository commits, configurations, and experiment artifacts. The context-512 tournament is still running; its results are explicitly marked provisional and reflect the latest operator updates available when this report was written.
+This report records the project chronologically. Completed stages are backed by repository commits, configurations, and experiment artifacts. The original context-512 tournament has completed. A new apostrophe-BPE DT learning curve through 104,857,600 nominal tokens is active; only milestones with retained checkpoints and evaluation artifacts are reported as complete.
 
 ## Objective and experimental policy
 
@@ -300,25 +300,166 @@ Provisional observations:
 
 These results must remain provisional until all 12 arms complete and the final hashed report is written.
 
+### 2026-08-22 — Context-512 tournament completion and capability diagnosis
+
+All 12 context-512 arms subsequently completed and the final report passed its
+paired-seed and trajectory gates. Mean final validation loss across three seeds
+was 3.0523 for Glimmer, 3.5187 for DT, 3.6465 for tensor-scale Bit, and 3.6631
+for channel-scale Bit. Glimmer therefore retained a clear optimization-loss
+advantage, while DT remained the throughput leader.
+
+The retained-checkpoint capability evaluation did not convert this loss
+ordering into meaningful task capability. DT scored 23.3% and Glimmer and both
+Bit variants scored 26.7% on the 30-item four-choice benchmark. These values
+remain consistent with chance and do not authorize architecture promotion.
+The result motivated reopening the tokenizer/data boundary and establishing a
+meaningful training-exposure curve before another architecture tournament.
+
+Artifacts: `experiments/proxy_tournament_10m_context512.json`,
+`experiments/capability_tournament_10m_context512.json`
+
+### 2026-08-22 — Unified tokenizer runtime and clean proxy-v2 freeze
+
+A common runtime tokenizer contract was added for SentencePiece `.model` and
+Hugging Face Tokenizers `.json` artifacts. Training, learning-rate screening,
+scaling, evaluation, and inference now use the same encode/decode, vocabulary,
+special-token, artifact-byte, and fingerprint behavior. New checkpoints bind
+the tokenizer fingerprint, and inference rejects a same-size but incorrect
+tokenizer.
+
+The repaired corpus was frozen as `proxy-v2-clean` using the historical sampling
+seed so the tokenizer comparison would not introduce a new corpus-selection
+confound. Its manifest records:
+
+| Measure | Count |
+|---|---:|
+| Clean documents | 181,962 |
+| Contaminated documents quarantined | 11 |
+| Encoding-corrupted lines rejected | 125 |
+| Encoding repairs accepted | 1,216 |
+| Exact duplicates removed | 17,829 |
+| Near duplicates removed | 1,025 |
+| Training documents | 180,160 |
+| Validation documents | 1,802 |
+
+All output files, source inputs, cleaning policies, repair counts, contamination
+references, and train/validation splits are hash-bound in
+`data/processed/proxy-v2-clean/manifest.json`.
+
+### 2026-08-22 — Downstream tokenizer probe
+
+A matched 9,630,976-parameter DT probe compared the original SentencePiece BPE
+with the structurally qualified tokenizer controls on clean proxy-v2 data. The
+65,536-token CPU run was single-seed directional evidence, not a promotion-grade
+experiment.
+
+| Tokenizer | Validation loss/token | Estimated bits/source byte | Training source bytes covered |
+|---|---:|---:|---:|
+| Original SentencePiece BPE 12k | 6.2868 | 4.7952 | 161,182 |
+| Tiktoken apostrophe BPE 12k | 7.4061 | 2.7664 | 231,736 |
+| Tiktoken TR-weighted BPE 12k | 7.4498 | 2.8150 | 229,123 |
+| Byte-BPE 12k | 6.9448 | 2.7884 | 221,903 |
+| SentencePiece unigram 12k | 7.0101 | 2.7417 | 227,709 |
+
+The original tokenizer's lower loss per tokenizer token was misleading: at a
+matched token budget it covered far less source text and had substantially worse
+normalized source-byte cost. SentencePiece unigram remains a diagnostic control,
+not a production candidate. `tiktoken-style-apostrophe-bpe-12k` is deliberately
+fixed for the EN/TR/code use case because its word, Turkish proper-noun suffix,
+and code-boundary behavior matches the deployment objective.
+
+Artifact: `experiments/tokenizer_probe_dt_65k_cpu.json`
+
+### 2026-08-22 — Meaningful-scale evaluation suite
+
+The original 30-item benchmark was retained as a regression suite. A larger
+deterministic development benchmark was added with:
+
+- 240 English/Turkish multiple-choice tasks, with 24 cases per language and
+  category across instruction following, compositional reasoning, retrieval,
+  state tracking, and tool syntax.
+- Exact balance across the four authored answer positions.
+- Four cyclic answer-order evaluations per task, producing 960 scored decisions
+  and explicit content-invariance measurements.
+- 120 greedy generative exact-match tasks covering EN/TR arithmetic, exact copy,
+  and Python completion.
+- Wilson 95% confidence intervals by language and category.
+- 68 corpus-derived held-out continuation probes: 30 English, 30 Turkish, and
+  all eight available validation-code documents.
+- Zero detected 13-token overlaps between the authored task prompts and the
+  clean-v2 training split.
+
+This is a frozen development suite, not a secret final test. Final capability
+claims still require a separately held suite whose concrete items and seed were
+never exposed during model, data-mixture, or hyperparameter selection.
+
+Artifacts: `benchmarks/meaningful_scale_v2.json`,
+`src/evaluation/meaningful_scale.py`
+
+### 2026-08-22 — Apostrophe-BPE meaningful-scale DT learning curve (active)
+
+One continuous 9.63M-parameter DT control trajectory is running with the fixed
+apostrophe-BPE tokenizer, clean proxy-v2 data, context 512, BF16, four
+microbatches per update, cosine scheduling, and exact-resume milestone
+checkpoints. The milestones are 1,048,576; 8,388,608; 33,554,432; and
+104,857,600 nominal tokens. The fixed packed training pool contains 4,194,304
+tokens, so the later milestones are explicitly multi-epoch exposure rather than
+non-repeating data.
+
+Completed milestone results:
+
+| Milestone | Full validation loss | v1 accuracy | v2 MC accuracy | Generative exact match | Overall LM perplexity | EN PPL | TR PPL | Code PPL |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1,048,576 | 5.7413 | 20.0% | 25.4% | 0.0% | 540.2 | 471.0 | 1,556.3 | 141.6 |
+| 8,388,608 | 4.4921 | 23.3% | 24.2% | 0.0% | 181.0 | 213.3 | 422.0 | 43.3 |
+
+The 1M-to-8M interval shows strong held-out language-model learning without
+measurable capability emergence: both multiple-choice suites remain consistent
+with chance and greedy exact match remains zero. This directly supports the need
+for the 32M and 100M observations before selecting a meaningful architecture-
+tournament exposure. Gradient values remain finite, although clipping has
+occurred on most updates; this is retained as a post-trajectory ablation target
+and will not be changed mid-protocol.
+
+At the latest report update the active trajectory had passed approximately
+11.4M realized tokens and was progressing toward the 32M milestone.
+
+Configuration: `configs/learning_curve_dt_apostrophe_100m.json`
+
+Milestone artifacts:
+`runs/dt-apostrophe-bpe-meaningful-scale-100m-v1/`
+
 ## Current position
 
 The project has progressed from architecture prototypes to a deterministic, provenance-aware tournament harness. The major conclusions supported so far are:
 
-1. `tiktoken-style-apostrophe-bpe-12k` is the selected production tokenizer;
-   the Turkish-weighted tiktoken variant and byte-BPE 12k remain the Turkish-first
-   and structural-control alternatives, respectively.
-2. The tokenizer, data, model, training, resume, evaluation, and scaling paths operate end to end.
-3. The 4k-token runs were useful health checks but could not support capability selection.
-4. Learning-rate tuning and one-million-token exposure materially changed the apparent ordering: Glimmer is the provisional quality leader in the active 10M/context-512 tournament.
-5. DT remains the essential full-precision control and reference-speed leader.
-6. Bit remains the artifact-efficiency candidate; tensor versus channel scaling is unresolved.
-7. Final promotion must wait for the complete three-seed report and deterministic capability/system evaluation of retained checkpoints.
+1. `tiktoken-style-apostrophe-bpe-12k` is fixed as the production tokenizer for
+   the EN/TR/code objective. Unigram is diagnostic only.
+2. Clean proxy-v2, tokenizer fingerprints, shared runtime loading, exact resume,
+   and expanded deterministic evaluation operate end to end.
+3. The completed generation-1 tournament established Glimmer as the strongest
+   loss optimizer at 10M/context-512, but no architecture demonstrated capability
+   above chance after approximately one million tokens.
+4. The new DT learning curve shows substantial held-out LM improvement through
+   8M tokens without multiple-choice or generative capability emergence.
+5. DT remains the control and reference-speed model; Glimmer, DT, and Bit should
+   not be retested at scale until the control curve identifies a meaningful
+   exposure.
+6. Final claims require both the frozen development suites and a separately held
+   secret evaluation.
 
 ## Immediate next actions
 
-1. Allow every context-512 tournament arm to complete without changing the protocol.
-2. Emit and hash `experiments/proxy_tournament_10m_context512.json`.
-3. Verify exact token counts, validation coverage, finite gradients, LR selections, checkpoint hashes, and paired seed completeness.
-4. Report paired per-seed differences: Glimmer−DT, Bit tensor−DT, Bit channel−DT, and Bit channel−Bit tensor.
-5. Run the frozen deterministic capability and systems evaluator on retained checkpoints.
-6. Promote distinct Pareto winners for quality, artifact size, KV memory, and runtime rather than collapsing all objectives into one score.
+1. Allow the active apostrophe-BPE DT trajectory to reach 32M and 100M without
+   changing its optimizer, clipping, data, scheduling, or evaluation protocol.
+2. Emit and hash the final learning-curve report with realized exposure, corpus
+   passes, checkpoint hashes, v1 regression results, v2 permutation/generative
+   results, and EN/TR/code continuation metrics at every milestone.
+3. Determine the first exposure at which capability reliably exceeds chance; if
+   none does by 100M, diagnose data/task mismatch before spending on another
+   architecture tournament.
+4. Run a post-trajectory LR/gradient-clipping ablation because clipping is active
+   on most updates.
+5. Rerun the 10M DT/Glimmer/Bit architecture tournament only at the established
+   meaningful exposure, then promote distinct Pareto winners for quality,
+   artifact size, KV memory, and runtime.
