@@ -12,7 +12,7 @@ best mean validation loss, but every architecture remained at chance-level
 capability on the small proxy benchmark. This is therefore **not** a released
 assistant or a model-quality claim.
 
-The selected production tokenizer is `tiktoken-style-apostrophe-bpe-12k`; the
+The selected production tokenizer is `tiktoken-style-tr-bpe-12k`; the
 legacy SentencePiece tokenizer remains an experimental control. The proxy-v2
 learning curve is paused: although validation loss improved, the OPUS/Python
 proxy corpus did not produce the intended concise EN/TR assistant behavior. The
@@ -46,19 +46,19 @@ tokenizer fingerprint.
 # One-shot, script-friendly generation.
 python -m src.inference.cli \
   --checkpoint MODEL.pt \
-  --tokenizer artifacts/tokenizers/v2/tiktoken-style-apostrophe-bpe-12k.json \
+  --tokenizer artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
   --prompt "Türkiye'nin başkenti" --max-new-tokens 32 --show-info --show-stats
 
 # Interactive terminal session with retained plain-text turns.
 python -m src.inference.cli \
   --checkpoint MODEL.pt \
-  --tokenizer artifacts/tokenizers/v2/tiktoken-style-apostrophe-bpe-12k.json \
+  --tokenizer artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
   --chat
 
 # Pipe a prompt and keep stdout suitable for another program.
 printf 'Türkiye’nin başkenti nedir?' | python -m src.inference.cli \
   --checkpoint MODEL.pt \
-  --tokenizer artifacts/tokenizers/v2/tiktoken-style-apostrophe-bpe-12k.json
+  --tokenizer artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json
 ```
 
 Interactive commands are `/help`, `/reset`, `/settings`, `/max-new N`,
@@ -71,8 +71,7 @@ the checkpoint has not learned.
 
 The completed v2 sweep trained compact tokenizers—including base,
 apostrophe-aware, and Turkish-weighted tiktoken-regex byte-BPE candidates—on
-fixed English, Turkish, and Python slices, then compared them with a
-revision-pinned SmolLM2 49k control. It selected the apostrophe-aware 12k
+fixed English, Turkish, and Python slices. It selected the apostrophe-aware 12k
 artifact for the current EN/TR assistant objective:
 
 ```bash
@@ -94,15 +93,22 @@ python -m src.tokenization.visualize --samples 3 --language tr --legend
 
 # Compare candidates on the exact same random documents.
 python -m src.tokenization.visualize \
-  --tokenizer tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-weighted-bpe-12k.json \
+  --tokenizer tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
   --tokenizer sentencepiece=artifacts/tokenizers/v2/sp-bpe-12k.model \
   --language tr --samples 5
+
+# Sample uniformly across synthetic and translation shard families.
+python -m src.tokenization.visualize \
+  --dataset data/processed/synthetic-pretraining/shards \
+  --samples 5 --legend
+
 ```
 
 Whitespace is rendered visibly (`·`, `→`, `↵`), repeated `--tokenizer` arguments
 share the same sampled documents, and `--no-color` emits bracketed boundaries for
-logs or redirected output. Sampling uses a fixed-seed streaming reservoir, so it
-does not load the 89MB JSONL dataset into memory.
+logs or redirected output. A shard directory combines `shard-*.jsonl` and
+`translations-*.jsonl` into one sampling stream. Sampling uses a fixed-seed
+streaming reservoir, so it does not load the dataset into memory.
 
 ## Invariants
 

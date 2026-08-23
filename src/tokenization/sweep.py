@@ -1,334 +1,485 @@
-"""Deterministic matched SentencePiece BPE sweep for English and Turkish.
+"""Train and gate balanced EN/TR/code tokenizer candidates."""
 
-All candidates share corpus, ordering, normalization, special tokens and trainer
-settings; vocabulary size is the sole changed variable. Byte fallback reserves a
-piece for every byte, making arbitrary UTF-8 encodable without an unknown token.
-"""
+from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
+from collections import Counter
 import hashlib
 import json
+import os
 from pathlib import Path
-import re
+import statistics
 import time
-from typing import Iterable
+from typing import Iterable, Protocol
 
 import sentencepiece as spm
+from tokenizers import Regex, Tokenizer, decoders, models, pre_tokenizers, processors, trainers
+
+from src.data.proxy import repair_text_encoding
 
 
-DEFAULT_ROOT = Path("data/raw/opus100/opus-100-corpus/v1.0/supervised/en-tr")
-BYTE_PIECE = re.compile(r"^<0x[0-9A-F]{2}>$")
-WORD = re.compile(r"\S+")
-SPECIAL_PIECES = ("<unk>", "<s>", "</s>", "<pad>", "<|system|>", "<|user|>", "<|assistant|>", "<|tool|>")
+SPECIAL_TOKENS = (
+    "<unk>", "<s>", "</s>", "<pad>",
+    "<|system|>", "<|user|>", "<|assistant|>", "<|end|>", "<|code|>",
+)
+
+# cl100k-style splitting keeps contractions, short digit groups, punctuation,
+# newlines, and horizontal whitespace in learnable regions before byte BPE.
+TIKTOKEN_PATTERN = (
+    r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+|"
+    r" ?[^\s\p{L}\p{N}]++[\r\n]*+|\s*[\r\n]|\s+(?!\S)|\s+"
+)
+
+# Turkish proper nouns separate productive suffixes with an apostrophe. This
+# branch must precede English 'd/'t contractions or Ankara'da becomes 'd + a.
+# Longest forms come first so İstanbul'dan is not prematurely split as 'da + n.
+TURKISH_APOSTROPHE_SUFFIX = (
+    r"(?i:[’'](?:larımızdan|lerimizden|larımız|lerimiz|"
+    r"dan|den|tan|ten|dır|dir|dur|dür|tır|tir|tur|tür|"
+    r"nın|nin|nun|nün|yı|yi|yu|yü|ya|ye|da|de|ta|te|"
+    r"ın|in|un|ün|la|le|lı|li|lu|lü|a|e))"
+)
+TIKTOKEN_TURKISH_PATTERN = TURKISH_APOSTROPHE_SUFFIX + "|" + TIKTOKEN_PATTERN
 
 
-@dataclass(frozen=True)
-class CorpusFiles:
-    en_train: Path
-    tr_train: Path
-    en_eval: tuple[Path, ...]
-    tr_eval: tuple[Path, ...]
-    morphology: Path
+class Adapter(Protocol):
+    name: str
+    artifact_paths: tuple[Path, ...]
+
+    def encode(self, text: str) -> list[int]: ...
+    def decode(self, ids: list[int]) -> str: ...
+    def piece(self, token_id: int) -> str: ...
+    def vocab_size(self) -> int: ...
 
 
-@dataclass(frozen=True)
-class LanguageMetrics:
-    sentences: int
-    words: int
-    tokens: int
-    fertility: float
-    byte_tokens: int
-    byte_fallback_rate: float
-    unknown_tokens: int
-    roundtrip_failures: int
+class HFAdapter:
+    def __init__(self, name: str, path: Path):
+        self.name, self.path = name, path
+        if path.is_dir():
+            vocab, merges = path / "vocab.json", path / "merges.txt"
+            self.tokenizer = Tokenizer(models.BPE.from_file(str(vocab), str(merges), unk_token="<|endoftext|>"))
+            self.tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)
+            self.tokenizer.decoder = decoders.ByteLevel()
+            self.tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
+            self.artifact_paths = tuple(
+                candidate for candidate in (
+                    vocab, merges, path / "tokenizer_config.json", path / "special_tokens_map.json"
+                ) if candidate.is_file()
+            )
+        else:
+            self.tokenizer = Tokenizer.from_file(str(path))
+            self.artifact_paths = (path,)
+
+    def encode(self, text: str) -> list[int]:
+        return self.tokenizer.encode(text, add_special_tokens=False).ids
+
+    def decode(self, ids: list[int]) -> str:
+        return self.tokenizer.decode(ids, skip_special_tokens=False)
+
+    def piece(self, token_id: int) -> str:
+        return self.tokenizer.id_to_token(token_id) or ""
+
+    def vocab_size(self) -> int:
+        return self.tokenizer.get_vocab_size(with_added_tokens=True)
 
 
-@dataclass(frozen=True)
-class MorphologyMetrics:
-    words: int
-    tokens: int
-    pieces_per_word: float
-    continuation_pieces_per_word: float
-    inflected_to_lemma_piece_ratio: float
-    exact_single_piece_rate: float
-    family_details: tuple[dict, ...]
+class SPAdapter:
+    def __init__(self, name: str, model_path: Path):
+        self.name = name
+        self.processor = spm.SentencePieceProcessor(model_file=str(model_path))
+        self.artifact_paths = (model_path, model_path.with_suffix(".vocab"))
 
+    def encode(self, text: str) -> list[int]:
+        return self.processor.encode(text, out_type=int)
 
-@dataclass(frozen=True)
-class CandidateReport:
-    vocabulary_size: int
-    actual_vocabulary_size: int
-    training_seconds: float
-    model_bytes: int
-    vocab_bytes: int
-    artifact_bytes: int
-    model_sha256: str
-    english: LanguageMetrics
-    turkish: LanguageMetrics
-    morphology: MorphologyMetrics
-    stress_byte_fallback_rate: float
-    stress_roundtrip_failures: int
+    def decode(self, ids: list[int]) -> str:
+        return self.processor.decode(ids)
 
+    def piece(self, token_id: int) -> str:
+        return self.processor.id_to_piece(token_id)
 
-@dataclass(frozen=True)
-class SweepReport:
-    passed: bool
-    corpus: str
-    corpus_archive_sha256: str | None
-    sentencepiece_version: str
-    trainer: dict
-    corpus_files: dict[str, dict]
-    candidates: tuple[CandidateReport, ...]
-
-    def to_dict(self) -> dict:
-        return asdict(self)
+    def vocab_size(self) -> int:
+        return self.processor.vocab_size()
 
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
     return digest.hexdigest()
 
 
-def _line_count(path: Path) -> int:
-    with path.open("rb") as stream:
-        return sum(1 for _ in stream)
+def _write_slice(lines: Iterable[str], destination: Path, byte_budget: int) -> dict:
+    """Write complete UTF-8 records up to a byte quota; never cut a code point."""
+    written = records = 0
+    with destination.open("w", encoding="utf-8", newline="\n") as output:
+        for text in lines:
+            text = text.rstrip("\n")
+            if not text:
+                continue
+            encoded = (text + "\n").encode("utf-8")
+            if written + len(encoded) > byte_budget:
+                break
+            output.write(text + "\n")
+            written += len(encoded)
+            records += 1
+    if written < byte_budget * 0.95:
+        raise ValueError(f"{destination} supplied only {written:,} of {byte_budget:,} requested bytes")
+    return {"bytes": written, "records": records, "sha256": _sha256(destination)}
 
 
-def default_corpus_files(morphology: Path = Path("data/tokenizer_eval/tr_morphology.json")) -> CorpusFiles:
-    return CorpusFiles(
-        en_train=DEFAULT_ROOT / "opus.en-tr-train.en",
-        tr_train=DEFAULT_ROOT / "opus.en-tr-train.tr",
-        en_eval=(DEFAULT_ROOT / "opus.en-tr-dev.en", DEFAULT_ROOT / "opus.en-tr-test.en"),
-        tr_eval=(DEFAULT_ROOT / "opus.en-tr-dev.tr", DEFAULT_ROOT / "opus.en-tr-test.tr"),
-        morphology=morphology,
-    )
+def _plain_lines(path: Path) -> Iterable[str]:
+    with path.open("r", encoding="utf-8", errors="strict") as stream:
+        for raw in stream:
+            repaired, _status = repair_text_encoding(raw.rstrip("\n"))
+            if repaired is not None:
+                yield repaired + "\n"
 
 
-def _validate_corpus(files: CorpusFiles) -> dict[str, dict]:
-    paths = (files.en_train, files.tr_train, *files.en_eval, *files.tr_eval, files.morphology)
-    missing = [str(path) for path in paths if not path.is_file()]
-    if missing:
-        raise FileNotFoundError(f"missing tokenizer inputs: {missing}")
-    en_train_lines, tr_train_lines = _line_count(files.en_train), _line_count(files.tr_train)
-    if en_train_lines != tr_train_lines:
-        raise ValueError("English and Turkish training files are not aligned")
-    for en_path, tr_path in zip(files.en_eval, files.tr_eval):
-        if _line_count(en_path) != _line_count(tr_path):
-            raise ValueError(f"evaluation files are not aligned: {en_path}, {tr_path}")
-    return {
-        str(path): {"bytes": path.stat().st_size, "lines": _line_count(path), "sha256": _sha256(path)}
-        for path in paths
+def _code_documents(path: Path) -> Iterable[str]:
+    with path.open("r", encoding="utf-8", errors="strict") as stream:
+        for line in stream:
+            row = json.loads(line)
+            if row.get("language") == "code":
+                # Blank-line separators prevent merges across unrelated files while
+                # retaining indentation/newline statistics inside each source file.
+                yield row["text"] + "\n"
+
+
+def build_training_corpus(config: dict, output_dir: Path) -> tuple[list[Path], dict]:
+    corpus_dir = output_dir / "corpus"
+    corpus_dir.mkdir(parents=True, exist_ok=True)
+    budget = int(config["bytes_per_training_slice"])
+    sources = config["training_sources"]
+    paths = {
+        "en": corpus_dir / "en.txt",
+        "tr": corpus_dir / "tr.txt",
+        "code": corpus_dir / "code.txt",
     }
+    manifests = {
+        "en": _write_slice(_plain_lines(Path(sources["en"])), paths["en"], budget),
+        "tr": _write_slice(_plain_lines(Path(sources["tr"])), paths["tr"], budget),
+        "code": _write_slice(_code_documents(Path(sources["code_jsonl"])), paths["code"], budget),
+    }
+    return list(paths.values()), manifests
 
 
-def _train(files: CorpusFiles, vocabulary_size: int, prefix: Path) -> float:
-    prefix.parent.mkdir(parents=True, exist_ok=True)
-    started = time.perf_counter()
+def _turkish_weighted_corpus(corpus: list[Path]) -> list[Path]:
+    """Return 25/50/25 EN/TR/code weighting by replaying the fixed TR slice.
+
+    Every base slice has the same byte quota, so a second deterministic pass over
+    tr.txt allocates half of tokenizer-training bytes to agglutinative Turkish
+    without changing or duplicating language-model training examples.
+    """
+    by_name = {path.stem: path for path in corpus}
+    return [by_name["en"], by_name["tr"], by_name["tr"], by_name["code"]]
+
+
+def train_byte_bpe(corpus: list[Path], vocab_size: int, destination: Path) -> HFAdapter:
+    tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
+    # No synthetic prefix: source starts, indentation, and prompt starts retain the
+    # exact same byte representation. Regex splitting remains GPT-2 compatible.
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)
+    tokenizer.decoder = decoders.ByteLevel()
+    tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
+    trainer = trainers.BpeTrainer(
+        vocab_size=vocab_size,
+        min_frequency=2,
+        special_tokens=list(SPECIAL_TOKENS),
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+        show_progress=False,
+    )
+    tokenizer.train([str(path) for path in corpus], trainer)
+    tokenizer.save(str(destination), pretty=True)
+    return HFAdapter(f"byte-bpe-{vocab_size // 1000}k", destination)
+
+
+def train_tiktoken_style_bpe(
+    corpus: list[Path],
+    vocab_size: int,
+    destination: Path,
+    *,
+    pattern: str = TIKTOKEN_PATTERN,
+    name: str | None = None,
+) -> HFAdapter:
+    """Train tiktoken-regex byte BPE using the production Rust trainer.
+
+    Native tiktoken's public scratch trainer is educational and repeatedly scans
+    Python lists for every merge. The tokenization semantics under test are the
+    Unicode regex boundaries plus byte-level BPE, not that slow implementation.
+    """
+    tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
+    tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
+        pre_tokenizers.Split(Regex(pattern), behavior="isolated", invert=False),
+        pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=False),
+    ])
+    tokenizer.decoder = decoders.ByteLevel()
+    tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
+    trainer = trainers.BpeTrainer(
+        vocab_size=vocab_size, min_frequency=2, special_tokens=list(SPECIAL_TOKENS),
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(), show_progress=False,
+    )
+    tokenizer.train([str(path) for path in corpus], trainer)
+    tokenizer.save(str(destination), pretty=True)
+    return HFAdapter(name or f"tiktoken-style-bpe-{vocab_size // 1000}k", destination)
+
+
+def train_sentencepiece(corpus: list[Path], model_type: str, destination_prefix: Path) -> SPAdapter:
+    # The corrected candidate preserves bytes/whitespace, learns whitespace-only
+    # pieces, and sees the identical balanced corpus as byte-BPE.
     spm.SentencePieceTrainer.train(
-        input=f"{files.en_train},{files.tr_train}",
-        model_prefix=str(prefix),
-        model_type="bpe",
-        vocab_size=vocabulary_size,
+        input=",".join(str(path) for path in corpus),
+        model_prefix=str(destination_prefix),
+        model_type=model_type,
+        vocab_size=12_000,
         character_coverage=1.0,
         byte_fallback=True,
         hard_vocab_limit=True,
-        # Identity normalization preserves Turkish casing/diacritics and permits
-        # strict decode(encode(text)) checks rather than normalized equivalence.
         normalization_rule_name="identity",
         remove_extra_whitespaces=False,
-        add_dummy_prefix=True,
+        add_dummy_prefix=False,
+        split_by_whitespace=False,
+        allow_whitespace_only_pieces=True,
         split_digits=True,
-        split_by_whitespace=True,
-        # OPUS-100 contains an approximately 9k-character outlier. A 16k cap
-        # keeps it in every candidate while still rejecting pathological input.
-        max_sentence_length=16384,
+        max_sentence_length=65_536,
         num_threads=1,
-        minloglevel=1,
         shuffle_input_sentence=False,
         input_sentence_size=0,
-        unk_id=0,
-        bos_id=1,
-        eos_id=2,
-        pad_id=3,
-        user_defined_symbols=list(SPECIAL_PIECES[4:]),
+        minloglevel=1,
+        unk_id=0, bos_id=1, eos_id=2, pad_id=3,
+        user_defined_symbols=list(SPECIAL_TOKENS[4:]),
     )
-    return time.perf_counter() - started
+    return SPAdapter(f"sp-{model_type}-12k", destination_prefix.with_suffix(".model"))
 
 
-def _texts(paths: Iterable[Path]) -> Iterable[str]:
-    for path in paths:
-        with path.open("r", encoding="utf-8", errors="strict") as stream:
-            for line in stream:
-                # Only record delimiters are removed; content whitespace is retained
-                # and therefore participates in exact round-trip verification.
-                yield line.rstrip("\r\n")
+def _evaluation_texts(config: dict) -> dict[str, list[str]]:
+    sources = config["evaluation_sources"]
+    result: dict[str, list[str]] = {}
+    for language in ("en", "tr"):
+        result[language] = [
+            line.rstrip("\n")
+            for filename in sources[language]
+            for line in _plain_lines(Path(filename))
+            if line.strip()
+        ]
+    code = []
+    for document in _code_documents(Path(sources["code_jsonl"])):
+        # Fixed-size character windows keep a few huge validation files from
+        # dominating while retaining real newlines and indentation.
+        code.extend(document[start:start + 4096] for start in range(0, min(len(document), 16_384), 4096))
+    code.extend([
+        "def add(a, b):\n    return a + b\n",
+        "def fibonacci(n):\n    if n < 2:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)\n",
+        "class Cache:\n    def __init__(self):\n        self.values = {}\n",
+    ])
+    result["code"] = [text for text in code if text]
+    morphology = json.loads(Path(sources["turkish_morphology"]).read_text(encoding="utf-8"))
+    result["morphology"] = [form for family in morphology["families"] for form in family["forms"]]
+    return result
 
 
-def _language_metrics(processor: spm.SentencePieceProcessor, paths: tuple[Path, ...]) -> LanguageMetrics:
-    sentences = words = tokens = byte_tokens = unknown_tokens = failures = 0
-    unk_id = processor.unk_id()
-    for text in _texts(paths):
-        ids = processor.encode(text, out_type=int)
-        pieces = [processor.id_to_piece(identifier) for identifier in ids]
-        sentences += 1
-        words += len(WORD.findall(text))
+def _token_metrics(adapter: Adapter, texts: list[str]) -> dict:
+    tokens = words = characters = byte_like = unknown = whitespace = roundtrip_failures = 0
+    fallback_pieces: Counter[str] = Counter()
+    unk_markers = {"<unk>", "[UNK]"}
+    for text in texts:
+        ids = adapter.encode(text)
         tokens += len(ids)
-        byte_tokens += sum(bool(BYTE_PIECE.match(piece)) for piece in pieces)
-        unknown_tokens += sum(identifier == unk_id for identifier in ids)
-        failures += processor.decode(ids) != text
-    return LanguageMetrics(
-        sentences=sentences,
-        words=words,
-        tokens=tokens,
-        fertility=tokens / words if words else 0.0,
-        byte_tokens=byte_tokens,
-        byte_fallback_rate=byte_tokens / tokens if tokens else 0.0,
-        unknown_tokens=unknown_tokens,
-        roundtrip_failures=failures,
+        words += len(text.split())
+        characters += len(text)
+        roundtrip_failures += adapter.decode(ids) != text
+        for token_id in ids:
+            piece = adapter.piece(token_id)
+            unknown += piece in unk_markers
+            byte_like += piece.startswith("<0x") and piece.endswith(">")
+            if piece.startswith("<0x") and piece.endswith(">"):
+                fallback_pieces[piece] += 1
+            try:
+                whitespace += bool(adapter.decode([token_id])) and adapter.decode([token_id]).isspace()
+            except Exception:
+                pass
+    return {
+        "documents": len(texts), "tokens": tokens,
+        "tokens_per_word": tokens / max(words, 1),
+        "tokens_per_character": tokens / max(characters, 1),
+        "whitespace_token_fraction": whitespace / max(tokens, 1),
+        "byte_fallback_fraction": byte_like / max(tokens, 1),
+        "byte_fallback_pieces": dict(fallback_pieces.most_common(16)),
+        "unknown_fraction": unknown / max(tokens, 1),
+        "roundtrip_failures": roundtrip_failures,
+    }
+
+
+def _training_token_shares(adapter: Adapter, corpus: list[Path], turkish_weighted: bool = False) -> dict[str, float]:
+    counts = {
+        path.stem: len(adapter.encode(path.read_text(encoding="utf-8")))
+        for path in corpus
+    }
+    if turkish_weighted:
+        counts["tr"] *= 2
+    total = sum(counts.values())
+    return {name: count / total for name, count in counts.items()}
+
+
+def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) -> dict:
+    slices = {name: _token_metrics(adapter, values) for name, values in texts.items() if name != "morphology"}
+    morphology_counts = [len(adapter.encode(form)) for form in texts["morphology"]]
+    indent = {}
+    baseline_tokens = len(adapter.encode("\nreturn value\n"))
+    for width in (1, 2, 4, 8):
+        probe = "\n" + " " * width + "return value\n"
+        indent[str(width)] = {
+            "tokens": len(adapter.encode(probe)),
+            # This directly measures indentation's context cost even when a
+            # whitespace byte is merged into the following lexical token.
+            "token_overhead_vs_unindented": len(adapter.encode(probe)) - baseline_tokens,
+            "roundtrip": adapter.decode(adapter.encode(probe)) == probe,
+        }
+    artifact_bytes = sum(path.stat().st_size for path in adapter.artifact_paths)
+    failures = sum(metrics["roundtrip_failures"] for metrics in slices.values())
+    qualified = (
+        failures == 0
+        and all(metrics["unknown_fraction"] == 0 for metrics in slices.values())
+        and indent["4"]["roundtrip"]
+        and indent["4"]["token_overhead_vs_unindented"] <= 1
+        and indent["8"]["token_overhead_vs_unindented"] <= 1
     )
-
-
-def _morphology_metrics(processor: spm.SentencePieceProcessor, path: Path) -> MorphologyMetrics:
-    families = json.loads(path.read_text(encoding="utf-8"))["families"]
-    total_words = total_tokens = single_piece = 0
-    ratios: list[float] = []
-    details: list[dict] = []
-    for family in families:
-        lemma = family["lemma"]
-        forms = family["forms"]
-        lemma_count = len(processor.encode(lemma, out_type=int))
-        encoded = []
-        for word in forms:
-            pieces = processor.encode(word, out_type=str)
-            total_words += 1
-            total_tokens += len(pieces)
-            single_piece += len(pieces) == 1
-            # Exclude the lemma itself: this aggregate is specifically the
-            # extra segmentation introduced by Turkish inflectional suffixes.
-            if word != lemma:
-                ratios.append(len(pieces) / lemma_count)
-            encoded.append({"word": word, "pieces": pieces, "piece_count": len(pieces)})
-        details.append({"lemma": lemma, "lemma_piece_count": lemma_count, "forms": encoded})
-    return MorphologyMetrics(
-        words=total_words,
-        tokens=total_tokens,
-        pieces_per_word=total_tokens / total_words,
-        continuation_pieces_per_word=(total_tokens - total_words) / total_words,
-        inflected_to_lemma_piece_ratio=sum(ratios) / len(ratios),
-        exact_single_piece_rate=single_piece / total_words,
-        family_details=tuple(details),
-    )
-
-
-STRESS_TEXTS = (
-    "Türkçe: Iğdır, İstanbul, Çeşme; ıİğĞşŞçÇöÖüÜ.",
-    "emoji 🧠✨, math ∀x∈ℝ, code `x += 1`, العربية, 中文, हिन्दी",
-    "spaces  stay   exact\twith a tab",
-    "combining: e\u0301 vs é; rare: 𐱅𐰇𐰼𐰚",
-)
-
-
-def _stress_metrics(processor: spm.SentencePieceProcessor) -> tuple[float, int]:
-    token_count = byte_count = failures = 0
-    for text in STRESS_TEXTS:
-        ids = processor.encode(text, out_type=int)
-        token_count += len(ids)
-        byte_count += sum(bool(BYTE_PIECE.match(processor.id_to_piece(identifier))) for identifier in ids)
-        failures += processor.decode(ids) != text
-    return byte_count / token_count, failures
-
-
-def train_sweep(
-    files: CorpusFiles,
-    output_dir: Path,
-    vocabulary_sizes: tuple[int, ...] = (8_000, 12_000, 16_000),
-    archive: Path | None = Path("data/raw/opus100/en-tr-v1.0.tar.gz"),
-) -> SweepReport:
-    """Train and evaluate matched candidates; existing artifacts are overwritten."""
-    if len(set(vocabulary_sizes)) != len(vocabulary_sizes) or any(size < 512 for size in vocabulary_sizes):
-        raise ValueError("vocabulary sizes must be unique and at least 512 with byte fallback")
-    manifest = _validate_corpus(files)
-    candidates = []
-    for size in vocabulary_sizes:
-        prefix = output_dir / f"amarken-en-tr-{size // 1000}k"
-        training_seconds = _train(files, size, prefix)
-        model_path, vocab_path = prefix.with_suffix(".model"), prefix.with_suffix(".vocab")
-        processor = spm.SentencePieceProcessor(model_file=str(model_path))
-        english = _language_metrics(processor, files.en_eval)
-        turkish = _language_metrics(processor, files.tr_eval)
-        morphology = _morphology_metrics(processor, files.morphology)
-        stress_rate, stress_failures = _stress_metrics(processor)
-        candidates.append(
-            CandidateReport(
-                vocabulary_size=size,
-                actual_vocabulary_size=processor.vocab_size(),
-                training_seconds=training_seconds,
-                model_bytes=model_path.stat().st_size,
-                vocab_bytes=vocab_path.stat().st_size,
-                artifact_bytes=model_path.stat().st_size + vocab_path.stat().st_size,
-                model_sha256=_sha256(model_path),
-                english=english,
-                turkish=turkish,
-                morphology=morphology,
-                stress_byte_fallback_rate=stress_rate,
-                stress_roundtrip_failures=stress_failures,
-            )
-        )
-    passed = all(
-        candidate.actual_vocabulary_size == candidate.vocabulary_size
-        and candidate.english.unknown_tokens == candidate.turkish.unknown_tokens == 0
-        and candidate.english.roundtrip_failures == candidate.turkish.roundtrip_failures == 0
-        and candidate.stress_roundtrip_failures == 0
-        for candidate in candidates
-    )
-    return SweepReport(
-        passed=passed,
-        corpus="OPUS-100 v1.0 supervised en-tr",
-        corpus_archive_sha256=_sha256(archive) if archive is not None and archive.is_file() else None,
-        sentencepiece_version=spm.__version__,
-        trainer={
-            "model_type": "bpe",
-            "byte_fallback": True,
-            "character_coverage": 1.0,
-            "normalization_rule_name": "identity",
-            "hard_vocab_limit": True,
-            "num_threads": 1,
-            "max_sentence_length": 16384,
-            "shuffle_input_sentence": False,
-            "special_pieces": list(SPECIAL_PIECES),
+    return {
+        "name": adapter.name, "vocab_size": adapter.vocab_size(),
+        "artifact_bytes": artifact_bytes,
+        "embedding_parameters_width_256": adapter.vocab_size() * 256,
+        "embedding_parameters_width_512": adapter.vocab_size() * 512,
+        "training_token_shares": _training_token_shares(
+            adapter, corpus, turkish_weighted=adapter.name == "tiktoken-style-tr-weighted-bpe-12k"
+        ),
+        "slices": slices,
+        "turkish_morphology": {
+            "forms": len(morphology_counts),
+            "mean_tokens": statistics.fmean(morphology_counts),
+            "max_tokens": max(morphology_counts),
         },
-        corpus_files=manifest,
-        candidates=tuple(candidates),
-    )
+        "indentation": indent,
+        "qualified": qualified,
+        "artifacts": [{"path": str(path), "bytes": path.stat().st_size, "sha256": _sha256(path)} for path in adapter.artifact_paths],
+    }
+
+
+def run(config_path: Path, evaluate_only: bool = False) -> dict:
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    if config.get("format_version") != 1:
+        raise ValueError("unsupported tokenizer-v2 config format")
+    output_dir = Path(config["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    corpus, corpus_manifest = build_training_corpus(config, output_dir)
+    started = time.perf_counter()
+    if evaluate_only:
+        adapters: list[Adapter] = [
+            HFAdapter("byte-bpe-12k", output_dir / "byte-bpe-12k.json"),
+            HFAdapter("byte-bpe-16k", output_dir / "byte-bpe-16k.json"),
+            (
+                HFAdapter("tiktoken-style-bpe-12k", output_dir / "tiktoken-style-bpe-12k.json")
+                if (output_dir / "tiktoken-style-bpe-12k.json").is_file()
+                else train_tiktoken_style_bpe(corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json")
+            ),
+            (
+                HFAdapter("tiktoken-style-apostrophe-bpe-12k", output_dir / "tiktoken-style-tr-bpe-12k.json")
+                if (output_dir / "tiktoken-style-tr-bpe-12k.json").is_file()
+                else train_tiktoken_style_bpe(
+                    corpus, 12_000, output_dir / "tiktoken-style-tr-bpe-12k.json",
+                    pattern=TIKTOKEN_TURKISH_PATTERN, name="tiktoken-style-apostrophe-bpe-12k",
+                )
+            ),
+            (
+                HFAdapter("tiktoken-style-tr-weighted-bpe-12k", output_dir / "tiktoken-style-tr-weighted-bpe-12k.json")
+                if (output_dir / "tiktoken-style-tr-weighted-bpe-12k.json").is_file()
+                else train_tiktoken_style_bpe(
+                    _turkish_weighted_corpus(corpus), 12_000,
+                    output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
+                    name="tiktoken-style-tr-weighted-bpe-12k",
+                )
+            ),
+            SPAdapter("sp-bpe-12k", output_dir / "sp-bpe-12k.model"),
+            SPAdapter("sp-unigram-12k", output_dir / "sp-unigram-12k.model"),
+            HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
+        ]
+    else:
+        adapters = [
+            train_byte_bpe(corpus, 12_000, output_dir / "byte-bpe-12k.json"),
+            train_byte_bpe(corpus, 16_000, output_dir / "byte-bpe-16k.json"),
+            train_tiktoken_style_bpe(corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json"),
+            train_tiktoken_style_bpe(
+                corpus, 12_000, output_dir / "tiktoken-style-tr-bpe-12k.json",
+                pattern=TIKTOKEN_TURKISH_PATTERN, name="tiktoken-style-apostrophe-bpe-12k",
+            ),
+            train_tiktoken_style_bpe(
+                _turkish_weighted_corpus(corpus), 12_000,
+                output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
+                name="tiktoken-style-tr-weighted-bpe-12k",
+            ),
+            train_sentencepiece(corpus, "bpe", output_dir / "sp-bpe-12k"),
+            train_sentencepiece(corpus, "unigram", output_dir / "sp-unigram-12k"),
+            HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
+        ]
+    texts = _evaluation_texts(config)
+    candidates = [evaluate(adapter, texts, corpus) for adapter in adapters]
+    # Rank only qualified compact candidates; the external 49k tokenizer remains
+    # a quality reference because its embedding cost changes the model budget.
+    compact = [row for row in candidates if row["qualified"] and row["vocab_size"] <= 16_000]
+    winner = min(
+        compact,
+        key=lambda row: (
+            # Preserve embedding capacity first. Within one vocabulary size,
+            # minimize balanced EN+TR word fertility plus code token density;
+            # morphology and artifact bytes are deterministic tie breakers.
+            row["vocab_size"],
+            row["slices"]["en"]["tokens_per_word"]
+            + row["slices"]["tr"]["tokens_per_word"]
+            + row["slices"]["code"]["tokens_per_character"],
+            row["turkish_morphology"]["mean_tokens"], row["artifact_bytes"],
+        ),
+    ) if compact else None
+    # Tokenizer metrics expose real trade-offs rather than proving downstream LM
+    # quality. These three cover the strongest fixed-12k code/morphology option,
+    # the balanced 12k unigram option, and the higher-capacity byte-BPE endpoint.
+    probe_finalists = [
+        name for name in (
+            "sp-bpe-12k", "sp-unigram-12k", "byte-bpe-16k", "tiktoken-style-bpe-12k"
+            , "tiktoken-style-tr-weighted-bpe-12k"
+        )
+        if any(row["name"] == name and row["qualified"] for row in candidates)
+    ]
+    report = {
+        "format_version": 1, "experiment_id": config["experiment_id"],
+        "passed": winner is not None,
+        "interpretation": "tokenizer qualification; no model capability claim",
+        "config_sha256": _sha256(config_path),
+        "training_corpus": corpus_manifest,
+        "external_provenance": config["external"],
+        "elapsed_seconds": time.perf_counter() - started,
+        "recommended": winner["name"] if winner else None,
+        "recommendation_scope": "metric-only provisional choice; model probe remains required",
+        "model_probe_finalists": probe_finalists,
+        "candidates": candidates,
+    }
+    report_path = Path(config["report"])
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = report_path.with_name(report_path.name + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, report_path)
+    return report
 
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=Path("artifacts/tokenizers"))
-    parser.add_argument("--report", type=Path, default=Path("experiments/tokenizer_sweep.json"))
-    parser.add_argument("--vocab-sizes", type=int, nargs="+", default=[8_000, 12_000, 16_000])
+    parser.add_argument("--config", type=Path, default=Path("configs/tokenizer_v2.json"))
+    parser.add_argument("--evaluate-only", action="store_true", help="reuse existing trained artifacts")
     args = parser.parse_args()
-    result = train_sweep(default_corpus_files(), args.output_dir, tuple(args.vocab_sizes))
-    text = json.dumps(result.to_dict(), indent=2, ensure_ascii=False, sort_keys=True)
-    # The detailed morphology traces make the JSON intentionally large; keep
-    # stdout operationally useful and leave full provenance in --report.
-    print(f"tokenizer sweep: {'PASS' if result.passed else 'FAIL'}; report={args.report}")
-    for candidate in result.candidates:
-        print(
-            f"{candidate.vocabulary_size}: EN fertility={candidate.english.fertility:.4f}, "
-            f"TR fertility={candidate.turkish.fertility:.4f}, "
-            f"TR morphology={candidate.morphology.pieces_per_word:.4f}, "
-            f"artifact={candidate.artifact_bytes} bytes"
-        )
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    temporary = args.report.with_name(args.report.name + ".tmp")
-    temporary.write_text(text + "\n", encoding="utf-8")
-    temporary.replace(args.report)
-    return 0 if result.passed else 1
+    report = run(args.config, evaluate_only=args.evaluate_only)
+    for row in report["candidates"]:
+        print(row["name"], row["vocab_size"], row["qualified"], row["slices"]["code"]["whitespace_token_fraction"])
+    print("recommended", report["recommended"])
+    return 0 if report["passed"] else 1
 
 
 if __name__ == "__main__":

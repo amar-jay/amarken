@@ -115,16 +115,3 @@ python -m src.distillation.synthetic_pretraining_vllm \
 ```
 
 Remove `--max-new` to resume the same output directory toward one million.
-
-For an A100 80GB host with 120GB RAM and 28 vCPUs, use the larger scheduler
-profile:
-
-```bash
-python -m src.distillation.synthetic_pretraining_vllm \
-  --config configs/synthetic_pretraining_1m_a100_80gb.json \
-  --max-new 10000
-```
-
-This starts with 512 active sequences, 32,768 batched tokens, and an 8,192
-conversation submission batch. Run the 10,000-sample benchmark first and remove
-`--max-new` only after checking throughput, rejection rate, and GPU memory.

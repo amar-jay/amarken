@@ -1,4 +1,4 @@
-"""Color token boundaries for deterministic random samples from a JSONL dataset."""
+"""Color token boundaries for deterministic random samples from JSONL datasets."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import sys
 
 from src.data.proxy import repair_text_encoding
 
-from .v2_sweep import Adapter, HFAdapter, SPAdapter
+from .sweep import Adapter, HFAdapter, SPAdapter
 
 
 # Dark 256-color backgrounds with white foreground remain distinguishable in
@@ -113,6 +113,33 @@ def _crop(text: str, maximum: int, rng: random.Random) -> str:
     return text[start:end]
 
 
+def dataset_files(dataset: Path) -> list[Path]:
+    """Resolve one JSONL file or a synthetic shard directory in stable order."""
+    if dataset.is_file():
+        return [dataset]
+    if not dataset.is_dir():
+        raise ValueError(f"dataset does not exist: {dataset}")
+    paths = sorted(dataset.glob("*.jsonl"))
+    if not paths:
+        raise ValueError(f"dataset directory has no *.jsonl files: {dataset}")
+    return paths
+
+
+def _sample_text(row: dict) -> str | None:
+    if row.get("text"):
+        return str(row["text"])
+    messages = row.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None
+    rendered = []
+    for message in messages:
+        if not isinstance(message, dict) or not message.get("content"):
+            continue
+        role = str(message.get("role", "unknown")).capitalize()
+        rendered.append(f"{role}: {message['content']}")
+    return "\n".join(rendered) or None
+
+
 def reservoir_samples(
     dataset: Path,
     count: int,
@@ -127,22 +154,26 @@ def reservoir_samples(
     rng = random.Random(seed)
     reservoir: list[dict] = []
     eligible = 0
-    with dataset.open("r", encoding="utf-8", errors="strict") as stream:
-        for line in stream:
-            row = json.loads(line)
-            if language is not None and row.get("language") != language:
-                continue
-            if domain is not None and row.get("domain") != domain:
-                continue
-            if not row.get("text"):
-                continue
-            eligible += 1
-            if len(reservoir) < count:
-                reservoir.append(row)
-            else:
-                replacement = rng.randrange(eligible)
-                if replacement < count:
-                    reservoir[replacement] = row
+    for path in dataset_files(dataset):
+        with path.open("r", encoding="utf-8", errors="strict") as stream:
+            for line in stream:
+                row = json.loads(line)
+                if language is not None and row.get("language") != language:
+                    continue
+                row_domain = row.get("category", row.get("domain"))
+                if domain is not None and row_domain != domain:
+                    continue
+                text = _sample_text(row)
+                if not text:
+                    continue
+                eligible += 1
+                candidate = {**row, "_sample_text": text, "_dataset_file": path.name}
+                if len(reservoir) < count:
+                    reservoir.append(candidate)
+                else:
+                    replacement = rng.randrange(eligible)
+                    if replacement < count:
+                        reservoir[replacement] = candidate
     if not reservoir:
         raise ValueError("no dataset rows match the requested filters")
     # Cropping after selection preserves uniform document probability.
@@ -150,9 +181,9 @@ def reservoir_samples(
         Sample(
             document_id=str(row.get("id", "unknown")),
             language=str(row.get("language", "unknown")),
-            domain=str(row.get("domain", "unknown")),
-            source_id=str(row.get("source_id", "unknown")),
-            text=_crop(row["text"], maximum_characters, rng),
+            domain=str(row.get("domain", row.get("category", "unknown"))),
+            source_id=str(row.get("source_id", row.get("_dataset_file", "unknown"))),
+            text=_crop(row["_sample_text"], maximum_characters, rng),
         )
         for row in reservoir
     ]
@@ -218,7 +249,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=None, metavar="[NAME=]PATH",
         help="repeat to compare tokenizers on identical samples",
     )
-    parser.add_argument("--dataset", type=Path, default=Path("data/processed/proxy-v1/train.jsonl"))
+    parser.add_argument(
+        "--dataset", type=Path, required=True,
+        help="JSONL file, or shard directory combining shard-*.jsonl and translations-*.jsonl",
+    )
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--max-characters", type=int, default=320)
@@ -234,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.tokenizer is None:
         args.tokenizer = [
-            "tiktoken-tr=artifacts/tokenizers/v2/tiktoken-style-tr-weighted-bpe-12k.json"
+            "tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"
         ]
     run(args)
     return 0

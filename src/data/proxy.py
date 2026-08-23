@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-import fnmatch
 import hashlib
 import heapq
 import json
@@ -130,7 +129,7 @@ def _iter_source(
     encoding_quality: Counter,
     encoding_rejections: list[dict],
 ) -> Iterator[Document]:
-    kind, pattern = source["kind"], source["path"]
+    kind, _ = source["kind"], source["path"]
     paths, source_base = _source_paths(root, source)
     for path in paths:
         if not path.is_file():

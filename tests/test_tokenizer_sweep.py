@@ -1,46 +1,56 @@
-import json
+from pathlib import Path
 
-import sentencepiece as spm
+from src.tokenization.sweep import (
+    TIKTOKEN_TURKISH_PATTERN, _turkish_weighted_corpus, _write_slice,
+    train_byte_bpe, train_tiktoken_style_bpe,
+)
 
-from src.tokenization.sweep import _language_metrics, _morphology_metrics, _stress_metrics
+
+def test_balanced_slice_never_cuts_utf8_or_records(tmp_path: Path):
+    destination = tmp_path / "slice.txt"
+    result = _write_slice(iter(["Türkçe", "English", "fazla uzun kayıt"]), destination, 17)
+    assert destination.read_text(encoding="utf-8") == "Türkçe\nEnglish\n"
+    assert result["records"] == 2 and result["bytes"] == 17
 
 
-def test_metrics_count_fertility_byte_fallback_and_roundtrip(tmp_path):
-    train = tmp_path / "train.txt"
-    train.write_text(("hello world\nmerhaba dünya\nevlerimizden geliyoruz\n" * 200), encoding="utf-8")
-    prefix = tmp_path / "tiny"
-    spm.SentencePieceTrainer.train(
-        input=str(train),
-        model_prefix=str(prefix),
-        model_type="bpe",
-        vocab_size=320,
-        byte_fallback=True,
-        character_coverage=1.0,
-        normalization_rule_name="identity",
-        remove_extra_whitespaces=False,
-        hard_vocab_limit=False,
-        minloglevel=2,
+def test_byte_bpe_roundtrips_code_and_turkish(tmp_path: Path):
+    corpus = tmp_path / "corpus.txt"
+    corpus.write_text(
+        ("def f(x):\n    return x + 1\nTürkiye'nin başkenti Ankara'dır.\n" * 20),
+        encoding="utf-8",
     )
-    processor = spm.SentencePieceProcessor(model_file=str(prefix) + ".model")
-    metrics = _language_metrics(processor, (train,))
-    stress_rate, failures = _stress_metrics(processor)
-    assert metrics.fertility > 0
-    assert metrics.unknown_tokens == metrics.roundtrip_failures == 0
-    assert stress_rate > 0 and failures == 0
+    adapter = train_byte_bpe([corpus], 400, tmp_path / "tokenizer.json")
+    for text in ("def f(x):\n    return x + 1\n", "evlerimizdekilerden", "🙂\n"):
+        assert adapter.decode(adapter.encode(text)) == text
+    indented = len(adapter.encode("\n    return value\n"))
+    unindented = len(adapter.encode("\nreturn value\n"))
+    assert indented - unindented <= 1
 
 
-def test_morphology_metric_reports_each_probe(tmp_path):
-    train = tmp_path / "train.txt"
-    train.write_text(("ev evler evlerimizden kitap kitaplarımızdan\n" * 200), encoding="utf-8")
-    prefix = tmp_path / "tiny"
-    spm.SentencePieceTrainer.train(
-        input=str(train), model_prefix=str(prefix), model_type="bpe", vocab_size=300,
-        byte_fallback=True, character_coverage=1.0, hard_vocab_limit=False,
-        minloglevel=2,
+def test_tiktoken_style_bpe_roundtrips_code_and_turkish(tmp_path: Path):
+    corpus = tmp_path / "corpus.txt"
+    corpus.write_text(
+        ("can't 1234\ndef f(x):\n    return x + 1\nevlerimizdekilerden\n" * 20),
+        encoding="utf-8",
     )
-    morphology = tmp_path / "morph.json"
-    morphology.write_text(json.dumps({"families": [{"lemma": "ev", "forms": ["ev", "evlerimizden"]}]}), encoding="utf-8")
-    processor = spm.SentencePieceProcessor(model_file=str(prefix) + ".model")
-    metrics = _morphology_metrics(processor, morphology)
-    assert metrics.words == 2 and len(metrics.family_details) == 1
-    assert metrics.tokens >= metrics.words
+    adapter = train_tiktoken_style_bpe([corpus], 400, tmp_path / "tiktoken.json")
+    for text in ("can't 1234", "def f(x):\n    return x + 1\n", "evlerimizdekilerden", "🙂\n"):
+        assert adapter.decode(adapter.encode(text)) == text
+
+
+def test_turkish_pattern_prevents_english_contraction_split(tmp_path: Path):
+    corpus = tmp_path / "corpus.txt"
+    corpus.write_text(("Ankara'da İstanbul'dan Türkiye'nin İzmir'e\n" * 30), encoding="utf-8")
+    adapter = train_tiktoken_style_bpe(
+        [corpus], 400, tmp_path / "tr.json",
+        pattern=TIKTOKEN_TURKISH_PATTERN, name="tr",
+    )
+    pieces = [piece for piece, _offset in adapter.tokenizer.pre_tokenizer.pre_tokenize_str("Ankara'da")]
+    assert pieces == ["Ankara", "'da"]
+    text = "Ankara'da İstanbul'dan Türkiye'nin İzmir'e"
+    assert adapter.decode(adapter.encode(text)) == text
+
+
+def test_turkish_weighting_replays_only_turkish_slice(tmp_path: Path):
+    paths = [tmp_path / "en.txt", tmp_path / "tr.txt", tmp_path / "code.txt"]
+    assert _turkish_weighted_corpus(paths) == [paths[0], paths[1], paths[1], paths[2]]
