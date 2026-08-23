@@ -1,4 +1,4 @@
-"""Train and gate balanced EN/TR/code tokenizer candidates."""
+"""Train and gate balanced tokenizer."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from tokenizers import (
     trainers,
 )
 
-from src.data.proxy import repair_text_encoding
 from src.tokenization.tokenizer import AmarkenTokenizer, SPECIAL_TOKENS
+from src.tokenization.text import repair_text_encoding
 from src.tokenization.visualize import _sample_text, dataset_files
 
 # cl100k-style splitting keeps contractions, short digit groups, punctuation,
@@ -83,16 +83,6 @@ def _plain_lines(path: Path) -> Iterable[str]:
                 yield repaired + "\n"
 
 
-def _code_documents(path: Path) -> Iterable[str]:
-    with path.open("r", encoding="utf-8", errors="strict") as stream:
-        for line in stream:
-            row = json.loads(line)
-            if row.get("language") == "code":
-                # Blank-line separators prevent merges across unrelated files while
-                # retaining indentation/newline statistics inside each source file.
-                yield row["text"] + "\n"
-
-
 def _synthetic_lines(source: Path, language: str) -> Iterable[str]:
     """Stream rendered synthetic chat records for one output language."""
     for shard in dataset_files(source):
@@ -124,26 +114,22 @@ def build_training_corpus(config: dict, output_dir: Path) -> tuple[list[Path], d
         return list(paths.values()), manifests
     if sources is None:
         raise ValueError("config requires training_sources or synthetic_shards")
-    paths["code"] = corpus_dir / "code.txt"
     manifests = {
         "en": _write_slice(_plain_lines(Path(sources["en"])), paths["en"], budget),
         "tr": _write_slice(_plain_lines(Path(sources["tr"])), paths["tr"], budget),
-        "code": _write_slice(
-            _code_documents(Path(sources["code_jsonl"])), paths["code"], budget
-        ),
     }
     return list(paths.values()), manifests
 
 
 def _turkish_weighted_corpus(corpus: list[Path]) -> list[Path]:
-    """Return 25/50/25 EN/TR/code weighting by replaying the fixed TR slice.
+    """Return 1/2 EN and 1/2 TR weighting by replaying the fixed TR slice.
 
     Every base slice has the same byte quota, so a second deterministic pass over
-    tr.txt allocates half of tokenizer-training bytes to agglutinative Turkish
-    without changing or duplicating language-model training examples.
+    tr.txt gives agglutinative Turkish twice the tokenizer-training weight of
+    English without changing the underlying source slices.
     """
     by_name = {path.stem: path for path in corpus}
-    return [by_name["en"], by_name["tr"], by_name["tr"], *(path for path in corpus if path.stem == "code")]
+    return [by_name["en"], by_name["tr"]]
 
 
 def train_byte_bpe(
@@ -222,11 +208,6 @@ def _evaluation_texts(config: dict, corpus: list[Path]) -> dict[str, list[str]]:
             ]
             for language in ("en", "tr")
         }
-        result["code"] = [
-            "def add(a, b):\n    return a + b\n",
-            "def fibonacci(n):\n    if n < 2:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)\n",
-            "class Cache:\n    def __init__(self):\n        self.values = {}\n",
-        ]
         morphology = json.loads(Path(config["turkish_morphology"]).read_text(encoding="utf-8"))
         result["morphology"] = [form for family in morphology["families"] for form in family["forms"]]
         return result
@@ -239,22 +220,6 @@ def _evaluation_texts(config: dict, corpus: list[Path]) -> dict[str, list[str]]:
             for line in _plain_lines(Path(filename))
             if line.strip()
         ]
-    code = []
-    for document in _code_documents(Path(sources["code_jsonl"])):
-        # Fixed-size character windows keep a few huge validation files from
-        # dominating while retaining real newlines and indentation.
-        code.extend(
-            document[start : start + 4096]
-            for start in range(0, min(len(document), 16_384), 4096)
-        )
-    code.extend(
-        [
-            "def add(a, b):\n    return a + b\n",
-            "def fibonacci(n):\n    if n < 2:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)\n",
-            "class Cache:\n    def __init__(self):\n        self.values = {}\n",
-        ]
-    )
-    result["code"] = [text for text in code if text]
     morphology = json.loads(
         Path(sources["turkish_morphology"]).read_text(encoding="utf-8")
     )
@@ -326,8 +291,6 @@ def evaluate(
     adapter: AmarkenTokenizer,
     texts: dict[str, list[str]],
     corpus: list[Path],
-    *,
-    require_code_qualification: bool = True,
 ) -> dict:
     slices = {
         name: _token_metrics(adapter, values)
@@ -335,18 +298,6 @@ def evaluate(
         if name != "morphology"
     }
     morphology_counts = [len(adapter.encode(form)) for form in texts["morphology"]]
-    indent = {}
-    baseline_tokens = len(adapter.encode("\nreturn value\n"))
-    for width in (1, 2, 4, 8):
-        probe = "\n" + " " * width + "return value\n"
-        indent[str(width)] = {
-            "tokens": len(adapter.encode(probe)),
-            # This directly measures indentation's context cost even when a
-            # whitespace byte is merged into the following lexical token.
-            "token_overhead_vs_unindented": len(adapter.encode(probe))
-            - baseline_tokens,
-            "roundtrip": adapter.decode(adapter.encode(probe)) == probe,
-        }
     artifact_bytes = sum(path.stat().st_size for path in adapter.artifact_paths)
     failures = sum(metrics["roundtrip_failures"] for metrics in slices.values())
     requested_vocab_size = 16_000 if adapter.name == "byte-bpe-16k" else 12_000
@@ -354,14 +305,6 @@ def evaluate(
         adapter.vocab_size() == requested_vocab_size
         and failures == 0
         and all(metrics["unknown_fraction"] == 0 for metrics in slices.values())
-        and (
-            not require_code_qualification
-            or (
-                indent["4"]["roundtrip"]
-                and indent["4"]["token_overhead_vs_unindented"] <= 1
-                and indent["8"]["token_overhead_vs_unindented"] <= 1
-            )
-        )
     )
     return {
         "name": adapter.name,
@@ -380,7 +323,6 @@ def evaluate(
             "mean_tokens": statistics.fmean(morphology_counts),
             "max_tokens": max(morphology_counts),
         },
-        "indentation": indent,
         "qualified": qualified,
         "artifacts": [
             {"path": str(path), "bytes": path.stat().st_size, "sha256": _sha256(path)}
@@ -465,7 +407,6 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
             adapter,
             texts,
             corpus,
-            require_code_qualification="synthetic_shards" not in config,
         )
         for adapter in adapters
     ]
@@ -478,12 +419,11 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
             compact,
             key=lambda row: (
                 # Preserve embedding capacity first. Within one vocabulary size,
-                # minimize balanced EN+TR word fertility plus code token density;
+                # minimize balanced EN+TR word fertility;
                 # morphology and artifact bytes are deterministic tie breakers.
                 row["vocab_size"],
                 row["slices"]["en"]["tokens_per_word"]
-                + row["slices"]["tr"]["tokens_per_word"]
-                + row["slices"]["code"]["tokens_per_character"],
+                + row["slices"]["tr"]["tokens_per_word"],
                 row["turkish_morphology"]["mean_tokens"],
                 row["artifact_bytes"],
             ),
@@ -539,7 +479,6 @@ def _main() -> int:
             row["name"],
             row["vocab_size"],
             row["qualified"],
-            row["slices"]["code"]["whitespace_token_fraction"],
         )
     print("recommended", report["recommended"])
     return 0 if report["passed"] else 1

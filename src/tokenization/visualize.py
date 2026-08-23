@@ -9,9 +9,8 @@ from pathlib import Path
 import random
 import sys
 
-from src.data.proxy import repair_text_encoding
-
 from .tokenizer import AmarkenTokenizer
+from .text import repair_text_encoding
 
 # Dark 256-color backgrounds with white foreground remain distinguishable in
 # common light/dark terminals. Position-based rotation keeps repeated token IDs
@@ -305,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.tokenizer is None:
         args.tokenizer = [
-            "tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"
+            "tiktoken=artifacts/tokenizers/v3/tiktoken-tr-bpe-12k.json"
         ]
     run(args)
     return 0

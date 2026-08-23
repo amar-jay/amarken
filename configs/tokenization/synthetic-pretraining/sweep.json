@@ -3,8 +3,8 @@
   "experiment_id": "synthetic-pretraining-tokenizer-sweep-v1",
   "synthetic_shards": "data/processed/synthetic/pretraining/shards",
   "turkish_morphology": "data/evaluation/tokenizer/tr_morphology.json",
-  "bytes_per_training_slice": 100000000,
+  "bytes_per_training_slice": 8000000,
   "evaluation_documents_per_language": 2000,
-  "output_dir": "artifacts/tokenizers/v4",
-  "report": "experiments/tokenization/synthetic-pretraining/sweep.json"
+  "output_dir": "artifacts/tokenizers/v3",
+  "report": "experiments/tokenization/sweep.json"
 }

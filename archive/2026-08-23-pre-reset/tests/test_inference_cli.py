@@ -57,7 +57,7 @@ def test_device_and_precision_resolution_are_safe():
 
 
 def test_checkpoint_rejects_same_size_wrong_tokenizer(tmp_path):
-    expected = load_tokenizer("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json")
+    expected = load_tokenizer("artifacts/tokenizers/v2/tiktoken-tr-bpe-12k.json")
     config = create_config(
         "dt",
         vocab_size=12000,

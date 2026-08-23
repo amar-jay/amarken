@@ -4,7 +4,7 @@
   "seed": 2026,
   "device": "cuda",
   "precision": "bf16",
-  "tokenizer": "artifacts/tokenizers/v3/tiktoken-style-tr-bpe-12k.json",
+  "tokenizer": "artifacts/tokenizers/v3/tiktoken-tr-bpe-12k.json",
   "train_data": "data/processed/synthetic/pretraining/shards",
   "train_split": "train",
   "validation_data": "data/processed/synthetic/pretraining/shards",

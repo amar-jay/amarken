@@ -7,7 +7,7 @@ from src.tokenization import load_tokenizer
 from src.training.proxy_experiment import _dataset_sha256, _tokenize, _tokenize_row, run
 
 
-TOKENIZER = Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json")
+TOKENIZER = Path("artifacts/tokenizers/v2/tiktoken-tr-bpe-12k.json")
 
 
 def test_tokenize_supports_flat_text_and_assistant_masked_chat_shards(tmp_path: Path):

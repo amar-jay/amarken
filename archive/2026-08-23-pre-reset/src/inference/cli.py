@@ -312,7 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tokenizer",
         type=Path,
-        default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"),
+        default=Path("artifacts/tokenizers/v2/tiktoken-tr-bpe-12k.json"),
     )
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N")
     parser.add_argument(

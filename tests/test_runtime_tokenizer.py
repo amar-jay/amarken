@@ -10,7 +10,7 @@ from src.tokenization import (
 
 
 def test_runtime_tokenizer_contract():
-    path = Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json")
+    path = Path("artifacts/tokenizers/v3/tiktoken-tr-bpe-12k.json")
     tokenizer = load_tokenizer(path)
     probes = [
         "İstanbul'dan Ankara'ya gidiyorum.",

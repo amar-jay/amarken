@@ -4,10 +4,10 @@
   "seed": 2026,
   "device": "cpu",
   "precision": "fp32",
-  "tokenizer": "artifacts/tokenizers/v3/tiktoken-style-tr-bpe-12k.json",
-  "train_data": "data/processed/synthetic/pretraining/shards",
+  "tokenizer": "artifacts/tokenizers/v3/tiktoken-tr-bpe-12k.json",
+  "train_data": "data/processed/synthetic-pretraining/shards",
   "train_split": "train",
-  "validation_data": "data/processed/synthetic/pretraining/shards",
+  "validation_data": "data/processed/synthetic-pretraining/shards",
   "validation_split": "validation",
   "train_token_budget": 128,
   "validation_token_budget": 128,
@@ -23,7 +23,7 @@
   "weight_decay": 0.1,
   "gradient_checkpointing": false,
   "max_grad_norm": 1.0,
-  "output_dir": "runs/training/synthetic/cpu-smoke",
+  "output_dir": "runs/synthetic-proxy-cpu-smoke",
   "models": {
     "dt": {
       "vocab_size": 12000,

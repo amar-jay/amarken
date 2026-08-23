@@ -24,7 +24,7 @@
   "gradient_checkpointing": true,
   "max_grad_norm": 1.0,
   "log_every_steps": 16,
-  "tokenizer": "artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json",
+  "tokenizer": "artifacts/tokenizers/v2/tiktoken-tr-bpe-12k.json",
   "tokenizer_fingerprint": "8c7e4a61008318098bd10d07901da328efa014775e903ce17a43082ca9cc5ff3",
   "train_data": "data/processed/proxy/v2-clean/train.jsonl",
   "validation_data": "data/processed/proxy/v2-clean/validation.jsonl",

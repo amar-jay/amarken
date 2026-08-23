@@ -264,7 +264,7 @@ def _main() -> int:
     parser.add_argument(
         "--tokenizer",
         type=Path,
-        default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"),
+        default=Path("artifacts/tokenizers/v2/tiktoken-tr-bpe-12k.json"),
     )
     parser.add_argument(
         "--benchmark", type=Path, default=Path("benchmarks/meaningful_scale_v2.json")

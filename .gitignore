@@ -75,3 +75,10 @@ artifacts/tokenizers/v2/corpus/
 tensorboard/
 lightning_logs/
 mlruns/
+
+# Archived generated payloads stay local. Archived source, tests, configs, and
+# documentation remain visible to Git as ordinary renames.
+archive/*/runs/
+archive/*/data/
+archive/*/experiments/
+archive/*/artifacts/
