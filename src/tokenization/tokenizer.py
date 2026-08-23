@@ -11,8 +11,6 @@ from tokenizers import Tokenizer
 
 SPECIAL_TOKENS = (
     "<unk>",
-    "<s>",
-    "</s>",
     "<pad>",
     "<|system|>",
     "<|user|>",
@@ -23,9 +21,11 @@ SPECIAL_TOKENS = (
 
 CORE_SPECIAL_TOKENS = {
     "unk": "<unk>",
-    "bos": "<s>",
-    "eos": "</s>",
     "pad": "<pad>",
+    "system": "<|system|>",
+    "user": "<|user|>",
+    "assistant": "<|assistant|>",
+    "end": "<|end|>",
 }
 
 
@@ -85,9 +85,25 @@ class AmarkenTokenizer:
         return token_id
 
     def unk_id(self) -> int: return self._special_id("unk")
-    def bos_id(self) -> int: return self._special_id("bos")
-    def eos_id(self) -> int: return self._special_id("eos")
     def pad_id(self) -> int: return self._special_id("pad")
+    def system_id(self) -> int: return self._special_id("system")
+    def user_id(self) -> int: return self._special_id("user")
+    def assistant_id(self) -> int: return self._special_id("assistant")
+    def end_id(self) -> int: return self._special_id("end")
+
+    def eos_id(self) -> int:
+        """Compatibility name for generation APIs expecting an EOS token ID.
+
+        Amarken has no second, generic ``</s>`` terminator. The learned chat
+        stopping signal is ``<|end|>``.
+        """
+        return self.end_id()
+
+    def start_id(self, role: str) -> int:
+        """Return the role-specific token that starts a chat message."""
+        if role not in {"system", "user", "assistant"}:
+            raise ValueError("role must be 'system', 'user', or 'assistant'")
+        return self._special_id(role)
 
     @property
     def artifact_paths(self) -> tuple[Path, ...]:

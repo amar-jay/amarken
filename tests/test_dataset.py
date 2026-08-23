@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -89,8 +90,10 @@ class _TinyTokenizer:
         self.next_id += len(result)
         return result
 
-    def bos_id(self) -> int: return 1
-    def eos_id(self) -> int: return 2
+    def encode_with_offsets(self, text: str) -> tuple[list[int], list[tuple[int, int]]]:
+        offsets = [match.span() for match in re.finditer(r"\S+", text)]
+        return self.encode(text), offsets
+
     def pad_id(self) -> int: return 3
 
 
@@ -109,3 +112,35 @@ def test_packed_conversations_supervise_only_assistant_and_pad(tmp_path: Path):
     assert block["labels"].ne(-100).any()
     assert (block["labels"][block["attention_mask"].logical_not()] == -100).all()
     assert (block["segment_ids"][block["attention_mask"].logical_not()] == -1).all()
+
+
+def test_packing_never_splits_a_conversation_across_blocks(tmp_path: Path):
+    _write_shard(tmp_path / "shard-000000.jsonl", [
+        {"id": str(index), "split": "train", "messages": [
+            {"role": "user", "content": "one two three four"},
+            {"role": "assistant", "content": "five six seven eight"},
+        ]}
+        for index in range(2)
+    ])
+    blocks = list(PackedConversationDataset(
+        AmarkenDataset(tmp_path), _TinyTokenizer(), 16  # type: ignore[arg-type]
+    ))
+
+    assert len(blocks) == 2
+    assert [block["attention_mask"].sum().item() for block in blocks] == [12, 12]
+    assert [block["segment_ids"][block["attention_mask"]].unique().numel()
+            for block in blocks] == [1, 1]
+
+
+def test_conversation_larger_than_context_fails_instead_of_orphaning_targets(tmp_path: Path):
+    _write_shard(tmp_path / "shard-000000.jsonl", [{
+        "id": "too-long", "split": "train", "messages": [
+            {"role": "user", "content": "one two three four"},
+            {"role": "assistant", "content": "five six seven eight"},
+        ]}])
+    dataset = PackedConversationDataset(
+        AmarkenDataset(tmp_path), _TinyTokenizer(), 8  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(ValueError, match="too-long.*needs 12 tokens"):
+        next(iter(dataset))

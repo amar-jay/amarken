@@ -54,6 +54,24 @@ python -m src.training.trainer \
 
 Resume with `--resume runs/synthetic-proxy-cpu-smoke/dt/checkpoints/last.ckpt`.
 
+### Experiment tracking
+
+Every optimizer update writes a structured record to
+`runs/.../step_audit.jsonl`. It includes the weighted loss, learning rates,
+token/segment counts, parameter health, and gradient norms before and after
+clipping. Lightning logs the compact metrics to CSV and W&B.
+
+The smoke configuration uses W&B offline mode, so it needs no credentials. To
+inspect or upload that run later:
+
+```bash
+wandb sync runs/synthetic-proxy-cpu-smoke/dt/wandb/offline-run-*
+```
+
+For an online run, authenticate once with `wandb login`, then set
+`wandb_mode` to `"online"` in the training config. Set `wandb_log_model` to
+`true` only in online mode to upload Lightning checkpoints as W&B artifacts.
+
 ---
 
 Surprising result: tr-biased is not beating vanilla; it's $~2.1%$ worse in **v3** tokenizer.

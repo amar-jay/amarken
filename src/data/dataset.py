@@ -13,6 +13,7 @@ import torch
 from torch.utils.data import DataLoader, IterableDataset, get_worker_info
 
 from src.tokenization.tokenizer import AmarkenTokenizer, load_tokenizer
+from src.data.chat_format import render_chat
 
 
 DatasetSplit = Literal["train", "validation", "all"]
@@ -114,7 +115,11 @@ class AmarkenDataLoader(DataLoader):
 
 
 class PackedConversationDataset(IterableDataset[dict[str, torch.Tensor]]):
-    """Tokenize and densely pack chats while isolating their attention."""
+    """Pack complete chats into blocks while isolating cross-chat attention.
+
+    A conversation is never split across blocks because attention cannot cross a
+    model forward-pass boundary. Records larger than the context fail explicitly.
+    """
 
     def __init__(self, records: AmarkenDataset, tokenizer: AmarkenTokenizer,
                  sequence_length: int, *, token_budget: int | None = None) -> None:
@@ -135,24 +140,20 @@ class PackedConversationDataset(IterableDataset[dict[str, torch.Tensor]]):
         messages = record.get("messages")
         if not isinstance(messages, list) or not messages:
             raise ValueError(f"record {record.get('id', '<unknown>')!r} has no messages")
-        ids, labels = [self.tokenizer.bos_id()], [-100]
-        for message in messages:
-            if not isinstance(message, dict):
-                raise ValueError("every message must be an object")
-            role, content = message.get("role"), message.get("content")
-            if role not in {"system", "user", "assistant"} or not isinstance(content, str):
-                raise ValueError("messages require a supported role and string content")
-            prefix = self.tokenizer.encode(f"<|{role}|>\n")
-            body = self.tokenizer.encode(content)
-            suffix = self.tokenizer.encode("<|end|>\n")
-            message_ids = prefix + body + suffix
-            ids.extend(message_ids)
-            labels.extend(
-                [-100] * len(prefix) + body + suffix
-                if role == "assistant" else [-100] * len(message_ids)
-            )
-        ids.append(self.tokenizer.eos_id())
-        labels.append(self.tokenizer.eos_id() if messages[-1].get("role") == "assistant" else -100)
+        rendered = render_chat(messages)
+        if rendered is None or not rendered.assistant_spans:
+            raise ValueError(f"record {record.get('id', '<unknown>')!r} has no assistant target")
+        if any(role not in {"system", "user", "assistant"} for role in rendered.roles):
+            raise ValueError("messages require a supported role and string content")
+
+        # Tokenize the complete canonical string once. Byte-BPE can merge a
+        # leading space with the first content character, so concatenating token
+        # lists for prefix/body/suffix would not reproduce corpus tokenization.
+        ids, offsets = self.tokenizer.encode_with_offsets(rendered.text)
+        labels = [-100] * len(ids)
+        for index, (start, end) in enumerate(offsets):
+            if any(span.start <= start and end <= span.end for span in rendered.assistant_spans):
+                labels[index] = ids[index]
         return ids, labels
 
     def _block(self, ids: list[int], labels: list[int], segments: list[int]) -> dict[str, torch.Tensor]:
@@ -182,22 +183,28 @@ class PackedConversationDataset(IterableDataset[dict[str, torch.Tensor]]):
         segment = 0
         for record in self.records:
             ids, labels = self._encode(record)
-            offset = 0
-            while offset < len(ids):
-                take = min(self.sequence_length - len(block_ids), len(ids) - offset)
-                block_ids.extend(ids[offset:offset + take])
-                block_labels.extend(labels[offset:offset + take])
-                block_segments.extend([segment] * take)
-                offset += take
-                if len(block_ids) == self.sequence_length:
-                    # Prompt-only windows carry no usable causal-LM target. They
-                    # are intentionally skipped instead of producing NaN CE loss.
-                    if any(label != -100 for label in block_labels[1:]):
-                        yield self._block(block_ids, block_labels, block_segments)
-                        emitted_tokens += len(block_ids)
-                    if local_budget is not None and emitted_tokens >= local_budget:
-                        return
-                    block_ids, block_labels, block_segments = [], [], []
+            if len(ids) > self.sequence_length:
+                # Splitting here would orphan the continuation in the next block:
+                # segment IDs isolate tokens only inside one block and cannot make
+                # attention reach context stored in a previous forward pass.
+                raise ValueError(
+                    f"record {record.get('id', '<unknown>')!r} needs {len(ids)} tokens "
+                    f"but sequence_length is {self.sequence_length}"
+                )
+
+            if block_ids and len(block_ids) + len(ids) > self.sequence_length:
+                # Keep conversations atomic. Padding costs some compute, but every
+                # supervised assistant token retains its system/user context.
+                if any(label != -100 for label in block_labels[1:]):
+                    yield self._block(block_ids, block_labels, block_segments)
+                    emitted_tokens += self.sequence_length
+                if local_budget is not None and emitted_tokens >= local_budget:
+                    return
+                block_ids, block_labels, block_segments = [], [], []
+
+            block_ids.extend(ids)
+            block_labels.extend(labels)
+            block_segments.extend([segment] * len(ids))
             segment += 1
         if (block_ids and any(label != -100 for label in block_labels[1:])
                 and (local_budget is None or emitted_tokens < local_budget)):
@@ -212,6 +219,9 @@ def inspect_dataset(
     sequence_length: int = 256,
     samples: int = 3,
     show_tokens: bool = False,
+    shuffle: bool = False,
+    seed: int = 2026,
+    epoch: int = 0,
 ) -> dict[str, int]:
     """Print packed examples and assert the invariants expected by the trainer.
 
@@ -222,8 +232,17 @@ def inspect_dataset(
     if samples < 1:
         raise ValueError("samples must be positive")
     tokenizer = load_tokenizer(tokenizer_path)
+    records = AmarkenDataset(
+        dataset_path,
+        split,
+        shuffle=shuffle,
+        seed=seed,
+    )
+    # Training changes this value at every epoch. Setting it here lets the CLI
+    # reproduce any epoch exactly instead of using nondeterministic randomness.
+    records.set_epoch(epoch)
     packed = PackedConversationDataset(
-        AmarkenDataset(dataset_path, split),
+        records,
         tokenizer,
         sequence_length,
     )
@@ -262,8 +281,31 @@ def inspect_dataset(
         )
         print("\nINPUT (everything visible to the model):")
         print(tokenizer.decode(valid_ids))
-        print("\nTARGET (only tokens contributing to loss):")
-        print(tokenizer.decode(supervised_ids))
+        print("\nTARGET SPANS (only contiguous assistant-token losses):")
+        for segment_id in unique_segments:
+            segment_mask = valid & block["segment_ids"].eq(segment_id)
+            target_mask = segment_mask & ~ignored
+            positions = target_mask.nonzero(as_tuple=False).flatten().tolist()
+            if not positions:
+                print(f"[{segment_id}] <no target>")
+                continue
+            # One chat can contain several assistant turns. The user turn between
+            # them remains in input_ids as context but has -100 labels; printing
+            # each contiguous run prevents the preview from hiding that boundary.
+            span_start = positions[0]
+            previous = positions[0]
+            for position in positions[1:] + [None]:
+                if position is not None and position == previous + 1:
+                    previous = position
+                    continue
+                target_ids = block["labels"][span_start : previous + 1].tolist()
+                print(
+                    f"[segment {segment_id}, positions {span_start}:{previous + 1}] "
+                    f"{tokenizer.decode(target_ids)}"
+                )
+                if position is not None:
+                    span_start = position
+                    previous = position
         print("\nSEGMENTS (attention is isolated between these):")
         for segment_id in unique_segments:
             mask = valid & block["segment_ids"].eq(segment_id)
@@ -309,6 +351,13 @@ def main() -> int:
     parser.add_argument("--split", choices=("train", "validation", "all"), default="train")
     parser.add_argument("--sequence-length", type=int, default=256)
     parser.add_argument("--samples", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--epoch", type=int, default=0)
+    parser.add_argument(
+        "--shuffle",
+        action="store_true",
+        help="inspect the deterministic shuffled training order",
+    )
     parser.add_argument(
         "--show-tokens",
         action="store_true",
@@ -322,6 +371,9 @@ def main() -> int:
         sequence_length=args.sequence_length,
         samples=args.samples,
         show_tokens=args.show_tokens,
+        shuffle=args.shuffle,
+        seed=args.seed,
+        epoch=args.epoch,
     )
     return 0
 

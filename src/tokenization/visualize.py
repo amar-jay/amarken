@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 from .tokenizer import AmarkenTokenizer
+from src.data.chat_format import render_chat
 from .text import repair_text_encoding
 
 # Dark 256-color backgrounds with white foreground remain distinguishable in
@@ -123,29 +124,8 @@ def _sample_text(row: dict) -> str | None:
     messages = row.get("messages")
     if not isinstance(messages, list) or not messages:
         return None
-    role_tags = {
-        "system": "<|system|>",
-        "developer": "<|developer|>",
-        "user": "<|user|>",
-        "assistant": "<|assistant|>",
-        "tool": "<|tool|>",
-    }
-    rendered = []
-    for message in messages:
-        if not isinstance(message, dict):
-            continue
-        content = message.get("content")
-        if content is None:
-            continue
-        content = str(content).strip()
-        if not content:
-            continue
-        role = str(message.get("role", "unknown")).lower()
-        tag = role_tags.get(role, f"<|{role}|>")
-        rendered.append(f"{tag}: {content} \n<|end|>")
-    if not rendered:
-        return None
-    return "\n".join(rendered) if rendered else None
+    rendered = render_chat(messages)
+    return None if rendered is None else rendered.text
 
 
 def reservoir_samples(

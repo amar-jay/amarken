@@ -5,6 +5,10 @@ torch>=2.7.0,<2.8
 # Structured training, distributed execution, AMP, logging, and exact resume.
 lightning>=2.5,<2.6
 
+# Experiment tracking for Lightning runs. Credentials stay outside the repo in
+# `wandb login` or WANDB_API_KEY; smoke tests use offline mode by default.
+wandb>=0.19,<1
+
 # Rust-backed byte-level BPE training plus tokenizer.json interoperability for
 # the tokenizer-v2 tournament and pinned external controls.
 tokenizers>=0.22.0,<0.23
