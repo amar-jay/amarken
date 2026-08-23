@@ -2,6 +2,9 @@
 # version recorded by experiments/validation/correctness/gates.json.
 torch>=2.7.0,<2.8
 
+# Structured training, distributed execution, AMP, logging, and exact resume.
+lightning>=2.5,<2.6
+
 # Rust-backed byte-level BPE training plus tokenizer.json interoperability for
 # the tokenizer-v2 tournament and pinned external controls.
 tokenizers>=0.22.0,<0.23
@@ -9,3 +12,6 @@ tokenizers>=0.22.0,<0.23
 # Conservative encoding-only repair runs before Unicode normalization so raw
 # corpus mojibake remains recoverable and residual damaged rows can be rejected.
 ftfy>=6.3.1,<7
+
+# Human-readable tables for tokenizer sweep reports.
+tabulate>=0.9,<1

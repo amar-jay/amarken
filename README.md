@@ -39,4 +39,21 @@ python -m src.tokenization.visualize \
 python -m pytest
 ```
 
-The active test suite covers only models and tokenization.
+## Training
+
+Training streams the chat shards, supervises assistant responses only, and packs
+conversations with isolated attention segments. PyTorch Lightning provides mixed
+precision, distributed execution, gradient accumulation/clipping, validation,
+CSV metrics, and resumable checkpoints:
+
+```bash
+python -m src.training.trainer \
+  --config configs/synthetic_training_cpu_smoke.json \
+  --model dt
+```
+
+Resume with `--resume runs/synthetic-proxy-cpu-smoke/dt/checkpoints/last.ckpt`.
+
+---
+
+Surprising result: tr-biased is not beating vanilla; it's $~2.1%$ worse in **v3** tokenizer.

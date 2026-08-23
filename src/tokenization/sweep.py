@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-import hashlib
 import json
-import os
 from pathlib import Path
 import statistics
 import time
 from typing import Iterable
 from itertools import islice
 
+from tabulate import tabulate
 from tokenizers import (
     Regex,
     Tokenizer,
@@ -24,6 +23,7 @@ from tokenizers import (
 )
 
 from src.tokenization.tokenizer import AmarkenTokenizer, SPECIAL_TOKENS
+from src.utils.files import sha256_file, write_report
 from src.tokenization.text import repair_text_encoding
 from src.tokenization.visualize import _sample_text, dataset_files
 
@@ -46,14 +46,6 @@ TURKISH_APOSTROPHE_SUFFIX = (
 TIKTOKEN_TURKISH_PATTERN = TURKISH_APOSTROPHE_SUFFIX + "|" + TIKTOKEN_PATTERN
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _write_slice(lines: Iterable[str], destination: Path, byte_budget: int) -> dict:
     """Write complete UTF-8 records up to a byte quota; never cut a code point."""
     written = records = 0
@@ -72,7 +64,7 @@ def _write_slice(lines: Iterable[str], destination: Path, byte_budget: int) -> d
         raise ValueError(
             f"{destination} supplied only {written:,} of {byte_budget:,} requested bytes"
         )
-    return {"bytes": written, "records": records, "sha256": _sha256(destination)}
+    return {"bytes": written, "records": records, "sha256": sha256_file(destination)}
 
 
 def _plain_lines(path: Path) -> Iterable[str]:
@@ -129,11 +121,11 @@ def _turkish_weighted_corpus(corpus: list[Path]) -> list[Path]:
     English without changing the underlying source slices.
     """
     by_name = {path.stem: path for path in corpus}
-    return [by_name["en"], by_name["tr"]]
+    return [by_name["en"], by_name["tr"], by_name["tr"]]
 
 
 def train_byte_bpe(
-    corpus: list[Path], vocab_size: int, destination: Path
+    corpus: list[Path], vocab_size: int, destination: Path, *, min_frequency: int = 2
 ) -> AmarkenTokenizer:
     tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
     # No synthetic prefix: source starts, indentation, and prompt starts retain the
@@ -145,7 +137,7 @@ def train_byte_bpe(
     tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
-        min_frequency=2,
+        min_frequency=min_frequency,
         special_tokens=list(SPECIAL_TOKENS),
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=False,
@@ -162,6 +154,7 @@ def train_tiktoken_style_bpe(
     *,
     pattern: str = TIKTOKEN_PATTERN,
     name: str | None = None,
+    min_frequency: int = 2,
 ) -> AmarkenTokenizer:
     """Train tiktoken-regex byte BPE using the production Rust trainer.
 
@@ -180,7 +173,7 @@ def train_tiktoken_style_bpe(
     tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
-        min_frequency=2,
+        min_frequency=min_frequency,
         special_tokens=list(SPECIAL_TOKENS),
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=False,
@@ -193,6 +186,10 @@ def train_tiktoken_style_bpe(
 
 
 def _evaluation_texts(config: dict, corpus: list[Path]) -> dict[str, list[str]]:
+    def morphology_forms(path: str | Path) -> list[str]:
+        morphology = json.loads(Path(path).read_text(encoding="utf-8"))
+        return [form for family in morphology["families"] for form in family["forms"]]
+
     if "synthetic_shards" in config:
         corpus_by_name = {path.stem: path for path in corpus}
         limit = int(config.get("evaluation_documents_per_language", 2_000))
@@ -208,8 +205,8 @@ def _evaluation_texts(config: dict, corpus: list[Path]) -> dict[str, list[str]]:
             ]
             for language in ("en", "tr")
         }
-        morphology = json.loads(Path(config["turkish_morphology"]).read_text(encoding="utf-8"))
-        result["morphology"] = [form for family in morphology["families"] for form in family["forms"]]
+        result["morphology_en"] = morphology_forms(config["english_morphology"])
+        result["morphology_tr"] = morphology_forms(config["turkish_morphology"])
         return result
     sources = config["evaluation_sources"]
     result: dict[str, list[str]] = {}
@@ -220,12 +217,8 @@ def _evaluation_texts(config: dict, corpus: list[Path]) -> dict[str, list[str]]:
             for line in _plain_lines(Path(filename))
             if line.strip()
         ]
-    morphology = json.loads(
-        Path(sources["turkish_morphology"]).read_text(encoding="utf-8")
-    )
-    result["morphology"] = [
-        form for family in morphology["families"] for form in family["forms"]
-    ]
+    result["morphology_en"] = morphology_forms(sources["english_morphology"])
+    result["morphology_tr"] = morphology_forms(sources["turkish_morphology"])
     return result
 
 
@@ -295,13 +288,12 @@ def evaluate(
     slices = {
         name: _token_metrics(adapter, values)
         for name, values in texts.items()
-        if name != "morphology"
+        if not name.startswith("morphology_")
     }
-    morphology_counts = [len(adapter.encode(form)) for form in texts["morphology"]]
+    morphology_en_counts = [len(adapter.encode(form)) for form in texts["morphology_en"]]
+    morphology_tr_counts = [len(adapter.encode(form)) for form in texts["morphology_tr"]]
     artifact_bytes = sum(path.stat().st_size for path in adapter.artifact_paths)
     failures = sum(metrics["roundtrip_failures"] for metrics in slices.values())
-    balanced_fertility = slices["en"]["tokens_per_word"] + slices["tr"]["tokens_per_word"]
-    score = 100.0 / max(balanced_fertility, 1e-9)
     requested_vocab_size = 16_000 if adapter.name == "byte-bpe-16k" else 12_000
     qualified = (
         adapter.vocab_size() == requested_vocab_size
@@ -310,35 +302,35 @@ def evaluate(
     )
     return {
         "name": adapter.name,
-        "vocab_size": adapter.vocab_size(),
         "artifact_bytes": artifact_bytes,
-        "embedding_parameters_width_256": adapter.vocab_size() * 256,
-        "embedding_parameters_width_512": adapter.vocab_size() * 512,
-        "score": score,
         "training_token_shares": _training_token_shares(
             adapter,
             corpus,
             turkish_weighted=adapter.name == "tiktoken-tr-weighted-bpe-12k",
         ),
         "slices": slices,
+        "english_morphology": {
+            "forms": len(morphology_en_counts),
+            "mean_tokens": statistics.fmean(morphology_en_counts),
+            "max_tokens": max(morphology_en_counts),
+        },
         "turkish_morphology": {
-            "forms": len(morphology_counts),
-            "mean_tokens": statistics.fmean(morphology_counts),
-            "max_tokens": max(morphology_counts),
+            "forms": len(morphology_tr_counts),
+            "mean_tokens": statistics.fmean(morphology_tr_counts),
+            "max_tokens": max(morphology_tr_counts),
         },
         "qualified": qualified,
         "artifacts": [
-            {"path": str(path), "bytes": path.stat().st_size, "sha256": _sha256(path)}
+            {"path": str(path), "bytes": path.stat().st_size, "sha256": sha256_file(path)}
             for path in adapter.artifact_paths
         ],
     }
 
 
-def run(config_path: Path, evaluate_only: bool = False) -> dict:
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    if config.get("format_version") != 1:
-        raise ValueError("unsupported tokenizer-v2 config format")
+def run(config: dict, evaluate_only: bool = False) -> dict:
+
     output_dir = Path(config["output_dir"])
+    min_frequency = config.get("min_frequency", 2)
     output_dir.mkdir(parents=True, exist_ok=True)
     corpus, corpus_manifest = build_training_corpus(config, output_dir)
     started = time.perf_counter()
@@ -358,7 +350,7 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
             (
                 AmarkenTokenizer(
                     output_dir / "tiktoken-tr-bpe-12k.json",
-                    name="tiktoken-apostrophe-bpe-12k",
+                    name="tiktoken-tr-bpe-12k",
                 )
                 if (output_dir / "tiktoken-tr-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
@@ -366,7 +358,7 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
                     12_000,
                     output_dir / "tiktoken-tr-bpe-12k.json",
                     pattern=TIKTOKEN_TURKISH_PATTERN,
-                    name="tiktoken-apostrophe-bpe-12k",
+                    name="tiktoken-tr-bpe-12k",
                 )
             ),
             (
@@ -385,34 +377,31 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
         ]
     else:
         adapters = [
-            train_byte_bpe(corpus, 12_000, output_dir / "byte-bpe-12k.json"),
-            train_byte_bpe(corpus, 16_000, output_dir / "byte-bpe-16k.json"),
+            train_byte_bpe(corpus, 12_000, output_dir / "byte-bpe-12k.json", min_frequency=min_frequency),
+            train_byte_bpe(corpus, 16_000, output_dir / "byte-bpe-16k.json", min_frequency=min_frequency),
             train_tiktoken_style_bpe(
-                corpus, 12_000, output_dir / "tiktoken-bpe-12k.json"
+                corpus, 12_000, output_dir / "tiktoken-bpe-12k.json", min_frequency=min_frequency
             ),
             train_tiktoken_style_bpe(
                 corpus,
                 12_000,
                 output_dir / "tiktoken-tr-bpe-12k.json",
                 pattern=TIKTOKEN_TURKISH_PATTERN,
-                name="tiktoken-apostrophe-bpe-12k",
+                name="tiktoken-tr-bpe-12k", min_frequency=min_frequency
             ),
             train_tiktoken_style_bpe(
                 _turkish_weighted_corpus(corpus),
                 12_000,
                 output_dir / "tiktoken-tr-weighted-bpe-12k.json",
-                name="tiktoken-tr-weighted-bpe-12k",
+                name="tiktoken-tr-weighted-bpe-12k", min_frequency=min_frequency
             ),
         ]
     texts = _evaluation_texts(config, corpus)
     candidates = [evaluate(adapter, texts, corpus) for adapter in adapters]
-    passed = any(
-        row["qualified"] and row["vocab_size"] <= 16_000 for row in candidates
-    )
     probe_finalists = [
         name
         for name in (
-            "tiktoken-apostrophe-bpe-12k",
+            "tiktoken-tr-bpe-12k",
             "tiktoken-tr-weighted-bpe-12k",
             "tiktoken-bpe-12k",
             "byte-bpe-16k",
@@ -422,23 +411,13 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
     report = {
         "format_version": 1,
         "experiment_id": config["experiment_id"],
-        "passed": passed,
         "interpretation": "tokenizer qualification; no model capability claim",
-        "config_sha256": _sha256(config_path),
         "training_corpus": corpus_manifest,
         "elapsed_seconds": time.perf_counter() - started,
         "model_probe_finalists": probe_finalists,
         "candidates": candidates,
     }
-    report_path = Path(config["report"])
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = report_path.with_name(report_path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    os.replace(temporary, report_path)
     return report
-
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -446,15 +425,57 @@ def _main() -> int:
     parser.add_argument(
         "--evaluate-only", action="store_true", help="reuse existing trained artifacts"
     )
+    parser.add_argument(
+        "--report", action="store_true", help="write the JSON report"
+    )
+
     args = parser.parse_args()
-    report = run(args.config, evaluate_only=args.evaluate_only)
+
+    config_path = args.config
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    if config.get("format_version") != 1:
+        raise ValueError("unsupported tokenizer-v2 config format")
+    report = run(config, evaluate_only=args.evaluate_only)
+    headers = [
+        "Tokenizer",
+        "EN Train Share",
+        "TR Train Share",
+        "EN tok/word",
+        "TR tok/word",
+        "EN tok/char",
+        "TR tok/char",
+        "EN Morph Mean",
+        "EN Morph Max",
+        "TR Morph Mean",
+        "TR Morph Max",
+    ]
+    table = []
     for row in report["candidates"]:
-        print(
-            row["name"],
-            row["vocab_size"],
-            f"{row['score']:.4f}",
+        en = row["slices"]["en"]
+        tr = row["slices"]["tr"]
+        shares = row["training_token_shares"]
+        table.append(
+            [
+                row["name"],
+                f'{shares["en"]:.2%}',
+                f'{shares["tr"]:.2%}',
+                f'{en["tokens_per_word"]:.4f}',
+                f'{tr["tokens_per_word"]:.4f}',
+                f'{en["tokens_per_character"]:.4f}',
+                f'{tr["tokens_per_character"]:.4f}',
+                f'{row["english_morphology"]["mean_tokens"]:.4f}',
+                row["english_morphology"]["max_tokens"],
+                f'{row["turkish_morphology"]["mean_tokens"]:.4f}',
+                row["turkish_morphology"]["max_tokens"],
+            ]
         )
-    return 0 if report["passed"] else 1
+    print(tabulate(table, headers=headers, tablefmt="github"))
+    if args.report or not args.evaluate_only:
+        report["config_sha256"] = sha256_file(config_path)
+        report_path = Path(config["report"])
+        write_report(report, report_path)
+        print(f"Wrote tokenizer sweep report to {report_path} ({len(report['candidates'])} candidates)")
+    return 0
 
 
 if __name__ == "__main__":

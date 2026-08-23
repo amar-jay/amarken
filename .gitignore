@@ -70,8 +70,8 @@ runs/*
 outputs/
 checkpoints/
 # Tokenizer-v2 training slices are deterministic 24MB intermediates. Retain the
-# trained tokenizer artifacts and hashed report, but regenerate these corpora.
-artifacts/tokenizers/v2/corpus/
+
+artifacts/tokenizers/*/corpus/
 tensorboard/
 lightning_logs/
 mlruns/

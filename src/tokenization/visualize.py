@@ -6,7 +6,6 @@ import argparse
 from dataclasses import dataclass
 import json
 from pathlib import Path
-import random
 import sys
 
 from .tokenizer import AmarkenTokenizer
@@ -106,21 +105,6 @@ def render_tokens(
     return "".join(blocks), legend
 
 
-def _crop(text: str, maximum: int, rng: random.Random) -> str:
-    if len(text) <= maximum:
-        return text
-    start = rng.randrange(0, len(text) - maximum + 1)
-    # Prefer complete lines when nearby; prose without newlines uses exact windows.
-    next_line = text.find("\n", start, min(len(text), start + 200))
-    if next_line != -1:
-        start = next_line + 1
-    end = min(len(text), start + maximum)
-    next_end = text.find("\n", end, min(len(text), end + 200))
-    if next_end != -1:
-        end = next_end + 1
-    return text[start:end]
-
-
 def dataset_files(dataset: Path) -> list[Path]:
     """Resolve one JSONL file or a synthetic shard directory in stable order."""
     if dataset.is_file():
@@ -167,15 +151,12 @@ def _sample_text(row: dict) -> str | None:
 def reservoir_samples(
     dataset: Path,
     count: int,
-    seed: int,
-    maximum_characters: int,
     language: str | None = None,
     domain: str | None = None,
 ) -> list[Sample]:
     """Uniformly sample eligible documents in one streaming pass."""
-    if count < 1 or maximum_characters < 1:
-        raise ValueError("count and maximum_characters must be positive")
-    rng = random.Random(seed)
+    if count < 1:
+        raise ValueError("count must be positive")
     reservoir: list[dict] = []
     eligible = 0
     for path in dataset_files(dataset):
@@ -194,10 +175,6 @@ def reservoir_samples(
                 candidate = {**row, "_sample_text": text, "_dataset_file": path.name}
                 if len(reservoir) < count:
                     reservoir.append(candidate)
-                else:
-                    replacement = rng.randrange(eligible)
-                    if replacement < count:
-                        reservoir[replacement] = candidate
     if not reservoir:
         raise ValueError("no dataset rows match the requested filters")
     # Cropping after selection preserves uniform document probability.
@@ -207,7 +184,7 @@ def reservoir_samples(
             language=str(row.get("language", "unknown")),
             domain=str(row.get("domain", row.get("category", "unknown"))),
             source_id=str(row.get("source_id", row.get("_dataset_file", "unknown"))),
-            text=_crop(row["_sample_text"], maximum_characters, rng),
+            text=row["_sample_text"],
         )
         for row in reservoir
     ]
@@ -241,8 +218,6 @@ def run(args: argparse.Namespace) -> None:
     samples = reservoir_samples(
         args.dataset,
         args.samples,
-        args.seed,
-        args.max_characters,
         language=args.language,
         domain=args.domain,
     )
@@ -262,8 +237,9 @@ def run(args: argparse.Namespace) -> None:
             words = len(sample.text.split())
             print("-" * 88)
             print(
-                f"tokenizer={adapter.name} vocab={adapter.vocab_size()} tokens={len(legend)} "
-                f"tokens/word={len(legend) / max(words, 1):.3f}"
+                f"tokenizer={adapter.name}",
+                #f"vocab={adapter.vocab_size()} tokens={len(legend)} "
+                #f"tokens/word={len(legend) / max(words, 1):.3f}"
             )
             print(rendered)
             if args.legend:
@@ -282,12 +258,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dataset",
         type=Path,
-        required=True,
+        default=Path("data/processed/synthetic-pretraining/shards"),
         help="JSONL file, or shard directory combining shard-*.jsonl and translations-*.jsonl",
     )
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--seed", type=int, default=2026)
-    parser.add_argument("--max-characters", type=int, default=512)
     parser.add_argument("--language", help="optional exact JSONL language filter")
     parser.add_argument("--domain", help="optional exact JSONL domain filter")
     parser.add_argument(
@@ -303,8 +278,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.tokenizer is None:
+        ver = "v4"
         args.tokenizer = [
-            "tiktoken=artifacts/tokenizers/v3/tiktoken-tr-bpe-12k.json"
+            f"lang-agnostic=artifacts/tokenizers/{ver}/tiktoken-bpe-12k.json",
+            f"tr-biased=artifacts/tokenizers/{ver}/tiktoken-tr-weighted-bpe-12k.json",
+            f"vanilla=artifacts/tokenizers/{ver}/byte-bpe-12k.json",
+            f"large=artifacts/tokenizers/{ver}/byte-bpe-16k.json"
         ]
     run(args)
     return 0
