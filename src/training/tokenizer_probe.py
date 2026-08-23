@@ -231,12 +231,12 @@ def _main() -> int:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("configs/tokenizer_probe_dt_cpu_preflight.json"),
+        required=True,
     )
     parser.add_argument(
         "--report",
         type=Path,
-        default=Path("experiments/tokenizer_probe_dt_cpu_preflight.json"),
+        required=True,
     )
     args = parser.parse_args()
     report = run(args.config, args.report)

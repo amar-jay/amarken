@@ -1,117 +1,54 @@
 # Data
 
-## Tokenizer reference corpus
+Data is organized by lifecycle first, then family and version.
 
-The tokenizer sweep uses OPUS-100 v1.0 supervised English–Turkish: 1,000,000
-aligned training pairs, 2,000 development pairs, and 2,000 test pairs. Download:
-
-```bash
-mkdir -p data/raw/opus100
-curl -L \
-  https://object.pouta.csc.fi/OPUS-100/v1.0/opus-100-corpus-en-tr-v1.0.tar.gz \
-  -o data/raw/opus100/en-tr-v1.0.tar.gz
-tar -xzf data/raw/opus100/en-tr-v1.0.tar.gz -C data/raw/opus100
+```text
+data/
+  raw/
+    translation/opus100/                 Downloaded upstream corpus
+  processed/
+    proxy/{v1,v2-clean}/                  Historical flat-text proxy datasets
+    distillation/grounded-pilot/v1/       Grounded assistant pilot
+    synthetic/pretraining/                Current sharded chat/translation corpus
+      shards/
+      exports/messages.jsonl
+  evaluation/
+    tokenizer/tr_morphology.json          Tokenizer-only diagnostic data
 ```
 
-Expected archive SHA-256:
-`0d4a941721721c94e99013052491894062d7782efb94a6593a91fd1f0f06cba0`.
+Files under `raw/` are upstream inputs. Files under `processed/` are generated
+training datasets with manifests and split metadata. Files under `evaluation/`
+must never be included in tokenizer or model training.
 
-OPUS-100 is a sampled mixture of OPUS domains and is suitable for a controlled
-tokenizer baseline, not the final pretraining corpus. Training data is used only
-for vocabulary learning; untouched dev+test files supply tokenizer metrics.
+Historical manifests and JSONL `locator` fields intentionally retain their
+original source paths and hashes. Those strings are provenance records, not
+current filesystem pointers.
 
-`tokenizer_eval/tr_morphology.json` is a small hand-curated diagnostic suite,
-not training data and not a linguistic gold-standard morphological analyzer.
-
-Run the matched sweep with:
-
-```bash
-python -m src.tokenization.sweep \
-  --output-dir artifacts/tokenizers \
-  --report experiments/tokenizer_sweep.json
-```
-
-The three candidates differ only in vocabulary size. They use BPE plus all 256
-byte pieces, identity normalization for lossless text preservation, full Unicode
-character coverage, fixed special-token IDs, original corpus order, one trainer
-thread, and an exact vocabulary-size limit. Fertility is pieces per
-whitespace-delimited surface word. Byte fallback rate is emitted `<0xXX>` pieces
-divided by all emitted pieces. Turkish morphology fragmentation is measured on
-the separate probe set both as pieces per word and as each inflected form's
-piece count relative to its lemma. Artifact size includes `.model` and `.vocab`.
-Round-trip correctness requires exact string equality after decode(encode(text)).
-
-## Proxy pretraining corpus
-
-Build the non-distilled proxy corpus with:
+## Build proxy v1
 
 ```bash
 python -m src.data.proxy \
-  --config configs/proxy_dataset.json \
-  --output-dir data/processed/proxy-v1
+  --config configs/data-generation/proxy/v1.json \
+  --output-dir data/processed/proxy/v1
 ```
 
-`proxy-v1` starts from deterministic 100k-record samples of each OPUS-100 EN/TR
-training side, the project-owned Python modules, and the Python 3.11.15 standard
-library under the PSF license. CPython tests, `site-packages`, and `ensurepip` are
-excluded: tests resemble evaluation data, while the latter directories introduce
-bundled third-party code and licenses. This is a proxy for pipeline/model
-validation, not the eventual pretraining mixture; OPUS component licenses must
-be resolved individually before redistribution or production training.
+## Generate synthetic pretraining data
 
-Each JSONL record carries stable ID, content hash, source ID, source locator,
-language, domain, and split group. Aligned EN/TR rows share a group so translations
-cannot cross the train/validation boundary. Selection takes the lowest seeded
-hashes instead of the first records. Splitting hashes groups into 100 fixed basis
-points (1%) for validation, so results do not depend on traversal order.
-
-Cleaning performs language-local exact deduplication followed by trigram SimHash
-near-deduplication at Hamming distance three. Contamination rejects an exact
-document or any exact 13-token window shared with configured reference files.
-The initial registry covers repository correctness tests and tokenizer probes;
-future hidden/public evaluation datasets must be added to
-`contamination_references` before any benchmark claim. `manifest.json` records
-all source, license, configuration, and output hashes. `contamination.jsonl`
-quarantines rejected documents for audit rather than silently deleting them.
-
-The builder accepts only `lines`, `glob`, and `python_stdlib` source kinds. There
-is deliberately no synthetic or distillation adapter in proxy-v1.
-
-## Grounded assistant pilot
-
-The grounded pilot contains no code tasks. Its truth is independent of the
-local teacher: bilingual QA uses project-authored answer keys, arithmetic uses a
-restricted deterministic calculator, and tool results come from local fixture
-executors. Qwen only writes the final concise surface form; outputs that change
-required entities or values are rejected.
+Local generation:
 
 ```bash
-python -m src.distillation.grounded_pilot \
-  --config configs/grounded_pilot_v1.json
+python -m src.distillation.synthetic_pretraining \
+  --config configs/data-generation/synthetic/pretraining/local-1m.json
 ```
 
-The output directory contains `train.jsonl`, `validation.jsonl`,
-`rejections.jsonl`, and a hash-bound `manifest.json`. EN/TR variants sharing an
-underlying fact or scenario stay in the same split. Every accepted record carries
-its verified target, executable grounding, teacher model digest, decoding
-settings, and response metrics.
-
-## Million-sample A100 generation
-
-The A100 path uses one text-only `Qwen/Qwen3.5-2B` vLLM engine. One engine owns
-the weights and continuously batches up to 256 active sequences; each submitted
-request batch contains up to 4,096 conversations. Invalid outputs are retried in
-later GPU batches. Output uses the same resumable 1,000-record shards as the
-local generator.
-
-Qwen3.5 currently requires the vLLM nightly/main-compatible build. After setting
-up the Brev environment according to the official Qwen model card, benchmark
-10,000 accepted records first:
+A100 generation:
 
 ```bash
 python -m src.distillation.synthetic_pretraining_vllm \
-  --config configs/synthetic_pretraining_1m_a100.json \
-  --max-new 10000
+  --config configs/data-generation/synthetic/pretraining/a100-1m.json
 ```
 
-Remove `--max-new` to resume the same output directory toward one million.
+The currently selected corpus is
+`data/processed/synthetic/pretraining/shards/`. It contains both `shard-*.jsonl`
+chat data and `translations-*.jsonl` translation data; each record carries its
+own train/validation split.

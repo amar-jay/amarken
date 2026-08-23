@@ -6,7 +6,7 @@
   "seed": 91423,
   "model": "qwen3.5:2b-q4_K_M",
   "base_url": "http://127.0.0.1:11434",
-  "output_dir": "data/processed/synthetic-pretraining-1m",
+  "output_dir": "data/processed/synthetic/pretraining/local-1m",
   "max_attempts": 3,
   "min_words": 2,
   "max_words": 72,

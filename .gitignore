@@ -65,7 +65,8 @@ data/grounded/*
 experiments/*
 !experiments/README.md
 wandb/
-runs/
+runs/*
+!runs/README.md
 outputs/
 checkpoints/
 # Tokenizer-v2 training slices are deterministic 24MB intermediates. Retain the

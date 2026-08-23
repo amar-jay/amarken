@@ -494,10 +494,12 @@ def build(config_path: Path, output_dir: Path, root: Path = Path(".")) -> dict:
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--config", type=Path, default=Path("configs/proxy_dataset.json")
+        "--config",
+        type=Path,
+        default=Path("configs/data-generation/proxy/v1.json"),
     )
     parser.add_argument(
-        "--output-dir", type=Path, default=Path("data/processed/proxy-v1")
+        "--output-dir", type=Path, default=Path("data/processed/proxy/v1")
     )
     args = parser.parse_args()
     report = build(args.config, args.output_dir)

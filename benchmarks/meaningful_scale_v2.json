@@ -4880,7 +4880,7 @@
   "scope": "frozen deterministic development suite; keep a separately held secret suite for final claims",
   "seed": 20260822,
   "validation_source": {
-    "path": "data/processed/proxy-v2-clean/validation.jsonl",
+    "path": "data/processed/proxy/v2-clean/validation.jsonl",
     "sha256": "d69a7acb1a86976757ed78e1c24ec27494f62d00bf4e167b733fcd1643a06eb3"
   }
 }

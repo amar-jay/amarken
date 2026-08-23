@@ -7,11 +7,17 @@ from contextlib import nullcontext
 from dataclasses import asdict
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import random
 import statistics
 import time
+
+# CUDA cuBLAS requires this fixed workspace before PyTorch initializes CUDA when
+# hard deterministic algorithms are enabled below.  Preserve an explicit caller
+# choice while supplying PyTorch's documented deterministic default.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import torch
 
@@ -92,9 +98,16 @@ def _tokenize_row(row: dict, processor: AmarkenTokenizer) -> TokenizedExample | 
 
 
 def _tokenize(
-    path: Path, processor: AmarkenTokenizer, token_budget: int
+    path: Path,
+    processor: AmarkenTokenizer,
+    token_budget: int,
+    split: str | None = None,
 ) -> list[TokenizedExample]:
-    """Read stable JSONL/shard order until exactly ``token_budget`` tokens exist."""
+    """Read stable JSONL/shard order until exactly ``token_budget`` tokens exist.
+
+    ``split`` lets a sharded dataset serve both train and validation without
+    leaking validation rows into the training token pool.
+    """
     if token_budget < 1:
         raise ValueError("token_budget must be positive")
     examples, consumed = [], 0
@@ -104,7 +117,10 @@ def _tokenize(
                 if not line.strip():
                     continue
                 try:
-                    example = _tokenize_row(json.loads(line), processor)
+                    row = json.loads(line)
+                    if split is not None and row.get("split") != split:
+                        continue
+                    example = _tokenize_row(row, processor)
                 except (json.JSONDecodeError, ValueError) as error:
                     raise ValueError(f"invalid dataset row {dataset_path}:{line_number}: {error}") from error
                 if example is None:
@@ -174,8 +190,18 @@ def run(config_path: Path, report_path: Path) -> dict:
         raise ValueError("proxy tournament requires the selected matched 12k tokenizer")
     train_path = Path(config["train_data"])
     validation_path = Path(config["validation_data"])
-    train_examples = _tokenize(train_path, processor, config["train_token_budget"])
-    validation_examples = _tokenize(validation_path, processor, config["validation_token_budget"])
+    train_examples = _tokenize(
+        train_path,
+        processor,
+        config["train_token_budget"],
+        split=config.get("train_split"),
+    )
+    validation_examples = _tokenize(
+        validation_path,
+        processor,
+        config["validation_token_budget"],
+        split=config.get("validation_split"),
+    )
     train_dataset = PackedSequenceDataset(
         train_examples,
         config["sequence_length"],
@@ -197,6 +223,17 @@ def run(config_path: Path, report_path: Path) -> dict:
         bit_weight_decay=config["weight_decay"],
     )
     output_root = Path(config["output_dir"])
+    resume_from = config.get("resume_from", {})
+    if not isinstance(resume_from, dict) or not all(
+        isinstance(model_type, str) and isinstance(path, str)
+        for model_type, path in resume_from.items()
+    ):
+        raise ValueError("resume_from must map model types to checkpoint paths")
+    unknown_resume_models = set(resume_from) - set(config["models"])
+    if unknown_resume_models:
+        raise ValueError(
+            f"resume_from names models not present in models: {sorted(unknown_resume_models)}"
+        )
     results = []
     for model_type in config["models"]:
         random.seed(config["seed"])
@@ -214,7 +251,9 @@ def run(config_path: Path, report_path: Path) -> dict:
             max_grad_norm=config["max_grad_norm"],
             seed=config["seed"],
             log_every_steps=1,
-            checkpoint_every_steps=config["optimizer_updates"] + 1,
+            checkpoint_every_steps=config.get(
+                "checkpoint_every_steps", config["optimizer_updates"] + 1
+            ),
             output_dir=output_root / model_type,
             # Optional keys preserve old smoke configs while letting serious runs
             # declare the complete trajectory in their provenance JSON.
@@ -226,11 +265,20 @@ def run(config_path: Path, report_path: Path) -> dict:
         trainer = Trainer(
             model, train_dataset, trainer_config, optimizer_config, device
         )
+        checkpoint_to_resume = resume_from.get(model_type)
+        if checkpoint_to_resume is not None:
+            trainer.load_checkpoint(checkpoint_to_resume)
+            if trainer.state.update_step > config["optimizer_updates"]:
+                raise ValueError(
+                    f"{model_type} checkpoint is at update {trainer.state.update_step}, "
+                    f"beyond requested optimizer_updates={config['optimizer_updates']}"
+                )
+        starting_update = trainer.state.update_step
         initial_validation_loss = _evaluate(
             model, validation_dataset, device, config["precision"]
         )
         started = time.perf_counter()
-        records = trainer.train(config["optimizer_updates"])
+        records = trainer.train(config["optimizer_updates"] - trainer.state.update_step)
         training_seconds = time.perf_counter() - started
         final_validation_loss = _evaluate(
             model, validation_dataset, device, config["precision"]
@@ -255,23 +303,30 @@ def run(config_path: Path, report_path: Path) -> dict:
                 "final_validation_loss": final_validation_loss,
                 "validation_loss_change": final_validation_loss
                 - initial_validation_loss,
-                "first_train_loss": records[0]["loss"],
-                "final_train_loss": records[-1]["loss"],
-                "mean_train_loss": statistics.fmean(
-                    record["loss"] for record in records
+                "first_train_loss": records[0]["loss"] if records else None,
+                "final_train_loss": records[-1]["loss"] if records else None,
+                "mean_train_loss": (
+                    statistics.fmean(record["loss"] for record in records)
+                    if records
+                    else None
                 ),
                 "training_seconds": training_seconds,
                 "tokens_per_second": trainer.state.consumed_tokens / training_seconds,
                 "optimizer_updates": trainer.state.update_step,
                 "consumed_tokens": trainer.state.consumed_tokens,
+                "resume": {
+                    "checkpoint": checkpoint_to_resume,
+                    "starting_update": starting_update,
+                    "completed_without_additional_training": not records,
+                },
                 "final_gradient_health": {
                     key: value
-                    for key, value in records[-1].items()
+                    for key, value in (records[-1] if records else {}).items()
                     if key.startswith("grad_")
                 },
                 "final_ternary_statistics": {
                     key: value
-                    for key, value in records[-1].items()
+                    for key, value in (records[-1] if records else {}).items()
                     if key.startswith("ternary_")
                 },
                 "checkpoint": {

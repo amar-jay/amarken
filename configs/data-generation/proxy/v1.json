@@ -8,7 +8,7 @@
     {
       "id": "opus100-en-tr-v1-en",
       "kind": "lines",
-      "path": "data/raw/opus100/opus-100-corpus/v1.0/supervised/en-tr/opus.en-tr-train.en",
+      "path": "data/raw/translation/opus100/opus-100-corpus/v1.0/supervised/en-tr/opus.en-tr-train.en",
       "language": "en",
       "domain": "translated_text",
       "license": "source-dependent OPUS mixture; inspect OPUS provenance before production use",
@@ -19,7 +19,7 @@
     {
       "id": "opus100-en-tr-v1-tr",
       "kind": "lines",
-      "path": "data/raw/opus100/opus-100-corpus/v1.0/supervised/en-tr/opus.en-tr-train.tr",
+      "path": "data/raw/translation/opus100/opus-100-corpus/v1.0/supervised/en-tr/opus.en-tr-train.tr",
       "language": "tr",
       "domain": "translated_text",
       "license": "source-dependent OPUS mixture; inspect OPUS provenance before production use",
@@ -43,15 +43,19 @@
       "path": "Lib/**/*.py",
       "language": "code",
       "domain": "python",
-      "license": "Python Software Foundation License Version 2",
-      "url": "https://www.python.org/downloads/release/python-31115/",
+      "license": "Python Software Foundation License",
       "group_namespace": "cpython-3.11.15",
-      "exclude_directories": ["site-packages", "test", "tests", "ensurepip"]
+      "exclude_directories": [
+        "site-packages",
+        "test",
+        "tests",
+        "ensurepip"
+      ]
     }
   ],
   "contamination_references": [
     "benchmarks/**/*.json",
     "tests/**/*.py",
-    "data/tokenizer_eval/**/*.json"
+    "data/evaluation/tokenizer/**/*.json"
   ]
 }

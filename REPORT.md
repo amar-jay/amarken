@@ -61,7 +61,7 @@ The first executable pre-training gates were implemented and run:
 
 Both active models passed the original suite. DT was later integrated into the same gates.
 
-Artifacts: `experiments/correctness_gates.json`
+Artifacts: `experiments/validation/correctness/gates.json`
 
 Commit: `565d9a8` (`Implemented and ran the blocking correctness suite`)
 
@@ -190,7 +190,7 @@ A full-precision DT control was added and compared with approximately 10M-parame
 
 Each model consumed only 4,096 tokens over 32 optimizer updates. This established optimization health, not model quality. Bit remained numerically healthy with approximately 31% zero trits and fully finite ternary gradients.
 
-Artifact: `experiments/proxy_10m.json`
+Retained run: `runs/training/proxy/tournament/10m-context64-4k-v1/`
 
 Commit: `0aba26b` (`Completed the first matched ~10M proxy experiment`)
 
@@ -210,7 +210,8 @@ Systems measurements showed DT as the fastest reference implementation, Glimmer 
 
 Additional gates found zero 13-token overlaps across 180,156 training records, balanced answer positions, complete validation coverage, and exact reproduction of losses, predictions, probabilities, and calibration on an independent rerun.
 
-Artifact: `experiments/capability_10m.json`
+The standalone historical capability JSON is not retained; the measurements are
+recorded in this report.
 
 Commit: `83f582e` (`Implemented and ran the deterministic bilingual capability evaluation`)
 
@@ -231,7 +232,7 @@ DT won all three 25M seeds and two of three 60M seeds. Bit narrowed its mean los
 
 These runs remained optimization preflights because each model saw only 4,096 tokens.
 
-Artifact: `experiments/proxy_scaling.json`
+Retained runs: `runs/training/proxy/scaling/v1/`
 
 Commit: `258ebdf` (`Completed the full scaling matrix on the RTX 3050 Laptop GPU`)
 
@@ -250,7 +251,7 @@ Selected learning rates:
 
 The screen changed the earlier interpretation: with a suitable learning rate and longer context, Glimmer became the strongest early optimizer. It also established tensor- and output-channel-scale Bit variants as explicit tournament arms.
 
-Artifact: `experiments/lr_screen_10m.json`
+Artifact: `experiments/training/proxy/lr-screen/10m-context512.json`
 
 ### 2026-08-22 — Context-512, one-million-token tournament (active)
 
@@ -335,7 +336,7 @@ confound. Its manifest records:
 
 All output files, source inputs, cleaning policies, repair counts, contamination
 references, and train/validation splits are hash-bound in
-`data/processed/proxy-v2-clean/manifest.json`.
+`data/processed/proxy/v2-clean/manifest.json`.
 
 ### 2026-08-22 — Downstream tokenizer probe
 
@@ -416,10 +417,10 @@ whether continued repetition might further reduce validation loss. The 1M and
 8M checkpoints remain useful controls; resuming toward 32M/100M is paused until
 the training-data program changes.
 
-Configuration: `configs/learning_curve_dt_apostrophe_100m.json`
+Configuration: `configs/training/learning-curves/dt-apostrophe/100m.json`
 
 Milestone artifacts:
-`runs/dt-apostrophe-bpe-meaningful-scale-100m-v1/`
+`runs/training/learning-curves/dt-apostrophe/100m/`
 
 ### 2026-08-22 — Data-program pivot and local teacher qualification
 
@@ -502,8 +503,8 @@ overlaps against the retained benchmarks. The rejection is a desired result:
 the verifier, not the teacher, controls admission.
 
 Artifacts: `data/grounded/answer_keys_v1.json`,
-`configs/grounded_pilot_v1.json`, `src/distillation/grounded_pilot.py`,
-`data/processed/grounded-pilot-v1/manifest.json`
+configuration embedded in the generated manifest, `src/distillation/grounded_pilot.py`,
+`data/processed/distillation/grounded-pilot/v1/manifest.json`
 
 ## Current position
 

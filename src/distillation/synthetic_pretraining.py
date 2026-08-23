@@ -187,7 +187,7 @@ def run(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", type=Path, default=ROOT / "configs/synthetic_pretraining_1m.json"
+        "--config", type=Path, default=ROOT / "configs/data-generation/synthetic/pretraining/local-1m.json"
     )
     parser.add_argument("--max-new", type=int)
     parser.add_argument("--output-dir", type=Path)

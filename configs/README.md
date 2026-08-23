@@ -1,22 +1,33 @@
-## Proxy dataset
+# Configurations
 
-`proxy_dataset.json` is the reviewed policy and provenance input to
-`python -m src.data.proxy`. Vocabulary/training experiments should identify both
-this configuration hash and the generated `manifest.json` hash; the friendly
-`proxy-v1` name alone is not sufficient provenance.
+Configurations are grouped by the workflow that consumes them. A filename must
+describe the meaningful variant—hardware, physical batch, and token exposure—so
+the reader does not need to open several JSON files to distinguish runs.
 
-The OPUS cap is per language, not combined, to prevent an accidental English
-majority. `group_namespace` joins aligned translation rows for leakage-safe
-splitting. Adding a source requires an immutable source ID, language/domain,
-license assessment, upstream URL, and stable grouping rule. Add benchmark files
-to `contamination_references` before running the builder, never afterward.
+```text
+configs/
+  data-generation/
+    proxy/v1.json
+    synthetic/pretraining/{local-1m,a100-1m,a100-80gb-1m}.json
+  tokenization/
+    synthetic-pretraining/sweep.json
+  training/
+    learning-curves/dt-apostrophe/{cpu-smoke,100m}.json
+    synthetic/{cpu-smoke,gpu-batch1-1m,gpu-batch8-1m,gpu-batch1-100mi}.json
+```
 
-## Architecture tournament
+Completed configurations are immutable. A change to data, tokenizer, batch
+geometry, schedule, model shape, or exposure gets a new descriptive filename
+and `experiment_id`; it does not overwrite the old run's identity.
 
-`lr_screen_10m.json` screens three learning rates independently for named model
-variants at context 512. Its report is a required, hashed input to
-`proxy_tournament_10m_context512.json`; the tournament refuses to guess a rate
-or consume a failed screen. The long configuration uses 512 optimizer updates,
-four 512-token micro-batches per update, therefore exactly 1,048,576 training
-tokens per variant and seed. `train_token_budget` is larger only to construct a
-non-repeating packed pool; it is not the reported consumed-token budget.
+The current synthetic comparisons are:
+
+| Config | Purpose | Tokens per arm |
+|---|---|---:|
+| `training/synthetic/cpu-smoke.json` | CPU correctness smoke | 32 |
+| `training/synthetic/gpu-batch1-1m.json` | Original GPU baseline | 1,048,576 |
+| `training/synthetic/gpu-batch8-1m.json` | Throughput comparison | 1,048,576 |
+| `training/synthetic/gpu-batch1-100mi.json` | Long matched run | 104,857,600 |
+
+Reports belong under the matching `experiments/` hierarchy and checkpoints or
+metrics under the matching `runs/` hierarchy.

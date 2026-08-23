@@ -11,7 +11,7 @@ from src.distillation.synthetic_pretraining_vllm import (
 
 
 def test_a100_engine_is_one_text_only_continuously_batched_model():
-    config = json.load(open("configs/synthetic_pretraining_1m_a100.json"))
+    config = json.load(open("configs/data-generation/synthetic/pretraining/a100-1m.json"))
     kwargs = engine_kwargs(config)
     assert kwargs["model"] == "Qwen/Qwen3.5-2B" and kwargs["tensor_parallel_size"] == 1
     assert (
@@ -22,7 +22,7 @@ def test_a100_engine_is_one_text_only_continuously_batched_model():
 
 
 def test_a100_80gb_profile_matches_host_and_expands_scheduler_capacity():
-    config = json.load(open("configs/synthetic_pretraining_1m_a100_80gb.json"))
+    config = json.load(open("configs/data-generation/synthetic/pretraining/a100-80gb-1m.json"))
     kwargs = engine_kwargs(config)
     assert config["host_profile"] == {
         "gpu": "NVIDIA A100 80GB",
@@ -51,14 +51,14 @@ def test_private_grounding_is_not_saved_in_training_system_message():
 
 
 def test_retries_are_deterministic():
-    config = json.load(open("configs/synthetic_pretraining_1m_a100.json"))
+    config = json.load(open("configs/data-generation/synthetic/pretraining/a100-1m.json"))
     assert sampling_kwargs(config, 7, False)["temperature"] == 1.0
     assert sampling_kwargs(config, 7, True)["temperature"] == 0.0
     assert sampling_kwargs(config, 7, True)["seed"] == 7
 
 
 def test_offline_batch_run_writes_resumable_records_without_vllm_installed(tmp_path):
-    config = json.load(open("configs/synthetic_pretraining_1m_a100.json"))
+    config = json.load(open("configs/data-generation/synthetic/pretraining/a100-1m.json"))
     config.update(
         {
             "target_accepted": 12,

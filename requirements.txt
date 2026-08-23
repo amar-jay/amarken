@@ -1,5 +1,5 @@
 # Model runtime and training primitives. Keep this minor line aligned with the
-# version recorded by experiments/correctness_gates.json.
+# version recorded by experiments/validation/correctness/gates.json.
 torch>=2.7.0,<2.8
 
 # Rust-backed byte-level BPE training plus tokenizer.json interoperability for

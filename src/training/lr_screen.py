@@ -192,12 +192,8 @@ def run(config_path: Path, report_path: Path) -> dict:
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--config", type=Path, default=Path("configs/lr_screen_10m.json")
-    )
-    parser.add_argument(
-        "--report", type=Path, default=Path("experiments/lr_screen_10m.json")
-    )
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     report = run(args.config, args.report)
     for variant, selection in report["selections"].items():

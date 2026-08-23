@@ -10,7 +10,12 @@
   "gradient_accumulation_steps": 4,
   "train_token_pool": 4194304,
   "validation_token_budget": 32768,
-  "milestone_tokens": [1048576, 8388608, 33554432, 104857600],
+  "milestone_tokens": [
+    1048576,
+    8388608,
+    33554432,
+    104857600
+  ],
   "learning_rate": 0.001,
   "lr_schedule": "cosine",
   "warmup_steps": 512,
@@ -21,11 +26,11 @@
   "log_every_steps": 16,
   "tokenizer": "artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json",
   "tokenizer_fingerprint": "8c7e4a61008318098bd10d07901da328efa014775e903ce17a43082ca9cc5ff3",
-  "train_data": "data/processed/proxy-v2-clean/train.jsonl",
-  "validation_data": "data/processed/proxy-v2-clean/validation.jsonl",
+  "train_data": "data/processed/proxy/v2-clean/train.jsonl",
+  "validation_data": "data/processed/proxy/v2-clean/validation.jsonl",
   "benchmark": "benchmarks/meaningful_scale_v2.json",
   "legacy_benchmark": "benchmarks/proxy_capability_v1.json",
-  "output_dir": "runs/dt-apostrophe-bpe-meaningful-scale-100m-v1",
+  "output_dir": "runs/training/learning-curves/dt-apostrophe/100m",
   "model": {
     "vocab_size": 12000,
     "hidden_size": 256,

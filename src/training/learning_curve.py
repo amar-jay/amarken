@@ -247,12 +247,12 @@ def _main() -> int:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("configs/learning_curve_dt_apostrophe_100m.json"),
+        default=Path("configs/training/learning-curves/dt-apostrophe/100m.json"),
     )
     parser.add_argument(
         "--report",
         type=Path,
-        default=Path("experiments/learning_curve_dt_apostrophe_100m.json"),
+        default=Path("experiments/training/learning-curves/dt-apostrophe/100m.json"),
     )
     parser.add_argument("--skip-evaluation", action="store_true")
     args = parser.parse_args()

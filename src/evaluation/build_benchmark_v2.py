@@ -291,7 +291,7 @@ def _main() -> int:
     parser.add_argument(
         "--validation",
         type=Path,
-        default=Path("data/processed/proxy-v2-clean/validation.jsonl"),
+        default=Path("data/processed/proxy/v2-clean/validation.jsonl"),
     )
     parser.add_argument(
         "--output", type=Path, default=Path("benchmarks/meaningful_scale_v2.json")

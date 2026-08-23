@@ -372,12 +372,8 @@ def audit_existing(report_path: Path) -> dict:
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--config", type=Path, default=Path("configs/proxy_scaling.json")
-    )
-    parser.add_argument(
-        "--report", type=Path, default=Path("experiments/proxy_scaling.json")
-    )
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--audit-existing", action="store_true")
     args = parser.parse_args()
     if args.audit_existing:

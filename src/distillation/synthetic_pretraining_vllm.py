@@ -252,7 +252,7 @@ def main():
     parser.add_argument(
         "--config",
         type=Path,
-        default=ROOT / "configs/synthetic_pretraining_1m_a100.json",
+        default=ROOT / "configs/data-generation/synthetic/pretraining/a100-1m.json",
     )
     parser.add_argument("--max-new", type=int)
     parser.add_argument("--output-dir", type=Path)

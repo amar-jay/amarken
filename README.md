@@ -45,19 +45,19 @@ tokenizer fingerprint.
 # One-shot, script-friendly generation.
 python -m src.inference.cli \
   --checkpoint MODEL.pt \
-  --tokenizer artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
+  --tokenizer artifacts/tokenizers/v3/tiktoken-style-tr-bpe-12k.json \
   --prompt "Türkiye'nin başkenti" --max-new-tokens 32 --show-info --show-stats
 
 # Interactive terminal session with retained plain-text turns.
 python -m src.inference.cli \
   --checkpoint MODEL.pt \
-  --tokenizer artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
+  --tokenizer artifacts/tokenizers/v3/tiktoken-style-tr-bpe-12k.json \
   --chat
 
 # Pipe a prompt and keep stdout suitable for another program.
 printf 'Türkiye’nin başkenti nedir?' | python -m src.inference.cli \
   --checkpoint MODEL.pt \
-  --tokenizer artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json
+  --tokenizer artifacts/tokenizers/v3/tiktoken-style-tr-bpe-12k.json
 ```
 
 Interactive commands are `/help`, `/reset`, `/settings`, `/max-new N`,
@@ -74,7 +74,8 @@ fixed English, Turkish, and Python slices. It selected the apostrophe-aware 12k
 artifact for the current EN/TR assistant objective:
 
 ```bash
-python -m src.tokenization.sweep --config configs/tokenizer_v2.json
+python -m src.tokenization.sweep \
+  --config configs/tokenization/synthetic-pretraining/sweep.json
 ```
 
 Use `--evaluate-only` to regenerate metrics from existing artifacts without
@@ -92,14 +93,14 @@ python -m src.tokenization.visualize --samples 3 --language tr --legend
 
 # Compare candidates on the exact same random documents.
 python -m src.tokenization.visualize \
-  --dataset data/processed/synthetic-pretraining/shards \
-  --tokenizer tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
-  --tokenizer tokenizer=artifacts/tokenizers/v2/byte-bpe-12k.json \
+  --dataset data/processed/synthetic/pretraining/shards \
+  --tokenizer apostrophe=artifacts/tokenizers/v3/tiktoken-style-tr-bpe-12k.json \
+  --tokenizer byte-bpe=artifacts/tokenizers/v3/byte-bpe-12k.json \
   --language tr --samples 5
 
 # Sample uniformly across synthetic and translation shard families.
 python -m src.tokenization.visualize \
-  --dataset data/processed/synthetic-pretraining/shards \
+  --dataset data/processed/synthetic/pretraining/shards \
   --samples 5 --legend
 
 ```

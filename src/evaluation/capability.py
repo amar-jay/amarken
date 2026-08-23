@@ -29,7 +29,7 @@ import torch.nn.functional as F
 from src.data.proxy import TOKEN
 from src.models import create_config, create_model
 from src.training.data import PackedSequenceDataset
-from src.training.proxy_experiment import _tokenize
+from src.training.proxy_experiment import _dataset_sha256, _jsonl_paths, _tokenize
 from src.tokenization import (
     load_tokenizer,
     tokenizer_artifact_bytes,
@@ -246,6 +246,7 @@ def _worker(
     validation_path: Path,
     output: Path,
     device_name: str = "cpu",
+    validation_split: str | None = None,
 ) -> None:
     torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
@@ -273,7 +274,7 @@ def _worker(
     processor = load_tokenizer(tokenizer_path)
     benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
     validation = PackedSequenceDataset(
-        _tokenize(validation_path, processor, 8_192),
+        _tokenize(validation_path, processor, 8_192, split=validation_split),
         64,
         processor.eos_id(),
         processor.pad_id(),
@@ -294,7 +295,26 @@ def _worker(
     output.write_text(json.dumps(result, sort_keys=True), encoding="utf-8")
 
 
-def _contamination_scan(train_path: Path, benchmark_path: Path, n: int = 13) -> dict:
+def _row_text(row: dict) -> str:
+    """Return the textual training content from flat or chat JSONL rows."""
+    if isinstance(row.get("text"), str):
+        return row["text"]
+    messages = row.get("messages")
+    if isinstance(messages, list):
+        return "\n".join(
+            message["content"]
+            for message in messages
+            if isinstance(message, dict) and isinstance(message.get("content"), str)
+        )
+    return ""
+
+
+def _contamination_scan(
+    train_path: Path,
+    benchmark_path: Path,
+    n: int = 13,
+    train_split: str | None = None,
+) -> dict:
     benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
     hashes = set()
     tasks = (
@@ -308,18 +328,27 @@ def _contamination_scan(train_path: Path, benchmark_path: Path, n: int = 13) -> 
             raw = "\x1f".join(tokens[index : index + n]).encode()
             hashes.add(hashlib.blake2b(raw, digest_size=8).digest())
     matches = []
-    with train_path.open("r", encoding="utf-8") as stream:
-        for line_number, line in enumerate(stream, 1):
-            row = json.loads(line)
-            tokens = TOKEN.findall(row["text"])
-            contaminated = False
-            for index in range(len(tokens) - n + 1):
-                raw = "\x1f".join(tokens[index : index + n]).encode()
-                if hashlib.blake2b(raw, digest_size=8).digest() in hashes:
-                    contaminated = True
-                    break
-            if contaminated:
-                matches.append({"line": line_number, "document_id": row["id"]})
+    for dataset_path in _jsonl_paths(train_path):
+        with dataset_path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, 1):
+                row = json.loads(line)
+                if train_split is not None and row.get("split") != train_split:
+                    continue
+                tokens = TOKEN.findall(_row_text(row))
+                contaminated = False
+                for index in range(len(tokens) - n + 1):
+                    raw = "\x1f".join(tokens[index : index + n]).encode()
+                    if hashlib.blake2b(raw, digest_size=8).digest() in hashes:
+                        contaminated = True
+                        break
+                if contaminated:
+                    matches.append(
+                        {
+                            "path": str(dataset_path),
+                            "line": line_number,
+                            "document_id": row.get("id"),
+                        }
+                    )
     return {"ngram_tokens": n, "matching_documents": len(matches), "matches": matches}
 
 
@@ -333,7 +362,11 @@ def run(
     tokenizer = Path(proxy["shared"]["tokenizer"])
     train_data = Path(proxy["shared"]["train_data"])
     validation_data = Path(proxy["shared"]["validation_data"])
-    contamination = _contamination_scan(train_data, benchmark_path)
+    train_split = proxy["shared"].get("train_split")
+    validation_split = proxy["shared"].get("validation_split")
+    contamination = _contamination_scan(
+        train_data, benchmark_path, train_split=train_split
+    )
     results = []
     with tempfile.TemporaryDirectory(prefix="amarken-eval-") as directory:
         for candidate in proxy["results"]:
@@ -364,6 +397,8 @@ def run(
                 "--device",
                 device,
             ]
+            if validation_split is not None:
+                command.extend(("--validation-split", validation_split))
             subprocess.run(command, check=True)
             results.append(json.loads(output.read_text(encoding="utf-8")))
     report = {
@@ -374,8 +409,8 @@ def run(
         "interpretation": "deterministic proxy diagnostics; not a capability claim",
         "benchmark_sha256": _sha256(benchmark_path),
         "proxy_experiment_sha256": _sha256(proxy_report_path),
-        "train_data_sha256": _sha256(train_data),
-        "validation_data_sha256": _sha256(validation_data),
+        "train_data_sha256": _dataset_sha256(train_data),
+        "validation_data_sha256": _dataset_sha256(validation_data),
         "tokenizer_sha256": tokenizer_fingerprint(load_tokenizer(tokenizer)),
         "contamination": contamination,
         "environment": {
@@ -399,18 +434,23 @@ def run(
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--proxy-report", type=Path, default=Path("experiments/proxy_10m.json")
+        "--proxy-report",
+        type=Path,
+        default=Path("experiments/training/synthetic/gpu-batch1-1m/training.json"),
     )
     parser.add_argument(
         "--benchmark", type=Path, default=Path("benchmarks/proxy_capability_v1.json")
     )
     parser.add_argument(
-        "--report", type=Path, default=Path("experiments/capability_10m.json")
+        "--report",
+        type=Path,
+        default=Path("experiments/training/synthetic/gpu-batch1-1m/capability.json"),
     )
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--tokenizer", type=Path)
     parser.add_argument("--validation", type=Path)
+    parser.add_argument("--validation-split")
     parser.add_argument("--worker-output", type=Path)
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
@@ -422,6 +462,7 @@ def _main() -> int:
             args.validation,
             args.worker_output,
             args.device,
+            args.validation_split,
         )
         return 0
     report = run(args.proxy_report, args.benchmark, args.report, args.device)
