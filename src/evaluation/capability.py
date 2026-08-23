@@ -187,7 +187,7 @@ def _worker(checkpoint: Path, tokenizer_path: Path, benchmark_path: Path, valida
         raise ValueError("CUDA evaluation requested but unavailable")
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
-    # Baseline includes imported Python/PyTorch/SentencePiece libraries but no
+    # Baseline includes imported Python/PyTorch/tokenizer libraries but no
     # tokenizer, model, checkpoint tensors, validation blocks, or benchmark.
     baseline_rss_bytes = _current_rss_bytes()
     payload = torch.load(checkpoint, map_location=device, weights_only=True)

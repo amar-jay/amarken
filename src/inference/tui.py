@@ -839,7 +839,7 @@ class AmarkenTUI(App[None]):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, help="trainer, standalone, or model-only .pt checkpoint")
-    parser.add_argument("--tokenizer", type=Path, default=Path("artifacts/tokenizers/amarken-en-tr-12k.model"))
+    parser.add_argument("--tokenizer", type=Path, default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"))
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N")
     parser.add_argument("--precision", choices=("auto", "fp32", "bf16", "fp16"), default="auto")
     parser.add_argument("--chat", action="store_true", help="retain turns using plain User/Assistant labels")

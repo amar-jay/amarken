@@ -218,7 +218,7 @@ def run(config_path: Path, report_path: Path) -> dict:
         "lr_screen_report_sha256": _sha256(Path(config["lr_screen_report"])) if config.get("lr_screen_report") else None,
         "train_data_sha256": _sha256(Path(config["train_data"])), "validation_data_sha256": _sha256(Path(config["validation_data"])),
         "environment": {
-            "python": platform.python_version(), "torch": torch.__version__, "sentencepiece": spm.__version__,
+            "python": platform.python_version(), "torch": torch.__version__,
             "device": str(device), "cuda_device": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
         },
         "shared": {key: value for key, value in config.items() if key != "scales"},

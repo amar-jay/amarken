@@ -178,8 +178,7 @@ class InferenceSession:
             torch.cuda.synchronize(self.device)
         elapsed = time.perf_counter() - started
         generated = output[0, input_ids.shape[1] :].tolist()
-        # SentencePiece decodes the generated span as a valid independent fragment;
-        # retaining token IDs in the result makes whitespace/debug behavior auditable.
+        # Retaining token IDs makes whitespace/debug behavior auditable.
         text = self.loaded.tokenizer.decode(generated)
         if self.chat:
             self.turns.append((user_text, text))
@@ -278,7 +277,7 @@ def interactive(session: InferenceSession) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, help="trainer, standalone, or model-only .pt checkpoint")
-    parser.add_argument("--tokenizer", type=Path, default=Path("artifacts/tokenizers/amarken-en-tr-12k.model"))
+    parser.add_argument("--tokenizer", type=Path, default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"))
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N")
     parser.add_argument("--precision", choices=("auto", "fp32", "bf16", "fp16"), default="auto")
     parser.add_argument("--prompt", help="one-shot prompt; omitted enters interactive mode when stdin is a TTY")

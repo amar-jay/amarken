@@ -12,8 +12,7 @@ best mean validation loss, but every architecture remained at chance-level
 capability on the small proxy benchmark. This is therefore **not** a released
 assistant or a model-quality claim.
 
-The selected production tokenizer is `tiktoken-style-tr-bpe-12k`; the
-legacy SentencePiece tokenizer remains an experimental control. The proxy-v2
+The selected production tokenizer is `tiktoken-style-tr-bpe-12k`. The proxy-v2
 learning curve is paused: although validation loss improved, the OPUS/Python
 proxy corpus did not produce the intended concise EN/TR assistant behavior. The
 current critical path is qualifying a local teacher and building an auditable,
@@ -94,7 +93,7 @@ python -m src.tokenization.visualize --samples 3 --language tr --legend
 # Compare candidates on the exact same random documents.
 python -m src.tokenization.visualize \
   --tokenizer tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
-  --tokenizer sentencepiece=artifacts/tokenizers/v2/sp-bpe-12k.model \
+  --tokenizer tokenizer=artifacts/tokenizers/v2/tiktoken-style-byte-bpe-12k.json \
   --language tr --samples 5
 
 # Sample uniformly across synthetic and translation shard families.

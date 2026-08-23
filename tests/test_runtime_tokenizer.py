@@ -5,11 +5,8 @@ import pytest
 from src.tokenization import load_tokenizer, tokenizer_artifact_bytes, tokenizer_fingerprint
 
 
-@pytest.mark.parametrize("path", [
-    Path("artifacts/tokenizers/v2/sp-bpe-12k.model"),
-    Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"),
-])
-def test_runtime_tokenizer_contract(path):
+def test_runtime_tokenizer_contract():
+    path = Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json")
     tokenizer = load_tokenizer(path)
     probes = [
         "İstanbul'dan Ankara'ya gidiyorum.",

@@ -12,7 +12,6 @@ import statistics
 import time
 from typing import Iterable, Protocol
 
-import sentencepiece as spm
 from tokenizers import Regex, Tokenizer, decoders, models, pre_tokenizers, processors, trainers
 
 from src.data.proxy import repair_text_encoding
@@ -81,25 +80,6 @@ class HFAdapter:
 
     def vocab_size(self) -> int:
         return self.tokenizer.get_vocab_size(with_added_tokens=True)
-
-
-class SPAdapter:
-    def __init__(self, name: str, model_path: Path):
-        self.name = name
-        self.processor = spm.SentencePieceProcessor(model_file=str(model_path))
-        self.artifact_paths = (model_path, model_path.with_suffix(".vocab"))
-
-    def encode(self, text: str) -> list[int]:
-        return self.processor.encode(text, out_type=int)
-
-    def decode(self, ids: list[int]) -> str:
-        return self.processor.decode(ids)
-
-    def piece(self, token_id: int) -> str:
-        return self.processor.id_to_piece(token_id)
-
-    def vocab_size(self) -> int:
-        return self.processor.vocab_size()
 
 
 def _sha256(path: Path) -> str:
@@ -223,34 +203,6 @@ def train_tiktoken_style_bpe(
     tokenizer.train([str(path) for path in corpus], trainer)
     tokenizer.save(str(destination), pretty=True)
     return HFAdapter(name or f"tiktoken-style-bpe-{vocab_size // 1000}k", destination)
-
-
-def train_sentencepiece(corpus: list[Path], model_type: str, destination_prefix: Path) -> SPAdapter:
-    # The corrected candidate preserves bytes/whitespace, learns whitespace-only
-    # pieces, and sees the identical balanced corpus as byte-BPE.
-    spm.SentencePieceTrainer.train(
-        input=",".join(str(path) for path in corpus),
-        model_prefix=str(destination_prefix),
-        model_type=model_type,
-        vocab_size=12_000,
-        character_coverage=1.0,
-        byte_fallback=True,
-        hard_vocab_limit=True,
-        normalization_rule_name="identity",
-        remove_extra_whitespaces=False,
-        add_dummy_prefix=False,
-        split_by_whitespace=False,
-        allow_whitespace_only_pieces=True,
-        split_digits=True,
-        max_sentence_length=65_536,
-        num_threads=1,
-        shuffle_input_sentence=False,
-        input_sentence_size=0,
-        minloglevel=1,
-        unk_id=0, bos_id=1, eos_id=2, pad_id=3,
-        user_defined_symbols=list(SPECIAL_TOKENS[4:]),
-    )
-    return SPAdapter(f"sp-{model_type}-12k", destination_prefix.with_suffix(".model"))
 
 
 def _evaluation_texts(config: dict) -> dict[str, list[str]]:
@@ -399,8 +351,6 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
                     name="tiktoken-style-tr-weighted-bpe-12k",
                 )
             ),
-            SPAdapter("sp-bpe-12k", output_dir / "sp-bpe-12k.model"),
-            SPAdapter("sp-unigram-12k", output_dir / "sp-unigram-12k.model"),
             HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
         ]
     else:
@@ -417,8 +367,6 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
                 output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
                 name="tiktoken-style-tr-weighted-bpe-12k",
             ),
-            train_sentencepiece(corpus, "bpe", output_dir / "sp-bpe-12k"),
-            train_sentencepiece(corpus, "unigram", output_dir / "sp-unigram-12k"),
             HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
         ]
     texts = _evaluation_texts(config)
@@ -444,9 +392,8 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
     # the balanced 12k unigram option, and the higher-capacity byte-BPE endpoint.
     probe_finalists = [
         name for name in (
-            "sp-bpe-12k", "sp-unigram-12k", "byte-bpe-16k", "tiktoken-style-bpe-12k"
-            , "tiktoken-style-tr-weighted-bpe-12k"
-        )
+            "byte-bpe-16k", "tiktoken-style-bpe-12k", "tiktoken-style-tr-weighted-bpe-12k"
+            )
         if any(row["name"] == name and row["qualified"] for row in candidates)
     ]
     report = {

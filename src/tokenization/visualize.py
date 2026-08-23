@@ -11,7 +11,7 @@ import sys
 
 from src.data.proxy import repair_text_encoding
 
-from .sweep import Adapter, HFAdapter, SPAdapter
+from .sweep import Adapter, HFAdapter
 
 
 # Dark 256-color backgrounds with white foreground remain distinguishable in
@@ -55,9 +55,6 @@ def _ids_and_offsets(adapter: Adapter, text: str) -> tuple[list[int], list[tuple
     if isinstance(adapter, HFAdapter):
         encoded = adapter.tokenizer.encode(text, add_special_tokens=False)
         return encoded.ids, encoded.offsets
-    if isinstance(adapter, SPAdapter):
-        encoded = adapter.processor.encode_as_immutable_proto(text)
-        return [piece.id for piece in encoded.pieces], [(piece.begin, piece.end) for piece in encoded.pieces]
     raise TypeError(f"unsupported visualization adapter: {type(adapter).__name__}")
 
 
@@ -131,13 +128,29 @@ def _sample_text(row: dict) -> str | None:
     messages = row.get("messages")
     if not isinstance(messages, list) or not messages:
         return None
+    role_tags = {
+        "system": "<|system|>",
+        "developer": "<|developer|>",
+        "user": "<|user|>",
+        "assistant": "<|assistant|>",
+        "tool": "<|tool|>",
+    }
     rendered = []
     for message in messages:
-        if not isinstance(message, dict) or not message.get("content"):
+        if not isinstance(message, dict):
             continue
-        role = str(message.get("role", "unknown")).capitalize()
-        rendered.append(f"{role}: {message['content']}")
-    return "\n".join(rendered) or None
+        content = message.get("content")
+        if content is None:
+            continue
+        content = str(content).strip()
+        if not content:
+            continue
+        role = str(message.get("role", "unknown")).lower()
+        tag = role_tags.get(role, f"<|{role}|>")
+        rendered.append(f"{tag}: {content} \n<|end|>")
+    if not rendered:
+        return None
+    return "\n".join(rendered) if rendered else None
 
 
 def reservoir_samples(
@@ -199,11 +212,9 @@ def load_adapter(specification: str) -> Adapter:
     path = Path(raw_path)
     if not path.is_file():
         raise ValueError(f"tokenizer artifact does not exist: {path}")
-    if path.suffix == ".model":
-        return SPAdapter(name, path)
     if path.suffix == ".json":
         return HFAdapter(name, path)
-    raise ValueError("tokenizer path must end in .json or .model")
+    raise ValueError("tokenizer path must end in .json")
 
 
 def _print_legend(legend: list[dict]) -> None:
@@ -255,7 +266,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--seed", type=int, default=2026)
-    parser.add_argument("--max-characters", type=int, default=320)
+    parser.add_argument("--max-characters", type=int, default=512)
     parser.add_argument("--language", help="optional exact JSONL language filter")
     parser.add_argument("--domain", help="optional exact JSONL domain filter")
     parser.add_argument("--legend", action="store_true", help="show position/id/piece mapping")

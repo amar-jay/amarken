@@ -2,10 +2,6 @@
 # version recorded by experiments/correctness_gates.json.
 torch>=2.7.0,<2.8
 
-# Tokenizer training/evaluation runtime. Keep this aligned with the version
-# recorded by experiments/tokenizer_sweep.json.
-sentencepiece>=0.2.1,<0.3
-
 # Rust-backed byte-level BPE training plus tokenizer.json interoperability for
 # the tokenizer-v2 tournament and pinned external controls.
 tokenizers>=0.22.0,<0.23

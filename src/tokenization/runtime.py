@@ -6,7 +6,6 @@ import hashlib
 from pathlib import Path
 from typing import Protocol, Sequence, runtime_checkable
 
-import sentencepiece as spm
 from tokenizers import Tokenizer
 
 
@@ -27,31 +26,6 @@ class RuntimeTokenizer(Protocol):
     def eos_id(self) -> int: ...
     def pad_id(self) -> int: ...
     def artifact_paths(self) -> tuple[Path, ...]: ...
-
-
-class SentencePieceRuntimeTokenizer:
-    kind = "sentencepiece"
-
-    def __init__(self, path: Path):
-        self.path = path
-        self.processor = spm.SentencePieceProcessor(model_file=str(path))
-
-    def encode(self, text: str) -> list[int]: return list(self.processor.encode(text, out_type=int))
-    def decode(self, ids: Sequence[int]) -> str: return self.processor.decode(list(ids))
-    def vocab_size(self) -> int: return self.processor.vocab_size()
-    def id_to_token(self, token_id: int) -> str: return self.processor.id_to_piece(token_id)
-    def unk_id(self) -> int: return self.processor.unk_id()
-    def bos_id(self) -> int: return self.processor.bos_id()
-    def eos_id(self) -> int: return self.processor.eos_id()
-    def pad_id(self) -> int: return self.processor.pad_id()
-
-    def token_to_id(self, token: str) -> int | None:
-        token_id = int(self.processor.piece_to_id(token))
-        return None if token_id == self.unk_id() and token != SPECIAL_TOKEN_NAMES["unk"] else token_id
-
-    def artifact_paths(self) -> tuple[Path, ...]:
-        vocab = self.path.with_suffix(".vocab")
-        return (self.path, vocab) if vocab.is_file() else (self.path,)
 
 
 class HuggingFaceRuntimeTokenizer:
@@ -91,12 +65,10 @@ def load_tokenizer(path: str | Path) -> RuntimeTokenizer:
     resolved = Path(path)
     if not resolved.is_file():
         raise FileNotFoundError(resolved)
-    if resolved.suffix == ".model":
-        tokenizer: RuntimeTokenizer = SentencePieceRuntimeTokenizer(resolved)
-    elif resolved.suffix == ".json":
+    if resolved.suffix == ".json":
         tokenizer = HuggingFaceRuntimeTokenizer(resolved)
     else:
-        raise ValueError(f"unsupported tokenizer artifact: {resolved}; expected .model or .json")
+        raise ValueError(f"unsupported tokenizer artifact: {resolved}; expected .json")
     if min(tokenizer.unk_id(), tokenizer.bos_id(), tokenizer.eos_id(), tokenizer.pad_id()) < 0:
         raise ValueError("tokenizer must define nonnegative unk/bos/eos/pad IDs")
     return tokenizer
