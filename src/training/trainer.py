@@ -20,7 +20,7 @@ from torch.nn.utils import clip_grad_norm_
 from src.models.common import AmarkenCausalLM
 from .data import PackedSequenceDataset
 from .diagnostics import TernaryTransitionTracker, gradient_health, ternary_statistics
-from .optimizer import OptimizerConfig, create_optimizer
+from .bit_optimizer import OptimizerConfig, create_optimizer
 
 
 @dataclass(frozen=True)

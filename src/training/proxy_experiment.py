@@ -1,4 +1,4 @@
-"""Run a matched DT/Glimmer/Bit smoke-scale experiment on proxy-v1."""
+"""Run a matched causal-LM experiment on flat-text or chat JSONL data."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ import time
 import torch
 
 from src.models import create_config, create_model
-from src.tokenization import RuntimeTokenizer, load_tokenizer, tokenizer_fingerprint
+from src.tokenization import AmarkenTokenizer, load_tokenizer, tokenizer_fingerprint
 from .data import PackedSequenceDataset, TokenizedExample
-from .optimizer import OptimizerConfig
+from .bit_optimizer import OptimizerConfig
 from .trainer import Trainer, TrainerConfig
 
 
@@ -30,26 +30,92 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _jsonl_paths(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    if not path.is_dir():
+        raise FileNotFoundError(path)
+    paths = sorted(path.glob("*.jsonl"))
+    if not paths:
+        raise ValueError(f"dataset directory has no JSONL shards: {path}")
+    return paths
+
+
+def _dataset_sha256(path: Path) -> str:
+    """Hash either one dataset file or an ordered shard collection."""
+    digest = hashlib.sha256()
+    for candidate in _jsonl_paths(path):
+        digest.update(candidate.name.encode("utf-8") + b"\0")
+        with candidate.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    return digest.hexdigest()
+
+
+ROLE_TOKENS = {
+    "system": "<|system|>",
+    "developer": "<|developer|>",
+    "user": "<|user|>",
+    "assistant": "<|assistant|>",
+    "tool": "<|tool|>",
+}
+
+
+def _tokenize_row(row: dict, processor: AmarkenTokenizer) -> TokenizedExample | None:
+    """Tokenize flat pretraining text or assistant-masked chat messages."""
+    text = row.get("text")
+    if isinstance(text, str) and text:
+        ids = processor.encode(text)
+        return TokenizedExample(tuple(ids), tuple(True for _ in ids)) if ids else None
+
+    messages = row.get("messages")
+    if not isinstance(messages, list):
+        raise ValueError("dataset row must contain nonempty 'text' or 'messages'")
+    ids: list[int] = []
+    assistant_mask: list[bool] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            raise ValueError("each message must be an object")
+        role = str(message.get("role", "")).lower()
+        if role not in ROLE_TOKENS:
+            raise ValueError(f"unsupported message role: {role!r}")
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        prefix_ids = processor.encode(f"{ROLE_TOKENS[role]}: ")
+        target_ids = processor.encode(content.strip() + " \n<|end|>\n")
+        ids.extend(prefix_ids)
+        assistant_mask.extend(False for _ in prefix_ids)
+        ids.extend(target_ids)
+        assistant_mask.extend(role == "assistant" for _ in target_ids)
+    return TokenizedExample(tuple(ids), tuple(assistant_mask)) if ids else None
+
+
 def _tokenize(
-    path: Path, processor: RuntimeTokenizer, token_budget: int
+    path: Path, processor: AmarkenTokenizer, token_budget: int
 ) -> list[TokenizedExample]:
-    """Read stable JSONL order until exactly `token_budget` source tokens exist."""
+    """Read stable JSONL/shard order until exactly ``token_budget`` tokens exist."""
+    if token_budget < 1:
+        raise ValueError("token_budget must be positive")
     examples, consumed = [], 0
-    with path.open("r", encoding="utf-8", errors="strict") as stream:
-        for line in stream:
-            text = json.loads(line)["text"]
-            ids = processor.encode(text)
-            remaining = token_budget - consumed
-            if not ids or remaining <= 0:
-                break
-            ids = ids[:remaining]
-            # This is source-text pretraining rather than chat SFT, so every real
-            # source token is eligible. The shared packer still applies boundary,
-            # EOS and padding masks; no teacher/distillation targets are present.
-            examples.append(TokenizedExample(tuple(ids), tuple(True for _ in ids)))
-            consumed += len(ids)
-            if consumed == token_budget:
-                break
+    for dataset_path in _jsonl_paths(path):
+        with dataset_path.open("r", encoding="utf-8", errors="strict") as stream:
+            for line_number, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                try:
+                    example = _tokenize_row(json.loads(line), processor)
+                except (json.JSONDecodeError, ValueError) as error:
+                    raise ValueError(f"invalid dataset row {dataset_path}:{line_number}: {error}") from error
+                if example is None:
+                    continue
+                remaining = token_budget - consumed
+                ids = example.input_ids[:remaining]
+                mask = example.assistant_mask[:remaining]
+                examples.append(TokenizedExample(ids, mask))
+                consumed += len(ids)
+                if consumed == token_budget:
+                    return examples
     if consumed != token_budget:
         raise ValueError(
             f"{path} supplied {consumed}, expected {token_budget} tokenizer tokens"
@@ -87,6 +153,8 @@ def _evaluate(
         weighted_loss += float(loss) * count
         targets += count
     model.train()
+    if not targets:
+        raise ValueError("evaluation dataset contains no eligible loss targets")
     return weighted_loss / targets
 
 
@@ -104,12 +172,10 @@ def run(config_path: Path, report_path: Path) -> dict:
     processor = load_tokenizer(tokenizer_path)
     if processor.vocab_size() != 12_000:
         raise ValueError("proxy tournament requires the selected matched 12k tokenizer")
-    train_examples = _tokenize(
-        Path(config["train_data"]), processor, config["train_token_budget"]
-    )
-    validation_examples = _tokenize(
-        Path(config["validation_data"]), processor, config["validation_token_budget"]
-    )
+    train_path = Path(config["train_data"])
+    validation_path = Path(config["validation_data"])
+    train_examples = _tokenize(train_path, processor, config["train_token_budget"])
+    validation_examples = _tokenize(validation_path, processor, config["validation_token_budget"])
     train_dataset = PackedSequenceDataset(
         train_examples,
         config["sequence_length"],
@@ -176,8 +242,8 @@ def run(config_path: Path, report_path: Path) -> dict:
                 "tokenizer_fingerprint": tokenizer_fingerprint(processor),
                 "tokenizer_kind": processor.kind,
                 "tokenizer_path": str(tokenizer_path),
-                "train_data_sha256": _sha256(Path(config["train_data"])),
-                "validation_data_sha256": _sha256(Path(config["validation_data"])),
+                "train_data_sha256": _dataset_sha256(train_path),
+                "validation_data_sha256": _dataset_sha256(validation_path),
             },
         )
         results.append(
@@ -218,7 +284,8 @@ def run(config_path: Path, report_path: Path) -> dict:
     # Equality gates turn accidental per-arm changes into a failed experiment,
     # rather than a misleading comparison table.
     matched = (
-        len({result["consumed_tokens"] for result in results}) == 1
+        bool(results)
+        and len({result["consumed_tokens"] for result in results}) == 1
         and len({result["optimizer_updates"] for result in results}) == 1
     )
     report = {
@@ -228,8 +295,8 @@ def run(config_path: Path, report_path: Path) -> dict:
         "interpretation": "smoke-scale optimization comparison; not a capability ranking",
         "config_sha256": _sha256(config_path),
         "tokenizer_sha256": tokenizer_fingerprint(processor),
-        "train_data_sha256": _sha256(Path(config["train_data"])),
-        "validation_data_sha256": _sha256(Path(config["validation_data"])),
+        "train_data_sha256": _dataset_sha256(train_path),
+        "validation_data_sha256": _dataset_sha256(validation_path),
         "torch_version": torch.__version__,
         "tokenizer_kind": processor.kind,
         "python_version": platform.python_version(),
@@ -251,10 +318,8 @@ def run(config_path: Path, report_path: Path) -> dict:
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=Path("configs/proxy_10m.json"))
-    parser.add_argument(
-        "--report", type=Path, default=Path("experiments/proxy_10m.json")
-    )
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     report = run(args.config, args.report)
     for result in report["results"]:

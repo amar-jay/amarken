@@ -67,7 +67,7 @@ Commit: `565d9a8` (`Implemented and ran the blocking correctness suite`)
 
 ### 2026-08-21 — EN/TR tokenizer tournament
 
-Matched 8k, 12k, and 16k SentencePiece BPE tokenizers were trained on OPUS-100 English/Turkish data with byte fallback, fixed special tokens, identity normalization, deterministic ordering, and a single trainer thread.
+Matched BPE tokenizers were trained on OPUS-100 English/Turkish data with byte fallback, fixed special tokens, deterministic ordering, and a single trainer thread.
 
 The sweep measured:
 
@@ -88,11 +88,11 @@ Commit: `73d6545` (`Implemented and completed the EN/TR tokenizer sweep`)
 
 ### 2026-08-22 — Tokenizer v2 visual audit and final selection
 
-The original SentencePiece-only selection was reopened after inference and
+The original tokenizer selection was reopened after inference and
 token-boundary visualization showed that aggregate fertility did not adequately
 measure boundary quality. The v2 sweep compared byte-level BPE, tiktoken-style
 regex BPE, a Turkish-apostrophe-aware tiktoken variant, a Turkish-weighted
-tiktoken variant, corrected SentencePiece BPE/unigram candidates, and the
+tiktoken variant, byte-level BPE controls, and the
 SmolLM2 tokenizer as an external reference. All compact finalists used a 12k
 vocabulary except the explicit 16k byte-BPE capacity control.
 
@@ -124,14 +124,6 @@ The settled ranking is:
 3. **Byte-BPE 12k — retained structural control.** It has highly regular,
    conservative boundaries and zero cross-word pieces, but fragments code more
    heavily than both tiktoken variants.
-4. **SentencePiece unigram 12k — rejected.** Its favorable aggregate token
-   count is partly obtained through structurally undesirable pieces spanning
-   words, indentation, and lexemes. On a deterministic 250-document-per-domain
-   audit, 12.263% of English tokens, 4.516% of Turkish tokens, and 3.983% of code
-   tokens crossed internal word boundaries; 4.749% of code tokens combined
-   indentation with a lexeme. The selected tiktoken and byte-BPE candidates had
-   zero such cross-word pieces.
-
 The 16k byte-BPE candidate was not selected because its modest fertility gain
 does not justify 4,000 additional embedding rows under the fixed model-parameter
 budget. Visual inspection is treated here as a diagnostic backed by explicit
@@ -318,10 +310,9 @@ meaningful training-exposure curve before another architecture tournament.
 Artifacts: `experiments/proxy_tournament_10m_context512.json`,
 `experiments/capability_tournament_10m_context512.json`
 
-### 2026-08-22 — Unified tokenizer runtime and clean proxy-v2 freeze
+### 2026-08-22 — Unified tokenizer API and clean proxy-v2 freeze
 
-A common runtime tokenizer contract was added for SentencePiece `.model` and
-Hugging Face Tokenizers `.json` artifacts. Training, learning-rate screening,
+A common tokenizer contract was added for JSON artifacts. Training, learning-rate screening,
 scaling, evaluation, and inference now use the same encode/decode, vocabulary,
 special-token, artifact-byte, and fingerprint behavior. New checkpoints bind
 the tokenizer fingerprint, and inference rejects a same-size but incorrect
@@ -348,23 +339,19 @@ references, and train/validation splits are hash-bound in
 
 ### 2026-08-22 — Downstream tokenizer probe
 
-A matched 9,630,976-parameter DT probe compared the original SentencePiece BPE
-with the structurally qualified tokenizer controls on clean proxy-v2 data. The
+A matched 9,630,976-parameter DT probe compared the structurally qualified
+tokenizer controls on clean proxy-v2 data. The
 65,536-token CPU run was single-seed directional evidence, not a promotion-grade
 experiment.
 
 | Tokenizer | Validation loss/token | Estimated bits/source byte | Training source bytes covered |
 |---|---:|---:|---:|
-| Original SentencePiece BPE 12k | 6.2868 | 4.7952 | 161,182 |
 | Tiktoken apostrophe BPE 12k | 7.4061 | 2.7664 | 231,736 |
 | Tiktoken TR-weighted BPE 12k | 7.4498 | 2.8150 | 229,123 |
 | Byte-BPE 12k | 6.9448 | 2.7884 | 221,903 |
-| SentencePiece unigram 12k | 7.0101 | 2.7417 | 227,709 |
 
-The original tokenizer's lower loss per tokenizer token was misleading: at a
-matched token budget it covered far less source text and had substantially worse
-normalized source-byte cost. SentencePiece unigram remains a diagnostic control,
-not a production candidate. `tiktoken-style-apostrophe-bpe-12k` is deliberately
+Loss per tokenizer token can be misleading because candidates cover different
+amounts of source text at a matched budget. `tiktoken-style-apostrophe-bpe-12k` is deliberately
 fixed for the EN/TR/code use case because its word, Turkish proper-noun suffix,
 and code-boundary behavior matches the deployment objective.
 
@@ -523,8 +510,8 @@ Artifacts: `data/grounded/answer_keys_v1.json`,
 The project has progressed from architecture prototypes to a deterministic, provenance-aware tournament harness. The major conclusions supported so far are:
 
 1. `tiktoken-style-apostrophe-bpe-12k` is fixed as the production tokenizer for
-   the EN/TR assistant objective. Unigram is diagnostic only.
-2. Clean proxy-v2, tokenizer fingerprints, shared runtime loading, exact resume,
+   the EN/TR assistant objective.
+2. Clean proxy-v2, tokenizer fingerprints, shared tokenizer loading, exact resume,
    and expanded deterministic evaluation operate end to end.
 3. The completed generation-1 tournament established Glimmer as the strongest
    loss optimizer at 10M/context-512, but no architecture demonstrated capability

@@ -1,9 +1,11 @@
+import json
 from pathlib import Path
 
 from src.tokenization.sweep import (
     TIKTOKEN_TURKISH_PATTERN,
     _turkish_weighted_corpus,
     _write_slice,
+    build_training_corpus,
     train_byte_bpe,
     train_tiktoken_style_bpe,
 )
@@ -74,3 +76,23 @@ def test_turkish_pattern_prevents_english_contraction_split(tmp_path: Path):
 def test_turkish_weighting_replays_only_turkish_slice(tmp_path: Path):
     paths = [tmp_path / "en.txt", tmp_path / "tr.txt", tmp_path / "code.txt"]
     assert _turkish_weighted_corpus(paths) == [paths[0], paths[1], paths[1], paths[2]]
+
+
+def test_synthetic_shards_build_rendered_en_and_tr_corpora(tmp_path: Path):
+    shards = tmp_path / "shards"
+    shards.mkdir()
+    rows = [
+        {"language": "en", "messages": [{"role": "user", "content": "Hello"}]},
+        {"language": "tr", "messages": [{"role": "assistant", "content": "Merhaba"}]},
+    ] * 5
+    (shards / "shard-000000.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    corpus, manifest = build_training_corpus(
+        {"synthetic_shards": str(shards), "bytes_per_training_slice": 100},
+        tmp_path / "out",
+    )
+    assert [path.stem for path in corpus] == ["en", "tr"]
+    assert "<|user|>: Hello" in (tmp_path / "out" / "corpus" / "en.txt").read_text()
+    assert "<|assistant|>: Merhaba" in (tmp_path / "out" / "corpus" / "tr.txt").read_text()
+    assert set(manifest) == {"en", "tr"}

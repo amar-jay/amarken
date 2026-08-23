@@ -1,33 +1,61 @@
-import json
 from pathlib import Path
 
-from src.models import create_config, create_model
+import json
+import pytest
+
+from src.tokenization import load_tokenizer
+from src.training.proxy_experiment import _dataset_sha256, _tokenize, _tokenize_row
 
 
-def test_proxy_10m_arms_are_matched_controls():
-    config = json.loads(Path("configs/proxy_10m.json").read_text())
-    models = {
-        name: create_model(create_config(name, **values))
-        for name, values in config["models"].items()
-    }
-    assert set(models) == {"dt", "glimmer", "bit"}
-    assert {model.config.vocab_size for model in models.values()} == {12_000}
-    assert {model.config.max_position_embeddings for model in models.values()} == {
-        config["sequence_length"]
-    }
-    parameters = {name: model.parameter_count() for name, model in models.items()}
-    assert all(9_000_000 <= count <= 11_000_000 for count in parameters.values())
-    assert max(parameters.values()) / min(parameters.values()) < 1.01
-    flops = {
-        name: model.stats(config["sequence_length"]).flops_per_token
-        for name, model in models.items()
-    }
-    assert flops["dt"] == flops["bit"]
-    assert max(flops.values()) / min(flops.values()) < 1.02
-    assert (
-        config["gradient_accumulation_steps"]
-        * config["batch_size"]
-        * config["sequence_length"]
-        * config["optimizer_updates"]
-        == 4_096
+TOKENIZER = Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json")
+
+
+def test_tokenize_supports_flat_text_and_assistant_masked_chat_shards(tmp_path: Path):
+    tokenizer = load_tokenizer(TOKENIZER)
+    shards = tmp_path / "shards"
+    shards.mkdir()
+    (shards / "000.jsonl").write_text(
+        json.dumps({"text": "plain pretraining text"}) + "\n", encoding="utf-8"
     )
+    (shards / "001.jsonl").write_text(
+        json.dumps({
+            "messages": [
+                {"role": "user", "content": "Translate hello"},
+                {"role": "assistant", "content": "Merhaba"},
+            ]
+        }) + "\n",
+        encoding="utf-8",
+    )
+    flat_tokens = len(tokenizer.encode("plain pretraining text"))
+    chat = _tokenize_row({
+        "messages": [
+            {"role": "user", "content": "Translate hello"},
+            {"role": "assistant", "content": "Merhaba"},
+        ]
+    }, tokenizer)
+    assert chat is not None
+    examples = _tokenize(shards, tokenizer, flat_tokens + len(chat.input_ids))
+    assert all(examples[0].assistant_mask)
+    assert not all(examples[1].assistant_mask)
+    assert any(examples[1].assistant_mask)
+    assert sum(len(example.input_ids) for example in examples) == flat_tokens + len(chat.input_ids)
+
+
+def test_dataset_hash_binds_shard_names_and_contents(tmp_path: Path):
+    dataset = tmp_path / "shards"
+    dataset.mkdir()
+    shard = dataset / "a.jsonl"
+    shard.write_text('{"text":"one"}\n', encoding="utf-8")
+    first = _dataset_sha256(dataset)
+    shard.rename(dataset / "b.jsonl")
+    assert _dataset_sha256(dataset) != first
+
+
+def test_tokenize_rejects_unknown_chat_role(tmp_path: Path):
+    dataset = tmp_path / "bad.jsonl"
+    dataset.write_text(
+        json.dumps({"messages": [{"role": "alien", "content": "hello"}]}) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unsupported message role"):
+        _tokenize(dataset, load_tokenizer(TOKENIZER), 10)

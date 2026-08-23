@@ -4,7 +4,7 @@ import torch
 
 from src.models import BitConfig, GlimmerConfig, create_model
 from src.training import PackedSequenceDataset, TokenizedExample, Trainer, TrainerConfig
-from src.training.optimizer import OptimizerConfig, parameter_groups
+from training.bit_optimizer import OptimizerConfig, parameter_groups
 
 
 def _dataset() -> PackedSequenceDataset:

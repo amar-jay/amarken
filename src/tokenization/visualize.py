@@ -11,7 +11,7 @@ import sys
 
 from src.data.proxy import repair_text_encoding
 
-from .sweep import Adapter, TokenizerCandidate
+from .tokenizer import AmarkenTokenizer
 
 # Dark 256-color backgrounds with white foreground remain distinguishable in
 # common light/dark terminals. Position-based rotation keeps repeated token IDs
@@ -39,7 +39,7 @@ def _visible(text: str) -> str:
     )
 
 
-def _token_surface(adapter: Adapter, token_id: int) -> str:
+def _token_surface(adapter: AmarkenTokenizer, token_id: int) -> str:
     # Like tiktoken's educational visualizer, tolerate tokens that contain only
     # a fragment of one UTF-8 code point. The piece legend retains raw identity.
     try:
@@ -56,16 +56,13 @@ def probable_mojibake(text: str) -> bool:
 
 
 def _ids_and_offsets(
-    adapter: Adapter, text: str
+    adapter: AmarkenTokenizer, text: str
 ) -> tuple[list[int], list[tuple[int, int]]]:
-    if isinstance(adapter, TokenizerCandidate):
-        encoded = adapter.tokenizer.encode(text, add_special_tokens=False)
-        return encoded.ids, encoded.offsets
-    raise TypeError(f"unsupported visualization adapter: {type(adapter).__name__}")
+    return adapter.encode_with_offsets(text)
 
 
 def render_tokens(
-    adapter: Adapter, text: str, color: bool = True
+    adapter: AmarkenTokenizer, text: str, color: bool = True
 ) -> tuple[str, list[dict]]:
     ids, offsets = _ids_and_offsets(adapter, text)
     blocks = []
@@ -217,7 +214,7 @@ def reservoir_samples(
     ]
 
 
-def load_adapter(specification: str) -> Adapter:
+def load_adapter(specification: str) -> AmarkenTokenizer:
     """Load NAME=PATH or infer a display name from PATH."""
     if "=" in specification:
         name, raw_path = specification.split("=", 1)
@@ -228,7 +225,7 @@ def load_adapter(specification: str) -> Adapter:
     if not path.is_file():
         raise ValueError(f"tokenizer artifact does not exist: {path}")
     if path.suffix == ".json":
-        return TokenizerCandidate(name, path)
+        return AmarkenTokenizer(path, name=name)
     raise ValueError("tokenizer path must end in .json")
 
 

@@ -66,15 +66,15 @@ weights are experimental base models, not instruction-tuned assistants; `--chat`
 only supplies consistent `User:`/`Assistant:` text and cannot create capabilities
 the checkpoint has not learned.
 
-## Tokenizer v2: selected artifact and controls
+## Tokenizer: selected artifact and controls
 
-The completed v2 sweep trained compact tokenizers—including base,
+The completed sweep trained compact tokenizers—including base,
 apostrophe-aware, and Turkish-weighted tiktoken-regex byte-BPE candidates—on
 fixed English, Turkish, and Python slices. It selected the apostrophe-aware 12k
 artifact for the current EN/TR assistant objective:
 
 ```bash
-python -m src.tokenization.v2_sweep --config configs/tokenizer_v2.json
+python -m src.tokenization.sweep --config configs/tokenizer_v2.json
 ```
 
 Use `--evaluate-only` to regenerate metrics from existing artifacts without
@@ -92,8 +92,9 @@ python -m src.tokenization.visualize --samples 3 --language tr --legend
 
 # Compare candidates on the exact same random documents.
 python -m src.tokenization.visualize \
+  --dataset data/processed/synthetic-pretraining/shards \
   --tokenizer tiktoken=artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json \
-  --tokenizer tokenizer=artifacts/tokenizers/v2/tiktoken-style-byte-bpe-12k.json \
+  --tokenizer tokenizer=artifacts/tokenizers/v2/byte-bpe-12k.json \
   --language tr --samples 5
 
 # Sample uniformly across synthetic and translation shard families.

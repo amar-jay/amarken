@@ -19,7 +19,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import torch
 
 from src.models import AmarkenCausalLM, create_config, create_model
-from src.tokenization import RuntimeTokenizer, load_tokenizer, tokenizer_fingerprint
+from src.tokenization import AmarkenTokenizer, load_tokenizer, tokenizer_fingerprint
 
 Precision = Literal["fp32", "bf16", "fp16"]
 
@@ -29,7 +29,7 @@ class LoadedModel:
     """Normalized inference objects and provenance from any checkpoint envelope."""
 
     model: AmarkenCausalLM
-    tokenizer: RuntimeTokenizer
+    tokenizer: AmarkenTokenizer
     checkpoint_kind: str
     checkpoint_step: int
     metadata: dict

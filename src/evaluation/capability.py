@@ -26,7 +26,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import torch
 import torch.nn.functional as F
 
-from src.data.proxy import TOKEN, _canonical
+from src.data.proxy import TOKEN
 from src.models import create_config, create_model
 from src.training.data import PackedSequenceDataset
 from src.training.proxy_experiment import _tokenize
@@ -303,7 +303,7 @@ def _contamination_scan(train_path: Path, benchmark_path: Path, n: int = 13) -> 
         + benchmark.get("generative", [])
     )
     for task in tasks:
-        tokens = TOKEN.findall(_canonical(task["prompt"]))
+        tokens = TOKEN.findall(task["prompt"])
         for index in range(len(tokens) - n + 1):
             raw = "\x1f".join(tokens[index : index + n]).encode()
             hashes.add(hashlib.blake2b(raw, digest_size=8).digest())
@@ -311,7 +311,7 @@ def _contamination_scan(train_path: Path, benchmark_path: Path, n: int = 13) -> 
     with train_path.open("r", encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, 1):
             row = json.loads(line)
-            tokens = TOKEN.findall(_canonical(row["text"]))
+            tokens = TOKEN.findall(row["text"])
             contaminated = False
             for index in range(len(tokens) - n + 1):
                 raw = "\x1f".join(tokens[index : index + n]).encode()

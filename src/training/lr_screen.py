@@ -21,7 +21,7 @@ import torch
 from src.models import create_config, create_model
 from src.tokenization import load_tokenizer
 from .data import PackedSequenceDataset
-from .optimizer import OptimizerConfig
+from .bit_optimizer import OptimizerConfig
 from .proxy_experiment import _evaluate, _tokenize
 from .trainer import Trainer, TrainerConfig
 

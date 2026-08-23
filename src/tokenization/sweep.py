@@ -10,7 +10,8 @@ import os
 from pathlib import Path
 import statistics
 import time
-from typing import Iterable, Protocol
+from typing import Iterable
+from itertools import islice
 
 from tokenizers import (
     Regex,
@@ -23,18 +24,8 @@ from tokenizers import (
 )
 
 from src.data.proxy import repair_text_encoding
-
-SPECIAL_TOKENS = (
-    "<unk>",
-    "<s>",
-    "</s>",
-    "<pad>",
-    "<|system|>",
-    "<|user|>",
-    "<|assistant|>",
-    "<|end|>",
-    "<|code|>",
-)
+from src.tokenization.tokenizer import AmarkenTokenizer, SPECIAL_TOKENS
+from src.tokenization.visualize import _sample_text, dataset_files
 
 # cl100k-style splitting keeps contractions, short digit groups, punctuation,
 # newlines, and horizontal whitespace in learnable regions before byte BPE.
@@ -53,56 +44,6 @@ TURKISH_APOSTROPHE_SUFFIX = (
     r"ın|in|un|ün|la|le|lı|li|lu|lü|a|e))"
 )
 TIKTOKEN_TURKISH_PATTERN = TURKISH_APOSTROPHE_SUFFIX + "|" + TIKTOKEN_PATTERN
-
-
-class Adapter(Protocol):
-    name: str
-    artifact_paths: tuple[Path, ...]
-
-    def encode(self, text: str) -> list[int]: ...
-    def decode(self, ids: list[int]) -> str: ...
-    def piece(self, token_id: int) -> str: ...
-    def vocab_size(self) -> int: ...
-
-
-class TokenizerCandidate:
-    def __init__(self, name: str, path: Path):
-        self.name, self.path = name, path
-        if path.is_dir():
-            vocab, merges = path / "vocab.json", path / "merges.txt"
-            self.tokenizer = Tokenizer(
-                models.BPE.from_file(str(vocab), str(merges), unk_token="<|endoftext|>")
-            )
-            self.tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(
-                add_prefix_space=False, use_regex=True
-            )
-            self.tokenizer.decoder = decoders.ByteLevel()
-            self.tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
-            self.artifact_paths = tuple(
-                candidate
-                for candidate in (
-                    vocab,
-                    merges,
-                    path / "tokenizer_config.json",
-                    path / "special_tokens_map.json",
-                )
-                if candidate.is_file()
-            )
-        else:
-            self.tokenizer = Tokenizer.from_file(str(path))
-            self.artifact_paths = (path,)
-
-    def encode(self, text: str) -> list[int]:
-        return self.tokenizer.encode(text, add_special_tokens=False).ids
-
-    def decode(self, ids: list[int]) -> str:
-        return self.tokenizer.decode(ids, skip_special_tokens=False)
-
-    def piece(self, token_id: int) -> str:
-        return self.tokenizer.id_to_token(token_id) or ""
-
-    def vocab_size(self) -> int:
-        return self.tokenizer.get_vocab_size(with_added_tokens=True)
 
 
 def _sha256(path: Path) -> str:
@@ -152,16 +93,38 @@ def _code_documents(path: Path) -> Iterable[str]:
                 yield row["text"] + "\n"
 
 
+def _synthetic_lines(source: Path, language: str) -> Iterable[str]:
+    """Stream rendered synthetic chat records for one output language."""
+    for shard in dataset_files(source):
+        with shard.open("r", encoding="utf-8", errors="strict") as handle:
+            for line in handle:
+                row = json.loads(line)
+                if row.get("language") != language:
+                    continue
+                text = _sample_text(row)
+                if text:
+                    yield text + "\n"
+
+
 def build_training_corpus(config: dict, output_dir: Path) -> tuple[list[Path], dict]:
     corpus_dir = output_dir / "corpus"
     corpus_dir.mkdir(parents=True, exist_ok=True)
     budget = int(config["bytes_per_training_slice"])
-    sources = config["training_sources"]
+    sources = config.get("training_sources")
     paths = {
         "en": corpus_dir / "en.txt",
         "tr": corpus_dir / "tr.txt",
-        "code": corpus_dir / "code.txt",
     }
+    if "synthetic_shards" in config:
+        source = Path(config["synthetic_shards"])
+        manifests = {
+            language: _write_slice(_synthetic_lines(source, language), path, budget)
+            for language, path in paths.items()
+        }
+        return list(paths.values()), manifests
+    if sources is None:
+        raise ValueError("config requires training_sources or synthetic_shards")
+    paths["code"] = corpus_dir / "code.txt"
     manifests = {
         "en": _write_slice(_plain_lines(Path(sources["en"])), paths["en"], budget),
         "tr": _write_slice(_plain_lines(Path(sources["tr"])), paths["tr"], budget),
@@ -180,12 +143,12 @@ def _turkish_weighted_corpus(corpus: list[Path]) -> list[Path]:
     without changing or duplicating language-model training examples.
     """
     by_name = {path.stem: path for path in corpus}
-    return [by_name["en"], by_name["tr"], by_name["tr"], by_name["code"]]
+    return [by_name["en"], by_name["tr"], by_name["tr"], *(path for path in corpus if path.stem == "code")]
 
 
 def train_byte_bpe(
     corpus: list[Path], vocab_size: int, destination: Path
-) -> TokenizerCandidate:
+) -> AmarkenTokenizer:
     tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
     # No synthetic prefix: source starts, indentation, and prompt starts retain the
     # exact same byte representation. Regex splitting remains GPT-2 compatible.
@@ -203,7 +166,7 @@ def train_byte_bpe(
     )
     tokenizer.train([str(path) for path in corpus], trainer)
     tokenizer.save(str(destination), pretty=True)
-    return TokenizerCandidate(f"byte-bpe-{vocab_size // 1000}k", destination)
+    return AmarkenTokenizer(destination, name=f"byte-bpe-{vocab_size // 1000}k")
 
 
 def train_tiktoken_style_bpe(
@@ -213,7 +176,7 @@ def train_tiktoken_style_bpe(
     *,
     pattern: str = TIKTOKEN_PATTERN,
     name: str | None = None,
-) -> TokenizerCandidate:
+) -> AmarkenTokenizer:
     """Train tiktoken-regex byte BPE using the production Rust trainer.
 
     Native tiktoken's public scratch trainer is educational and repeatedly scans
@@ -238,12 +201,35 @@ def train_tiktoken_style_bpe(
     )
     tokenizer.train([str(path) for path in corpus], trainer)
     tokenizer.save(str(destination), pretty=True)
-    return TokenizerCandidate(
-        name or f"tiktoken-style-bpe-{vocab_size // 1000}k", destination
+    return AmarkenTokenizer(
+        destination, name=name or f"tiktoken-style-bpe-{vocab_size // 1000}k"
     )
 
 
-def _evaluation_texts(config: dict) -> dict[str, list[str]]:
+def _evaluation_texts(config: dict, corpus: list[Path]) -> dict[str, list[str]]:
+    if "synthetic_shards" in config:
+        corpus_by_name = {path.stem: path for path in corpus}
+        limit = int(config.get("evaluation_documents_per_language", 2_000))
+        if limit < 1:
+            raise ValueError("evaluation_documents_per_language must be positive")
+        result = {
+            language: [
+                line.rstrip("\n")
+                for line in islice(
+                    (line for line in _plain_lines(corpus_by_name[language]) if line.strip()),
+                    limit,
+                )
+            ]
+            for language in ("en", "tr")
+        }
+        result["code"] = [
+            "def add(a, b):\n    return a + b\n",
+            "def fibonacci(n):\n    if n < 2:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)\n",
+            "class Cache:\n    def __init__(self):\n        self.values = {}\n",
+        ]
+        morphology = json.loads(Path(config["turkish_morphology"]).read_text(encoding="utf-8"))
+        result["morphology"] = [form for family in morphology["families"] for form in family["forms"]]
+        return result
     sources = config["evaluation_sources"]
     result: dict[str, list[str]] = {}
     for language in ("en", "tr"):
@@ -278,7 +264,7 @@ def _evaluation_texts(config: dict) -> dict[str, list[str]]:
     return result
 
 
-def _token_metrics(adapter: Adapter, texts: list[str]) -> dict:
+def _token_metrics(adapter: AmarkenTokenizer, texts: list[str]) -> dict:
     tokens = words = characters = byte_like = unknown = whitespace = (
         roundtrip_failures
     ) = 0
@@ -317,10 +303,17 @@ def _token_metrics(adapter: Adapter, texts: list[str]) -> dict:
 
 
 def _training_token_shares(
-    adapter: Adapter, corpus: list[Path], turkish_weighted: bool = False
+    adapter: AmarkenTokenizer, corpus: list[Path], turkish_weighted: bool = False
 ) -> dict[str, float]:
+    def token_count(path: Path) -> int:
+        total = 0
+        with path.open("r", encoding="utf-8", errors="strict") as handle:
+            while chunk := handle.read(1024 * 1024):
+                total += len(adapter.encode(chunk))
+        return total
+
     counts = {
-        path.stem: len(adapter.encode(path.read_text(encoding="utf-8")))
+        path.stem: token_count(path)
         for path in corpus
     }
     if turkish_weighted:
@@ -329,7 +322,13 @@ def _training_token_shares(
     return {name: count / total for name, count in counts.items()}
 
 
-def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) -> dict:
+def evaluate(
+    adapter: AmarkenTokenizer,
+    texts: dict[str, list[str]],
+    corpus: list[Path],
+    *,
+    require_code_qualification: bool = True,
+) -> dict:
     slices = {
         name: _token_metrics(adapter, values)
         for name, values in texts.items()
@@ -350,12 +349,19 @@ def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) 
         }
     artifact_bytes = sum(path.stat().st_size for path in adapter.artifact_paths)
     failures = sum(metrics["roundtrip_failures"] for metrics in slices.values())
+    requested_vocab_size = 16_000 if adapter.name == "byte-bpe-16k" else 12_000
     qualified = (
-        failures == 0
+        adapter.vocab_size() == requested_vocab_size
+        and failures == 0
         and all(metrics["unknown_fraction"] == 0 for metrics in slices.values())
-        and indent["4"]["roundtrip"]
-        and indent["4"]["token_overhead_vs_unindented"] <= 1
-        and indent["8"]["token_overhead_vs_unindented"] <= 1
+        and (
+            not require_code_qualification
+            or (
+                indent["4"]["roundtrip"]
+                and indent["4"]["token_overhead_vs_unindented"] <= 1
+                and indent["8"]["token_overhead_vs_unindented"] <= 1
+            )
+        )
     )
     return {
         "name": adapter.name,
@@ -392,12 +398,12 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
     corpus, corpus_manifest = build_training_corpus(config, output_dir)
     started = time.perf_counter()
     if evaluate_only:
-        adapters: list[Adapter] = [
-            TokenizerCandidate("byte-bpe-12k", output_dir / "byte-bpe-12k.json"),
-            TokenizerCandidate("byte-bpe-16k", output_dir / "byte-bpe-16k.json"),
+        adapters: list[AmarkenTokenizer] = [
+            AmarkenTokenizer(output_dir / "byte-bpe-12k.json", name="byte-bpe-12k"),
+            AmarkenTokenizer(output_dir / "byte-bpe-16k.json", name="byte-bpe-16k"),
             (
-                TokenizerCandidate(
-                    "tiktoken-style-bpe-12k", output_dir / "tiktoken-style-bpe-12k.json"
+                AmarkenTokenizer(
+                    output_dir / "tiktoken-style-bpe-12k.json", name="tiktoken-style-bpe-12k"
                 )
                 if (output_dir / "tiktoken-style-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
@@ -405,9 +411,9 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
                 )
             ),
             (
-                TokenizerCandidate(
-                    "tiktoken-style-apostrophe-bpe-12k",
+                AmarkenTokenizer(
                     output_dir / "tiktoken-style-tr-bpe-12k.json",
+                    name="tiktoken-style-apostrophe-bpe-12k",
                 )
                 if (output_dir / "tiktoken-style-tr-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
@@ -419,9 +425,9 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
                 )
             ),
             (
-                TokenizerCandidate(
-                    "tiktoken-style-tr-weighted-bpe-12k",
+                AmarkenTokenizer(
                     output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
+                    name="tiktoken-style-tr-weighted-bpe-12k",
                 )
                 if (output_dir / "tiktoken-style-tr-weighted-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
@@ -430,9 +436,6 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
                     output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
                     name="tiktoken-style-tr-weighted-bpe-12k",
                 )
-            ),
-            TokenizerCandidate(
-                config["external"]["name"], Path(config["external"]["tokenizer_path"])
             ),
         ]
     else:
@@ -455,14 +458,18 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
                 output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
                 name="tiktoken-style-tr-weighted-bpe-12k",
             ),
-            TokenizerCandidate(
-                config["external"]["name"], Path(config["external"]["tokenizer_path"])
-            ),
         ]
-    texts = _evaluation_texts(config)
-    candidates = [evaluate(adapter, texts, corpus) for adapter in adapters]
-    # Rank only qualified compact candidates; the external 49k tokenizer remains
-    # a quality reference because its embedding cost changes the model budget.
+    texts = _evaluation_texts(config, corpus)
+    candidates = [
+        evaluate(
+            adapter,
+            texts,
+            corpus,
+            require_code_qualification="synthetic_shards" not in config,
+        )
+        for adapter in adapters
+    ]
+    # Rank only qualified compact candidates under the fixed embedding budget.
     compact = [
         row for row in candidates if row["qualified"] and row["vocab_size"] <= 16_000
     ]
@@ -503,7 +510,6 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
         "interpretation": "tokenizer qualification; no model capability claim",
         "config_sha256": _sha256(config_path),
         "training_corpus": corpus_manifest,
-        "external_provenance": config["external"],
         "elapsed_seconds": time.perf_counter() - started,
         "recommended": winner["name"] if winner else None,
         "recommendation_scope": "metric-only provisional choice; model probe remains required",

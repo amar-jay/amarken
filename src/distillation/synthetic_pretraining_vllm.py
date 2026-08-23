@@ -1,4 +1,4 @@
-"""High-throughput offline vLLM generator for a single A100."""
+"""High-throughput offline vLLM generator for a single GPU."""
 
 from __future__ import annotations
 
