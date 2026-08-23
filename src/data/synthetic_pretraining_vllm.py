@@ -10,10 +10,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
 
-from src.distillation.synthetic_pretraining import (
-    ShardWriter,
-)
-from src.distillation.grounded_pilot import (
+from src.data.synthetic_pretraining import ShardWriter
+from src.data.grounding import (
   ROOT,
   valid, 
   hash_fraction,
