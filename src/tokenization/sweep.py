@@ -188,7 +188,7 @@ def train_tiktoken_style_bpe(
     tokenizer.train([str(path) for path in corpus], trainer)
     tokenizer.save(str(destination), pretty=True)
     return AmarkenTokenizer(
-        destination, name=name or f"tiktoken-style-bpe-{vocab_size // 1000}k"
+        destination, name=name or f"tiktoken-bpe-{vocab_size // 1000}k"
     )
 
 
@@ -300,6 +300,8 @@ def evaluate(
     morphology_counts = [len(adapter.encode(form)) for form in texts["morphology"]]
     artifact_bytes = sum(path.stat().st_size for path in adapter.artifact_paths)
     failures = sum(metrics["roundtrip_failures"] for metrics in slices.values())
+    balanced_fertility = slices["en"]["tokens_per_word"] + slices["tr"]["tokens_per_word"]
+    score = 100.0 / max(balanced_fertility, 1e-9)
     requested_vocab_size = 16_000 if adapter.name == "byte-bpe-16k" else 12_000
     qualified = (
         adapter.vocab_size() == requested_vocab_size
@@ -312,10 +314,11 @@ def evaluate(
         "artifact_bytes": artifact_bytes,
         "embedding_parameters_width_256": adapter.vocab_size() * 256,
         "embedding_parameters_width_512": adapter.vocab_size() * 512,
+        "score": score,
         "training_token_shares": _training_token_shares(
             adapter,
             corpus,
-            turkish_weighted=adapter.name == "tiktoken-style-tr-weighted-bpe-12k",
+            turkish_weighted=adapter.name == "tiktoken-tr-weighted-bpe-12k",
         ),
         "slices": slices,
         "turkish_morphology": {
@@ -345,38 +348,38 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
             AmarkenTokenizer(output_dir / "byte-bpe-16k.json", name="byte-bpe-16k"),
             (
                 AmarkenTokenizer(
-                    output_dir / "tiktoken-style-bpe-12k.json", name="tiktoken-style-bpe-12k"
+                    output_dir / "tiktoken-bpe-12k.json", name="tiktoken-bpe-12k"
                 )
-                if (output_dir / "tiktoken-style-bpe-12k.json").is_file()
+                if (output_dir / "tiktoken-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
-                    corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json"
+                    corpus, 12_000, output_dir / "tiktoken-bpe-12k.json"
                 )
             ),
             (
                 AmarkenTokenizer(
-                    output_dir / "tiktoken-style-tr-bpe-12k.json",
-                    name="tiktoken-style-apostrophe-bpe-12k",
+                    output_dir / "tiktoken-tr-bpe-12k.json",
+                    name="tiktoken-apostrophe-bpe-12k",
                 )
-                if (output_dir / "tiktoken-style-tr-bpe-12k.json").is_file()
+                if (output_dir / "tiktoken-tr-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
                     corpus,
                     12_000,
-                    output_dir / "tiktoken-style-tr-bpe-12k.json",
+                    output_dir / "tiktoken-tr-bpe-12k.json",
                     pattern=TIKTOKEN_TURKISH_PATTERN,
-                    name="tiktoken-style-apostrophe-bpe-12k",
+                    name="tiktoken-apostrophe-bpe-12k",
                 )
             ),
             (
                 AmarkenTokenizer(
-                    output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
-                    name="tiktoken-style-tr-weighted-bpe-12k",
+                    output_dir / "tiktoken-tr-weighted-bpe-12k.json",
+                    name="tiktoken-tr-weighted-bpe-12k",
                 )
-                if (output_dir / "tiktoken-style-tr-weighted-bpe-12k.json").is_file()
+                if (output_dir / "tiktoken-tr-weighted-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
                     _turkish_weighted_corpus(corpus),
                     12_000,
-                    output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
-                    name="tiktoken-style-tr-weighted-bpe-12k",
+                    output_dir / "tiktoken-tr-weighted-bpe-12k.json",
+                    name="tiktoken-tr-weighted-bpe-12k",
                 )
             ),
         ]
@@ -385,60 +388,33 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
             train_byte_bpe(corpus, 12_000, output_dir / "byte-bpe-12k.json"),
             train_byte_bpe(corpus, 16_000, output_dir / "byte-bpe-16k.json"),
             train_tiktoken_style_bpe(
-                corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json"
+                corpus, 12_000, output_dir / "tiktoken-bpe-12k.json"
             ),
             train_tiktoken_style_bpe(
                 corpus,
                 12_000,
-                output_dir / "tiktoken-style-tr-bpe-12k.json",
+                output_dir / "tiktoken-tr-bpe-12k.json",
                 pattern=TIKTOKEN_TURKISH_PATTERN,
-                name="tiktoken-style-apostrophe-bpe-12k",
+                name="tiktoken-apostrophe-bpe-12k",
             ),
             train_tiktoken_style_bpe(
                 _turkish_weighted_corpus(corpus),
                 12_000,
-                output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
-                name="tiktoken-style-tr-weighted-bpe-12k",
+                output_dir / "tiktoken-tr-weighted-bpe-12k.json",
+                name="tiktoken-tr-weighted-bpe-12k",
             ),
         ]
     texts = _evaluation_texts(config, corpus)
-    candidates = [
-        evaluate(
-            adapter,
-            texts,
-            corpus,
-        )
-        for adapter in adapters
-    ]
-    # Rank only qualified compact candidates under the fixed embedding budget.
-    compact = [
-        row for row in candidates if row["qualified"] and row["vocab_size"] <= 16_000
-    ]
-    winner = (
-        min(
-            compact,
-            key=lambda row: (
-                # Preserve embedding capacity first. Within one vocabulary size,
-                # minimize balanced EN+TR word fertility;
-                # morphology and artifact bytes are deterministic tie breakers.
-                row["vocab_size"],
-                row["slices"]["en"]["tokens_per_word"]
-                + row["slices"]["tr"]["tokens_per_word"],
-                row["turkish_morphology"]["mean_tokens"],
-                row["artifact_bytes"],
-            ),
-        )
-        if compact
-        else None
+    candidates = [evaluate(adapter, texts, corpus) for adapter in adapters]
+    passed = any(
+        row["qualified"] and row["vocab_size"] <= 16_000 for row in candidates
     )
-    # Tokenizer metrics expose real trade-offs rather than proving downstream LM
-    # quality. Keep the apostrophe-aware production candidate and useful controls.
     probe_finalists = [
         name
         for name in (
-            "tiktoken-style-apostrophe-bpe-12k",
-            "tiktoken-style-tr-weighted-bpe-12k",
-            "tiktoken-style-bpe-12k",
+            "tiktoken-apostrophe-bpe-12k",
+            "tiktoken-tr-weighted-bpe-12k",
+            "tiktoken-bpe-12k",
             "byte-bpe-16k",
         )
         if any(row["name"] == name and row["qualified"] for row in candidates)
@@ -446,13 +422,11 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
     report = {
         "format_version": 1,
         "experiment_id": config["experiment_id"],
-        "passed": winner is not None,
+        "passed": passed,
         "interpretation": "tokenizer qualification; no model capability claim",
         "config_sha256": _sha256(config_path),
         "training_corpus": corpus_manifest,
         "elapsed_seconds": time.perf_counter() - started,
-        "recommended": winner["name"] if winner else None,
-        "recommendation_scope": "metric-only provisional choice; model probe remains required",
         "model_probe_finalists": probe_finalists,
         "candidates": candidates,
     }
@@ -478,9 +452,8 @@ def _main() -> int:
         print(
             row["name"],
             row["vocab_size"],
-            row["qualified"],
+            f"{row['score']:.4f}",
         )
-    print("recommended", report["recommended"])
     return 0 if report["passed"] else 1
 
 
