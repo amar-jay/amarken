@@ -11,8 +11,7 @@ import sys
 
 from src.data.proxy import repair_text_encoding
 
-from .sweep import Adapter, HFAdapter
-
+from .sweep import Adapter, TokenizerCandidate
 
 # Dark 256-color backgrounds with white foreground remain distinguishable in
 # common light/dark terminals. Position-based rotation keeps repeated token IDs
@@ -32,7 +31,12 @@ class Sample:
 
 def _visible(text: str) -> str:
     """Expose layout characters without losing their line structure."""
-    return text.replace(" ", "·").replace("\t", "→\t").replace("\r", "␍").replace("\n", "↵\n")
+    return (
+        text.replace(" ", "·")
+        .replace("\t", "→\t")
+        .replace("\r", "␍")
+        .replace("\n", "↵\n")
+    )
 
 
 def _token_surface(adapter: Adapter, token_id: int) -> str:
@@ -51,30 +55,41 @@ def probable_mojibake(text: str) -> bool:
     return status != "unchanged"
 
 
-def _ids_and_offsets(adapter: Adapter, text: str) -> tuple[list[int], list[tuple[int, int]]]:
-    if isinstance(adapter, HFAdapter):
+def _ids_and_offsets(
+    adapter: Adapter, text: str
+) -> tuple[list[int], list[tuple[int, int]]]:
+    if isinstance(adapter, TokenizerCandidate):
         encoded = adapter.tokenizer.encode(text, add_special_tokens=False)
         return encoded.ids, encoded.offsets
     raise TypeError(f"unsupported visualization adapter: {type(adapter).__name__}")
 
 
-def render_tokens(adapter: Adapter, text: str, color: bool = True) -> tuple[str, list[dict]]:
+def render_tokens(
+    adapter: Adapter, text: str, color: bool = True
+) -> tuple[str, list[dict]]:
     ids, offsets = _ids_and_offsets(adapter, text)
     blocks = []
     legend = []
     for position, (token_id, offset) in enumerate(zip(ids, offsets)):
         surface = _token_surface(adapter, token_id)
-        legend.append({
-            "position": position, "id": token_id, "piece": adapter.piece(token_id),
-            "surface": surface, "offset": offset,
-        })
+        legend.append(
+            {
+                "position": position,
+                "id": token_id,
+                "piece": adapter.piece(token_id),
+                "surface": surface,
+                "offset": offset,
+            }
+        )
 
     # ANSI escapes cannot be inserted between bytes of one Unicode code point.
     # Group tokens whose character offsets overlap (emoji/non-ASCII byte splits),
     # then color the exact source slice. The legend still exposes every raw token.
     groups: list[tuple[int, int, int]] = []
     for position, (start, end) in enumerate(offsets):
-        if groups and (start < groups[-1][2] or (groups[-1][1] == groups[-1][2] == start)):
+        if groups and (
+            start < groups[-1][2] or (groups[-1][1] == groups[-1][2] == start)
+        ):
             first, group_start, group_end = groups[-1]
             groups[-1] = (first, min(group_start, start), max(group_end, end))
         else:
@@ -213,7 +228,7 @@ def load_adapter(specification: str) -> Adapter:
     if not path.is_file():
         raise ValueError(f"tokenizer artifact does not exist: {path}")
     if path.suffix == ".json":
-        return HFAdapter(name, path)
+        return TokenizerCandidate(name, path)
     raise ValueError("tokenizer path must end in .json")
 
 
@@ -228,8 +243,12 @@ def _print_legend(legend: list[dict]) -> None:
 def run(args: argparse.Namespace) -> None:
     adapters = [load_adapter(specification) for specification in args.tokenizer]
     samples = reservoir_samples(
-        args.dataset, args.samples, args.seed, args.max_characters,
-        language=args.language, domain=args.domain,
+        args.dataset,
+        args.samples,
+        args.seed,
+        args.max_characters,
+        language=args.language,
+        domain=args.domain,
     )
     use_color = not args.no_color and sys.stdout.isatty()
     for sample_index, sample in enumerate(samples, 1):
@@ -239,7 +258,9 @@ def run(args: argparse.Namespace) -> None:
             f"domain={sample.domain} source={sample.source_id} chars={len(sample.text)}"
         )
         if probable_mojibake(sample.text):
-            print("warning=probable-mojibake source text contains encoding-corruption markers")
+            print(
+                "warning=probable-mojibake source text contains encoding-corruption markers"
+            )
         for adapter in adapters:
             rendered, legend = render_tokens(adapter, sample.text, color=use_color)
             words = len(sample.text.split())
@@ -256,12 +277,16 @@ def run(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--tokenizer", action="append",
-        default=None, metavar="[NAME=]PATH",
+        "--tokenizer",
+        action="append",
+        default=None,
+        metavar="[NAME=]PATH",
         help="repeat to compare tokenizers on identical samples",
     )
     parser.add_argument(
-        "--dataset", type=Path, required=True,
+        "--dataset",
+        type=Path,
+        required=True,
         help="JSONL file, or shard directory combining shard-*.jsonl and translations-*.jsonl",
     )
     parser.add_argument("--samples", type=int, default=3)
@@ -269,8 +294,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-characters", type=int, default=512)
     parser.add_argument("--language", help="optional exact JSONL language filter")
     parser.add_argument("--domain", help="optional exact JSONL domain filter")
-    parser.add_argument("--legend", action="store_true", help="show position/id/piece mapping")
-    parser.add_argument("--no-color", action="store_true", help="use bracket boundaries for logs")
+    parser.add_argument(
+        "--legend", action="store_true", help="show position/id/piece mapping"
+    )
+    parser.add_argument(
+        "--no-color", action="store_true", help="use bracket boundaries for logs"
+    )
     return parser
 
 

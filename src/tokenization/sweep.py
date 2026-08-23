@@ -12,14 +12,28 @@ import statistics
 import time
 from typing import Iterable, Protocol
 
-from tokenizers import Regex, Tokenizer, decoders, models, pre_tokenizers, processors, trainers
+from tokenizers import (
+    Regex,
+    Tokenizer,
+    decoders,
+    models,
+    pre_tokenizers,
+    processors,
+    trainers,
+)
 
 from src.data.proxy import repair_text_encoding
 
-
 SPECIAL_TOKENS = (
-    "<unk>", "<s>", "</s>", "<pad>",
-    "<|system|>", "<|user|>", "<|assistant|>", "<|end|>", "<|code|>",
+    "<unk>",
+    "<s>",
+    "</s>",
+    "<pad>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "<|end|>",
+    "<|code|>",
 )
 
 # cl100k-style splitting keeps contractions, short digit groups, punctuation,
@@ -51,19 +65,28 @@ class Adapter(Protocol):
     def vocab_size(self) -> int: ...
 
 
-class HFAdapter:
+class TokenizerCandidate:
     def __init__(self, name: str, path: Path):
         self.name, self.path = name, path
         if path.is_dir():
             vocab, merges = path / "vocab.json", path / "merges.txt"
-            self.tokenizer = Tokenizer(models.BPE.from_file(str(vocab), str(merges), unk_token="<|endoftext|>"))
-            self.tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)
+            self.tokenizer = Tokenizer(
+                models.BPE.from_file(str(vocab), str(merges), unk_token="<|endoftext|>")
+            )
+            self.tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(
+                add_prefix_space=False, use_regex=True
+            )
             self.tokenizer.decoder = decoders.ByteLevel()
             self.tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
             self.artifact_paths = tuple(
-                candidate for candidate in (
-                    vocab, merges, path / "tokenizer_config.json", path / "special_tokens_map.json"
-                ) if candidate.is_file()
+                candidate
+                for candidate in (
+                    vocab,
+                    merges,
+                    path / "tokenizer_config.json",
+                    path / "special_tokens_map.json",
+                )
+                if candidate.is_file()
             )
         else:
             self.tokenizer = Tokenizer.from_file(str(path))
@@ -105,7 +128,9 @@ def _write_slice(lines: Iterable[str], destination: Path, byte_budget: int) -> d
             written += len(encoded)
             records += 1
     if written < byte_budget * 0.95:
-        raise ValueError(f"{destination} supplied only {written:,} of {byte_budget:,} requested bytes")
+        raise ValueError(
+            f"{destination} supplied only {written:,} of {byte_budget:,} requested bytes"
+        )
     return {"bytes": written, "records": records, "sha256": _sha256(destination)}
 
 
@@ -140,7 +165,9 @@ def build_training_corpus(config: dict, output_dir: Path) -> tuple[list[Path], d
     manifests = {
         "en": _write_slice(_plain_lines(Path(sources["en"])), paths["en"], budget),
         "tr": _write_slice(_plain_lines(Path(sources["tr"])), paths["tr"], budget),
-        "code": _write_slice(_code_documents(Path(sources["code_jsonl"])), paths["code"], budget),
+        "code": _write_slice(
+            _code_documents(Path(sources["code_jsonl"])), paths["code"], budget
+        ),
     }
     return list(paths.values()), manifests
 
@@ -156,11 +183,15 @@ def _turkish_weighted_corpus(corpus: list[Path]) -> list[Path]:
     return [by_name["en"], by_name["tr"], by_name["tr"], by_name["code"]]
 
 
-def train_byte_bpe(corpus: list[Path], vocab_size: int, destination: Path) -> HFAdapter:
+def train_byte_bpe(
+    corpus: list[Path], vocab_size: int, destination: Path
+) -> TokenizerCandidate:
     tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
     # No synthetic prefix: source starts, indentation, and prompt starts retain the
     # exact same byte representation. Regex splitting remains GPT-2 compatible.
-    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(
+        add_prefix_space=False, use_regex=True
+    )
     tokenizer.decoder = decoders.ByteLevel()
     tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
     trainer = trainers.BpeTrainer(
@@ -172,7 +203,7 @@ def train_byte_bpe(corpus: list[Path], vocab_size: int, destination: Path) -> HF
     )
     tokenizer.train([str(path) for path in corpus], trainer)
     tokenizer.save(str(destination), pretty=True)
-    return HFAdapter(f"byte-bpe-{vocab_size // 1000}k", destination)
+    return TokenizerCandidate(f"byte-bpe-{vocab_size // 1000}k", destination)
 
 
 def train_tiktoken_style_bpe(
@@ -182,7 +213,7 @@ def train_tiktoken_style_bpe(
     *,
     pattern: str = TIKTOKEN_PATTERN,
     name: str | None = None,
-) -> HFAdapter:
+) -> TokenizerCandidate:
     """Train tiktoken-regex byte BPE using the production Rust trainer.
 
     Native tiktoken's public scratch trainer is educational and repeatedly scans
@@ -190,19 +221,26 @@ def train_tiktoken_style_bpe(
     Unicode regex boundaries plus byte-level BPE, not that slow implementation.
     """
     tokenizer = Tokenizer(models.BPE(unk_token=SPECIAL_TOKENS[0], byte_fallback=False))
-    tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
-        pre_tokenizers.Split(Regex(pattern), behavior="isolated", invert=False),
-        pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=False),
-    ])
+    tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+        [
+            pre_tokenizers.Split(Regex(pattern), behavior="isolated", invert=False),
+            pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=False),
+        ]
+    )
     tokenizer.decoder = decoders.ByteLevel()
     tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
     trainer = trainers.BpeTrainer(
-        vocab_size=vocab_size, min_frequency=2, special_tokens=list(SPECIAL_TOKENS),
-        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(), show_progress=False,
+        vocab_size=vocab_size,
+        min_frequency=2,
+        special_tokens=list(SPECIAL_TOKENS),
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+        show_progress=False,
     )
     tokenizer.train([str(path) for path in corpus], trainer)
     tokenizer.save(str(destination), pretty=True)
-    return HFAdapter(name or f"tiktoken-style-bpe-{vocab_size // 1000}k", destination)
+    return TokenizerCandidate(
+        name or f"tiktoken-style-bpe-{vocab_size // 1000}k", destination
+    )
 
 
 def _evaluation_texts(config: dict) -> dict[str, list[str]]:
@@ -219,20 +257,31 @@ def _evaluation_texts(config: dict) -> dict[str, list[str]]:
     for document in _code_documents(Path(sources["code_jsonl"])):
         # Fixed-size character windows keep a few huge validation files from
         # dominating while retaining real newlines and indentation.
-        code.extend(document[start:start + 4096] for start in range(0, min(len(document), 16_384), 4096))
-    code.extend([
-        "def add(a, b):\n    return a + b\n",
-        "def fibonacci(n):\n    if n < 2:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)\n",
-        "class Cache:\n    def __init__(self):\n        self.values = {}\n",
-    ])
+        code.extend(
+            document[start : start + 4096]
+            for start in range(0, min(len(document), 16_384), 4096)
+        )
+    code.extend(
+        [
+            "def add(a, b):\n    return a + b\n",
+            "def fibonacci(n):\n    if n < 2:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)\n",
+            "class Cache:\n    def __init__(self):\n        self.values = {}\n",
+        ]
+    )
     result["code"] = [text for text in code if text]
-    morphology = json.loads(Path(sources["turkish_morphology"]).read_text(encoding="utf-8"))
-    result["morphology"] = [form for family in morphology["families"] for form in family["forms"]]
+    morphology = json.loads(
+        Path(sources["turkish_morphology"]).read_text(encoding="utf-8")
+    )
+    result["morphology"] = [
+        form for family in morphology["families"] for form in family["forms"]
+    ]
     return result
 
 
 def _token_metrics(adapter: Adapter, texts: list[str]) -> dict:
-    tokens = words = characters = byte_like = unknown = whitespace = roundtrip_failures = 0
+    tokens = words = characters = byte_like = unknown = whitespace = (
+        roundtrip_failures
+    ) = 0
     fallback_pieces: Counter[str] = Counter()
     unk_markers = {"<unk>", "[UNK]"}
     for text in texts:
@@ -248,11 +297,15 @@ def _token_metrics(adapter: Adapter, texts: list[str]) -> dict:
             if piece.startswith("<0x") and piece.endswith(">"):
                 fallback_pieces[piece] += 1
             try:
-                whitespace += bool(adapter.decode([token_id])) and adapter.decode([token_id]).isspace()
+                whitespace += (
+                    bool(adapter.decode([token_id]))
+                    and adapter.decode([token_id]).isspace()
+                )
             except Exception:
                 pass
     return {
-        "documents": len(texts), "tokens": tokens,
+        "documents": len(texts),
+        "tokens": tokens,
         "tokens_per_word": tokens / max(words, 1),
         "tokens_per_character": tokens / max(characters, 1),
         "whitespace_token_fraction": whitespace / max(tokens, 1),
@@ -263,7 +316,9 @@ def _token_metrics(adapter: Adapter, texts: list[str]) -> dict:
     }
 
 
-def _training_token_shares(adapter: Adapter, corpus: list[Path], turkish_weighted: bool = False) -> dict[str, float]:
+def _training_token_shares(
+    adapter: Adapter, corpus: list[Path], turkish_weighted: bool = False
+) -> dict[str, float]:
     counts = {
         path.stem: len(adapter.encode(path.read_text(encoding="utf-8")))
         for path in corpus
@@ -275,7 +330,11 @@ def _training_token_shares(adapter: Adapter, corpus: list[Path], turkish_weighte
 
 
 def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) -> dict:
-    slices = {name: _token_metrics(adapter, values) for name, values in texts.items() if name != "morphology"}
+    slices = {
+        name: _token_metrics(adapter, values)
+        for name, values in texts.items()
+        if name != "morphology"
+    }
     morphology_counts = [len(adapter.encode(form)) for form in texts["morphology"]]
     indent = {}
     baseline_tokens = len(adapter.encode("\nreturn value\n"))
@@ -285,7 +344,8 @@ def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) 
             "tokens": len(adapter.encode(probe)),
             # This directly measures indentation's context cost even when a
             # whitespace byte is merged into the following lexical token.
-            "token_overhead_vs_unindented": len(adapter.encode(probe)) - baseline_tokens,
+            "token_overhead_vs_unindented": len(adapter.encode(probe))
+            - baseline_tokens,
             "roundtrip": adapter.decode(adapter.encode(probe)) == probe,
         }
     artifact_bytes = sum(path.stat().st_size for path in adapter.artifact_paths)
@@ -298,12 +358,15 @@ def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) 
         and indent["8"]["token_overhead_vs_unindented"] <= 1
     )
     return {
-        "name": adapter.name, "vocab_size": adapter.vocab_size(),
+        "name": adapter.name,
+        "vocab_size": adapter.vocab_size(),
         "artifact_bytes": artifact_bytes,
         "embedding_parameters_width_256": adapter.vocab_size() * 256,
         "embedding_parameters_width_512": adapter.vocab_size() * 512,
         "training_token_shares": _training_token_shares(
-            adapter, corpus, turkish_weighted=adapter.name == "tiktoken-style-tr-weighted-bpe-12k"
+            adapter,
+            corpus,
+            turkish_weighted=adapter.name == "tiktoken-style-tr-weighted-bpe-12k",
         ),
         "slices": slices,
         "turkish_morphology": {
@@ -313,7 +376,10 @@ def evaluate(adapter: Adapter, texts: dict[str, list[str]], corpus: list[Path]) 
         },
         "indentation": indent,
         "qualified": qualified,
-        "artifacts": [{"path": str(path), "bytes": path.stat().st_size, "sha256": _sha256(path)} for path in adapter.artifact_paths],
+        "artifacts": [
+            {"path": str(path), "bytes": path.stat().st_size, "sha256": _sha256(path)}
+            for path in adapter.artifact_paths
+        ],
     }
 
 
@@ -327,77 +393,112 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
     started = time.perf_counter()
     if evaluate_only:
         adapters: list[Adapter] = [
-            HFAdapter("byte-bpe-12k", output_dir / "byte-bpe-12k.json"),
-            HFAdapter("byte-bpe-16k", output_dir / "byte-bpe-16k.json"),
+            TokenizerCandidate("byte-bpe-12k", output_dir / "byte-bpe-12k.json"),
+            TokenizerCandidate("byte-bpe-16k", output_dir / "byte-bpe-16k.json"),
             (
-                HFAdapter("tiktoken-style-bpe-12k", output_dir / "tiktoken-style-bpe-12k.json")
+                TokenizerCandidate(
+                    "tiktoken-style-bpe-12k", output_dir / "tiktoken-style-bpe-12k.json"
+                )
                 if (output_dir / "tiktoken-style-bpe-12k.json").is_file()
-                else train_tiktoken_style_bpe(corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json")
-            ),
-            (
-                HFAdapter("tiktoken-style-apostrophe-bpe-12k", output_dir / "tiktoken-style-tr-bpe-12k.json")
-                if (output_dir / "tiktoken-style-tr-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
-                    corpus, 12_000, output_dir / "tiktoken-style-tr-bpe-12k.json",
-                    pattern=TIKTOKEN_TURKISH_PATTERN, name="tiktoken-style-apostrophe-bpe-12k",
+                    corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json"
                 )
             ),
             (
-                HFAdapter("tiktoken-style-tr-weighted-bpe-12k", output_dir / "tiktoken-style-tr-weighted-bpe-12k.json")
+                TokenizerCandidate(
+                    "tiktoken-style-apostrophe-bpe-12k",
+                    output_dir / "tiktoken-style-tr-bpe-12k.json",
+                )
+                if (output_dir / "tiktoken-style-tr-bpe-12k.json").is_file()
+                else train_tiktoken_style_bpe(
+                    corpus,
+                    12_000,
+                    output_dir / "tiktoken-style-tr-bpe-12k.json",
+                    pattern=TIKTOKEN_TURKISH_PATTERN,
+                    name="tiktoken-style-apostrophe-bpe-12k",
+                )
+            ),
+            (
+                TokenizerCandidate(
+                    "tiktoken-style-tr-weighted-bpe-12k",
+                    output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
+                )
                 if (output_dir / "tiktoken-style-tr-weighted-bpe-12k.json").is_file()
                 else train_tiktoken_style_bpe(
-                    _turkish_weighted_corpus(corpus), 12_000,
+                    _turkish_weighted_corpus(corpus),
+                    12_000,
                     output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
                     name="tiktoken-style-tr-weighted-bpe-12k",
                 )
             ),
-            HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
+            TokenizerCandidate(
+                config["external"]["name"], Path(config["external"]["tokenizer_path"])
+            ),
         ]
     else:
         adapters = [
             train_byte_bpe(corpus, 12_000, output_dir / "byte-bpe-12k.json"),
             train_byte_bpe(corpus, 16_000, output_dir / "byte-bpe-16k.json"),
-            train_tiktoken_style_bpe(corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json"),
             train_tiktoken_style_bpe(
-                corpus, 12_000, output_dir / "tiktoken-style-tr-bpe-12k.json",
-                pattern=TIKTOKEN_TURKISH_PATTERN, name="tiktoken-style-apostrophe-bpe-12k",
+                corpus, 12_000, output_dir / "tiktoken-style-bpe-12k.json"
             ),
             train_tiktoken_style_bpe(
-                _turkish_weighted_corpus(corpus), 12_000,
+                corpus,
+                12_000,
+                output_dir / "tiktoken-style-tr-bpe-12k.json",
+                pattern=TIKTOKEN_TURKISH_PATTERN,
+                name="tiktoken-style-apostrophe-bpe-12k",
+            ),
+            train_tiktoken_style_bpe(
+                _turkish_weighted_corpus(corpus),
+                12_000,
                 output_dir / "tiktoken-style-tr-weighted-bpe-12k.json",
                 name="tiktoken-style-tr-weighted-bpe-12k",
             ),
-            HFAdapter(config["external"]["name"], Path(config["external"]["tokenizer_path"])),
+            TokenizerCandidate(
+                config["external"]["name"], Path(config["external"]["tokenizer_path"])
+            ),
         ]
     texts = _evaluation_texts(config)
     candidates = [evaluate(adapter, texts, corpus) for adapter in adapters]
     # Rank only qualified compact candidates; the external 49k tokenizer remains
     # a quality reference because its embedding cost changes the model budget.
-    compact = [row for row in candidates if row["qualified"] and row["vocab_size"] <= 16_000]
-    winner = min(
-        compact,
-        key=lambda row: (
-            # Preserve embedding capacity first. Within one vocabulary size,
-            # minimize balanced EN+TR word fertility plus code token density;
-            # morphology and artifact bytes are deterministic tie breakers.
-            row["vocab_size"],
-            row["slices"]["en"]["tokens_per_word"]
-            + row["slices"]["tr"]["tokens_per_word"]
-            + row["slices"]["code"]["tokens_per_character"],
-            row["turkish_morphology"]["mean_tokens"], row["artifact_bytes"],
-        ),
-    ) if compact else None
+    compact = [
+        row for row in candidates if row["qualified"] and row["vocab_size"] <= 16_000
+    ]
+    winner = (
+        min(
+            compact,
+            key=lambda row: (
+                # Preserve embedding capacity first. Within one vocabulary size,
+                # minimize balanced EN+TR word fertility plus code token density;
+                # morphology and artifact bytes are deterministic tie breakers.
+                row["vocab_size"],
+                row["slices"]["en"]["tokens_per_word"]
+                + row["slices"]["tr"]["tokens_per_word"]
+                + row["slices"]["code"]["tokens_per_character"],
+                row["turkish_morphology"]["mean_tokens"],
+                row["artifact_bytes"],
+            ),
+        )
+        if compact
+        else None
+    )
     # Tokenizer metrics expose real trade-offs rather than proving downstream LM
-    # quality. These three cover the strongest fixed-12k code/morphology option,
-    # the balanced 12k unigram option, and the higher-capacity byte-BPE endpoint.
+    # quality. Keep the apostrophe-aware production candidate and useful controls.
     probe_finalists = [
-        name for name in (
-            "byte-bpe-16k", "tiktoken-style-bpe-12k", "tiktoken-style-tr-weighted-bpe-12k"
-            )
+        name
+        for name in (
+            "tiktoken-style-apostrophe-bpe-12k",
+            "tiktoken-style-tr-weighted-bpe-12k",
+            "tiktoken-style-bpe-12k",
+            "byte-bpe-16k",
+        )
         if any(row["name"] == name and row["qualified"] for row in candidates)
     ]
     report = {
-        "format_version": 1, "experiment_id": config["experiment_id"],
+        "format_version": 1,
+        "experiment_id": config["experiment_id"],
         "passed": winner is not None,
         "interpretation": "tokenizer qualification; no model capability claim",
         "config_sha256": _sha256(config_path),
@@ -412,19 +513,28 @@ def run(config_path: Path, evaluate_only: bool = False) -> dict:
     report_path = Path(config["report"])
     report_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = report_path.with_name(report_path.name + ".tmp")
-    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     os.replace(temporary, report_path)
     return report
 
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=Path("configs/tokenizer_v2.json"))
-    parser.add_argument("--evaluate-only", action="store_true", help="reuse existing trained artifacts")
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument(
+        "--evaluate-only", action="store_true", help="reuse existing trained artifacts"
+    )
     args = parser.parse_args()
     report = run(args.config, evaluate_only=args.evaluate_only)
     for row in report["candidates"]:
-        print(row["name"], row["vocab_size"], row["qualified"], row["slices"]["code"]["whitespace_token_fraction"])
+        print(
+            row["name"],
+            row["vocab_size"],
+            row["qualified"],
+            row["slices"]["code"]["whitespace_token_fraction"],
+        )
     print("recommended", report["recommended"])
     return 0 if report["passed"] else 1
 

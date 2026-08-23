@@ -64,7 +64,14 @@ def _checkpoint_fields(payload: dict) -> tuple[str, dict, dict, int, str, dict]:
         step = int(payload.get("step", 0))
     else:
         raise ValueError("checkpoint lacks config/model_config")
-    return payload["model_type"], config, payload["model_state"], step, kind, dict(payload.get("metadata", {}))
+    return (
+        payload["model_type"],
+        config,
+        payload["model_state"],
+        step,
+        kind,
+        dict(payload.get("metadata", {})),
+    )
 
 
 def resolve_device(name: str) -> torch.device:
@@ -87,7 +94,9 @@ def resolve_precision(requested: str, device: torch.device) -> Precision:
     return requested  # type: ignore[return-value]
 
 
-def load_model(checkpoint: str | Path, tokenizer: str | Path, device: torch.device) -> LoadedModel:
+def load_model(
+    checkpoint: str | Path, tokenizer: str | Path, device: torch.device
+) -> LoadedModel:
     """Load and strictly validate any repository-produced checkpoint."""
     payload = torch.load(Path(checkpoint), map_location="cpu", weights_only=True)
     model_type, config_values, state, step, kind, metadata = _checkpoint_fields(payload)
@@ -98,8 +107,13 @@ def load_model(checkpoint: str | Path, tokenizer: str | Path, device: torch.devi
             f"tokenizer vocabulary ({processor.vocab_size()}) does not match model ({config.vocab_size})"
         )
     expected_fingerprint = metadata.get("tokenizer_fingerprint")
-    if expected_fingerprint and tokenizer_fingerprint(processor) != expected_fingerprint:
-        raise ValueError("checkpoint tokenizer fingerprint does not match the supplied tokenizer")
+    if (
+        expected_fingerprint
+        and tokenizer_fingerprint(processor) != expected_fingerprint
+    ):
+        raise ValueError(
+            "checkpoint tokenizer fingerprint does not match the supplied tokenizer"
+        )
     model = create_model(config)
     model.load_state_dict(state, strict=True)
     model.to(device).eval()
@@ -123,11 +137,17 @@ class InferenceSession:
         system_prompt: str | None = None,
     ) -> None:
         if max_new_tokens < 1 or temperature < 0:
-            raise ValueError("max_new_tokens must be positive and temperature nonnegative")
+            raise ValueError(
+                "max_new_tokens must be positive and temperature nonnegative"
+            )
         if top_k is not None and top_k < 1:
             raise ValueError("top_k must be positive")
         self.loaded, self.device, self.precision = loaded, device, precision
-        self.max_new_tokens, self.temperature, self.top_k = max_new_tokens, temperature, top_k
+        self.max_new_tokens, self.temperature, self.top_k = (
+            max_new_tokens,
+            temperature,
+            top_k,
+        )
         self.seed, self.chat, self.system_prompt = seed, chat, system_prompt
         self.turns: list[tuple[str, str]] = []
 
@@ -160,7 +180,9 @@ class InferenceSession:
         # no-cache fallback applies the identical left crop after each new token.
         ids = ids[-self.loaded.model.config.max_position_embeddings :]
         input_ids = torch.tensor([ids], dtype=torch.long, device=self.device)
-        generator_device = self.device if self.device.type == "cuda" else torch.device("cpu")
+        generator_device = (
+            self.device if self.device.type == "cuda" else torch.device("cpu")
+        )
         generator = torch.Generator(device=generator_device).manual_seed(self.seed)
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
@@ -190,7 +212,9 @@ def _iter_checkpoint_files(root: Path) -> Iterator[Path]:
         yield from root.rglob(pattern)
 
 
-def _print_model_info(loaded: LoadedModel, device: torch.device, precision: Precision) -> None:
+def _print_model_info(
+    loaded: LoadedModel, device: torch.device, precision: Precision
+) -> None:
     stats = loaded.model.stats(min(512, loaded.model.config.max_position_embeddings))
     variant = loaded.metadata.get("variant", loaded.model.config.model_type)
     print(
@@ -250,7 +274,9 @@ def interactive(session: InferenceSession) -> None:
         pass
     print("Amarken inference — /help for commands, /quit to exit")
     if session.chat:
-        print("warning: chat formatting is experimental; this checkpoint is not instruction-tuned")
+        print(
+            "warning: chat formatting is experimental; this checkpoint is not instruction-tuned"
+        )
     while True:
         try:
             line = input("you> ").strip()
@@ -269,27 +295,55 @@ def interactive(session: InferenceSession) -> None:
         try:
             result = session.generate(line)
             print(f"model> {result.text}")
-            print(f"[{len(result.token_ids)} tokens, {result.seconds:.3f}s, {result.tokens_per_second:.1f} tok/s]")
+            print(
+                f"[{len(result.token_ids)} tokens, {result.seconds:.3f}s, {result.tokens_per_second:.1f} tok/s]"
+            )
         except (RuntimeError, ValueError) as error:
             print(f"error: {error}")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, help="trainer, standalone, or model-only .pt checkpoint")
-    parser.add_argument("--tokenizer", type=Path, default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"))
+    parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        help="trainer, standalone, or model-only .pt checkpoint",
+    )
+    parser.add_argument(
+        "--tokenizer",
+        type=Path,
+        default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"),
+    )
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N")
-    parser.add_argument("--precision", choices=("auto", "fp32", "bf16", "fp16"), default="auto")
-    parser.add_argument("--prompt", help="one-shot prompt; omitted enters interactive mode when stdin is a TTY")
-    parser.add_argument("--chat", action="store_true", help="retain turns using plain User/Assistant labels")
+    parser.add_argument(
+        "--precision", choices=("auto", "fp32", "bf16", "fp16"), default="auto"
+    )
+    parser.add_argument(
+        "--prompt",
+        help="one-shot prompt; omitted enters interactive mode when stdin is a TTY",
+    )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="retain turns using plain User/Assistant labels",
+    )
     parser.add_argument("--system", help="optional system text used only with --chat")
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--show-info", action="store_true")
-    parser.add_argument("--show-stats", action="store_true", help="write timing/token statistics to stderr")
-    parser.add_argument("--list-checkpoints", type=Path, metavar="DIR", help="list checkpoint files and exit")
+    parser.add_argument(
+        "--show-stats",
+        action="store_true",
+        help="write timing/token statistics to stderr",
+    )
+    parser.add_argument(
+        "--list-checkpoints",
+        type=Path,
+        metavar="DIR",
+        help="list checkpoint files and exit",
+    )
     return parser
 
 

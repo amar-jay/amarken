@@ -104,6 +104,10 @@ def ternary_statistics(model: AmarkenCausalLM) -> dict[str, float]:
         "ternary_scale_mean": float(scale_tensor.mean()),
         "ternary_scale_max": float(scale_tensor.max()),
         "ternary_scale_std": float(scale_tensor.std(unbiased=False)),
-        "ternary_grad_finite_fraction": ternary_grad_finite / ternary_grad_total if ternary_grad_total else 1.0,
-        "ternary_grad_zero_fraction": ternary_grad_zero / ternary_grad_total if ternary_grad_total else 1.0,
+        "ternary_grad_finite_fraction": (
+            ternary_grad_finite / ternary_grad_total if ternary_grad_total else 1.0
+        ),
+        "ternary_grad_zero_fraction": (
+            ternary_grad_zero / ternary_grad_total if ternary_grad_total else 1.0
+        ),
     }

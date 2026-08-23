@@ -32,7 +32,9 @@ class RMSNorm(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         # Accumulate variance/rsqrt in FP32 to avoid FP16/BF16 overflow, underflow,
         # and compiler-dependent reductions; cast back to preserve mixed precision.
-        normalized = x.float() * torch.rsqrt(x.float().square().mean(-1, keepdim=True) + self.eps)
+        normalized = x.float() * torch.rsqrt(
+            x.float().square().mean(-1, keepdim=True) + self.eps
+        )
         if self.weight is not None:
             normalized = normalized * self.weight.float()
         return normalized.to(x.dtype)
@@ -53,7 +55,9 @@ class CenteredRMSNorm(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         # Multiplication occurs in FP32 before the final cast, matching the released
         # Muse implementation and avoiding a subtly different low-precision graph.
-        y = x.float() * torch.rsqrt(x.float().square().mean(-1, keepdim=True) + self.eps)
+        y = x.float() * torch.rsqrt(
+            x.float().square().mean(-1, keepdim=True) + self.eps
+        )
         return (y * (1.0 + self.weight.float())).to(x.dtype)
 
 
@@ -64,7 +68,9 @@ class RotaryEmbedding(nn.Module):
         super().__init__()
         # One frequency per coordinate pair; larger theta makes high dimensions
         # rotate more slowly and extends distinguishable relative distances.
-        inv_freq = 1.0 / (theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
+        inv_freq = 1.0 / (
+            theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim)
+        )
         # Derived constant is device-movable but excluded from checkpoints because
         # theta/head_dim reconstruct it exactly and duplicate bytes are wasteful.
         self.register_buffer("inv_freq", inv_freq, persistent=False)
@@ -72,7 +78,9 @@ class RotaryEmbedding(nn.Module):
     def forward(self, positions: Tensor, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
         # [B,T] outer [D/2] -> per-token phases [B,T,D/2]. FP32 phase math is
         # important at large positions; duplicate halves matches rotate_half layout.
-        frequencies = torch.einsum("bt,d->btd", positions.float(), self.inv_freq.float())
+        frequencies = torch.einsum(
+            "bt,d->btd", positions.float(), self.inv_freq.float()
+        )
         embedding = torch.cat((frequencies, frequencies), dim=-1)
         return embedding.cos().to(dtype), embedding.sin().to(dtype)
 
@@ -110,16 +118,25 @@ class GatedGroupedQueryAttention(nn.Module):
         # Gate is computed from the same normalized branch input and modulates each
         # concatenated head feature before mixing by o_proj; sigmoid bounds it 0..1.
         self.gate_proj = (
-            nn.Linear(config.hidden_size, q_width, bias=False) if config.use_attention_gate else None
+            nn.Linear(config.hidden_size, q_width, bias=False)
+            if config.use_attention_gate
+            else None
         )
         self.o_proj = nn.Linear(q_width, config.hidden_size, bias=False)
         # One parameter-free norm is safe to reuse: RMSNorm has no running state;
         # it operates on the last dimension, therefore independently per head.
-        self.qk_norm = RMSNorm(eps=config.rms_norm_eps, scale=False) if config.use_qk_norm else None
+        self.qk_norm = (
+            RMSNorm(eps=config.rms_norm_eps, scale=False)
+            if config.use_qk_norm
+            else None
+        )
         # Per-head learnable inverse temperature; initialized from Muse Glimmer.
         self.query_scale = (
-            nn.Parameter(torch.full((config.num_attention_heads,), config.qk_scale_factor))
-            if config.use_qk_norm else None
+            nn.Parameter(
+                torch.full((config.num_attention_heads,), config.qk_scale_factor)
+            )
+            if config.use_qk_norm
+            else None
         )
 
     def forward(
@@ -130,9 +147,21 @@ class GatedGroupedQueryAttention(nn.Module):
     ) -> Tensor:
         batch, length, _ = hidden_states.shape
         # Projection [B,T,H*D] -> [B,H,T,D], the layout expected by torch SDPA.
-        q = self.q_proj(hidden_states).view(batch, length, self.config.num_attention_heads, -1).transpose(1, 2)
-        k = self.k_proj(hidden_states).view(batch, length, self.config.num_key_value_heads, -1).transpose(1, 2)
-        v = self.v_proj(hidden_states).view(batch, length, self.config.num_key_value_heads, -1).transpose(1, 2)
+        q = (
+            self.q_proj(hidden_states)
+            .view(batch, length, self.config.num_attention_heads, -1)
+            .transpose(1, 2)
+        )
+        k = (
+            self.k_proj(hidden_states)
+            .view(batch, length, self.config.num_key_value_heads, -1)
+            .transpose(1, 2)
+        )
+        v = (
+            self.v_proj(hidden_states)
+            .view(batch, length, self.config.num_key_value_heads, -1)
+            .transpose(1, 2)
+        )
         # Unit-RMS Q/K stabilizes dot products; learned per-Q-head scale acts as an
         # inverse softmax temperature in addition to SDPA's standard 1/sqrt(D).
         if self.qk_norm is not None:
@@ -171,9 +200,15 @@ class SwiGLU(nn.Module):
 
     def __init__(self, config: GlimmerConfig):
         super().__init__()
-        self.gate_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
-        self.up_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
-        self.down_proj = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
+        self.gate_proj = nn.Linear(
+            config.hidden_size, config.intermediate_size, bias=False
+        )
+        self.up_proj = nn.Linear(
+            config.hidden_size, config.intermediate_size, bias=False
+        )
+        self.down_proj = nn.Linear(
+            config.intermediate_size, config.hidden_size, bias=False
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         # Multiplicative gating offers more expressivity per parameter than a plain
@@ -191,14 +226,20 @@ class GlimmerDecoderLayer(nn.Module):
         # Muse uses four norms, not conventional two-norm pre-norm: each branch is
         # normalized before computation and again before entering the residual.
         self.input_norm = CenteredRMSNorm(config.hidden_size, config.rms_norm_eps)
-        self.post_attention_norm = CenteredRMSNorm(config.hidden_size, config.post_norm_eps)
+        self.post_attention_norm = CenteredRMSNorm(
+            config.hidden_size, config.post_norm_eps
+        )
         self.pre_ffn_norm = CenteredRMSNorm(config.hidden_size, config.rms_norm_eps)
         self.post_ffn_norm = CenteredRMSNorm(config.hidden_size, config.post_norm_eps)
 
-    def forward(self, x: Tensor, rope: tuple[Tensor, Tensor] | None, additive_mask: Tensor) -> Tensor:
+    def forward(
+        self, x: Tensor, rope: tuple[Tensor, Tensor] | None, additive_mask: Tensor
+    ) -> Tensor:
         # Sequential residuals (attention first, FFN sees updated state). Post norms
         # bound each residual update without normalizing/bypassing the residual path.
-        x = x + self.post_attention_norm(self.attention(self.input_norm(x), rope, additive_mask))
+        x = x + self.post_attention_norm(
+            self.attention(self.input_norm(x), rope, additive_mask)
+        )
         return x + self.post_ffn_norm(self.mlp(self.pre_ffn_norm(x)))
 
 
@@ -225,7 +266,9 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
         self.rotary_embedding = RotaryEmbedding(config.head_dim, config.rope_theta)
         # Unique blocks (no recurrent sharing): logical depth equals parameter depth,
         # making this model a clean Glimmer-vs-DT architectural comparison.
-        self.layers = nn.ModuleList(GlimmerDecoderLayer(config, i) for i in range(config.num_hidden_layers))
+        self.layers = nn.ModuleList(
+            GlimmerDecoderLayer(config, i) for i in range(config.num_hidden_layers)
+        )
         # Learned final RMS scale prepares a consistent representation for logits.
         self.final_norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
         # Bias-free vocabulary projection; tying below aliases its weight object.
@@ -244,14 +287,24 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             nn.init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
 
-    def _resource_accounting(self, sequence_length: int, element_bytes: int) -> tuple[int, int, int, int]:
+    def _resource_accounting(
+        self, sequence_length: int, element_bytes: int
+    ) -> tuple[int, int, int, int]:
         # Linear FLOPs cover every layer projection plus the tied output projection;
         # embedding lookup itself is indexing and therefore excluded.
         layer_linear_parameters = sum(
-            module.weight.numel() for layer in self.layers for module in layer.modules() if isinstance(module, nn.Linear)
+            module.weight.numel()
+            for layer in self.layers
+            for module in layer.modules()
+            if isinstance(module, nn.Linear)
         )
-        linear_flops = 2 * sequence_length * (
-            layer_linear_parameters + self.config.hidden_size * self.config.vocab_size
+        linear_flops = (
+            2
+            * sequence_length
+            * (
+                layer_linear_parameters
+                + self.config.hidden_size * self.config.vocab_size
+            )
         )
 
         def causal_pairs(tokens: int, window: int | None = None) -> int:
@@ -262,13 +315,27 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
         attention_flops = 0
         cached_kv_elements = 0
         for layer_type in self.config.layer_types:
-            keys = sequence_length if layer_type == "full_attention" else min(sequence_length, self.config.sliding_window)
-            pairs = causal_pairs(sequence_length, None if layer_type == "full_attention" else self.config.sliding_window)
+            keys = (
+                sequence_length
+                if layer_type == "full_attention"
+                else min(sequence_length, self.config.sliding_window)
+            )
+            pairs = causal_pairs(
+                sequence_length,
+                None if layer_type == "full_attention" else self.config.sliding_window,
+            )
             # QK and AV each cost ~2 FLOPs per hidden-dimension MAC => 4*H per pair.
             attention_flops += 4 * self.config.hidden_size * pairs
-            cached_kv_elements += 2 * self.config.num_key_value_heads * self.config.head_dim * keys
+            cached_kv_elements += (
+                2 * self.config.num_key_value_heads * self.config.head_dim * keys
+            )
         total = self.parameter_count()
-        return linear_flops + attention_flops, cached_kv_elements * element_bytes, total * element_bytes, 0
+        return (
+            linear_flops + attention_flops,
+            cached_kv_elements * element_bytes,
+            total * element_bytes,
+            0,
+        )
 
     def _attention_masks(
         self,
@@ -348,7 +415,9 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
         hidden = self.embedding_norm(self.token_embedding(input_ids))
         # Both receptive-field variants are hoisted out of the layer loop: default
         # depth now performs two rather than eighteen O(T^2) mask constructions.
-        additive_masks = self._attention_masks(attention_mask, batch, length, input_ids.device, segment_ids)
+        additive_masks = self._attention_masks(
+            attention_mask, batch, length, input_ids.device, segment_ids
+        )
         # Compute RoPE once per forward; full layers ignore it, local layers reuse it.
         rope = self.rotary_embedding(positions, hidden.dtype)
         for layer in self.layers:
@@ -356,20 +425,26 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
             # theta zero would be undefined and identity RoPE would still encode pos.
             layer_rope = (
                 None
-                if self.config.use_nope_global and layer.attention.layer_type == "full_attention"
+                if self.config.use_nope_global
+                and layer.attention.layer_type == "full_attention"
                 else rope
             )
             layer_mask = additive_masks[layer.attention.layer_type]
             if self.gradient_checkpointing and self.training:
                 hidden = checkpoint(
-                    lambda state, block=layer, block_rope=layer_rope, mask=layer_mask: block(state, block_rope, mask),
-                    hidden, use_reentrant=False,
+                    lambda state, block=layer, block_rope=layer_rope, mask=layer_mask: block(
+                        state, block_rope, mask
+                    ),
+                    hidden,
+                    use_reentrant=False,
                 )
             else:
                 hidden = layer(hidden, layer_rope, layer_mask)
         # Project in model dtype, then use FP32 for scaling/cap/loss stability. The
         # width-derived multiplier keeps initial logit variance comparable by scale.
-        logits = self.lm_head(self.final_norm(hidden)).float() * self.config.logit_multiplier
+        logits = (
+            self.lm_head(self.final_norm(hidden)).float() * self.config.logit_multiplier
+        )
         cap = self.config.final_logit_softcap
         if cap > 0:
             # cap*tanh(x/cap) is linear near zero and smoothly saturates at +/-cap,
@@ -381,5 +456,7 @@ class GlimmerCausalLM(AmarkenCausalLM[GlimmerConfig]):
                 raise ValueError("labels must have the same shape as input_ids")
             # Standard next-token teacher forcing: prediction t targets token t+1;
             # reshape flattens batch/time and PyTorch CE honors label -100 masking.
-            loss = F.cross_entropy(logits[:, :-1].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1))
+            loss = F.cross_entropy(
+                logits[:, :-1].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1)
+            )
         return CausalLMOutput(logits=logits, loss=loss)

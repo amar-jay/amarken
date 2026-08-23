@@ -8,7 +8,6 @@ from typing import Protocol, Sequence, runtime_checkable
 
 from tokenizers import Tokenizer
 
-
 SPECIAL_TOKEN_NAMES = {"unk": "<unk>", "bos": "<s>", "eos": "</s>", "pad": "<pad>"}
 
 
@@ -16,6 +15,7 @@ SPECIAL_TOKEN_NAMES = {"unk": "<unk>", "bos": "<s>", "eos": "</s>", "pad": "<pad
 class RuntimeTokenizer(Protocol):
     path: Path
     kind: str
+
     def encode(self, text: str) -> list[int]: ...
     def decode(self, ids: Sequence[int]) -> str: ...
     def vocab_size(self) -> int: ...
@@ -34,7 +34,11 @@ class HuggingFaceRuntimeTokenizer:
     def __init__(self, path: Path):
         self.path = path
         self.tokenizer = Tokenizer.from_file(str(path))
-        missing = [token for token in SPECIAL_TOKEN_NAMES.values() if self.tokenizer.token_to_id(token) is None]
+        missing = [
+            token
+            for token in SPECIAL_TOKEN_NAMES.values()
+            if self.tokenizer.token_to_id(token) is None
+        ]
         if missing:
             raise ValueError(f"tokenizer lacks required special tokens: {missing}")
 
@@ -44,9 +48,14 @@ class HuggingFaceRuntimeTokenizer:
     def decode(self, ids: Sequence[int]) -> str:
         return self.tokenizer.decode(list(ids), skip_special_tokens=False)
 
-    def vocab_size(self) -> int: return self.tokenizer.get_vocab_size(with_added_tokens=True)
-    def token_to_id(self, token: str) -> int | None: return self.tokenizer.token_to_id(token)
-    def id_to_token(self, token_id: int) -> str: return self.tokenizer.id_to_token(token_id) or ""
+    def vocab_size(self) -> int:
+        return self.tokenizer.get_vocab_size(with_added_tokens=True)
+
+    def token_to_id(self, token: str) -> int | None:
+        return self.tokenizer.token_to_id(token)
+
+    def id_to_token(self, token_id: int) -> str:
+        return self.tokenizer.id_to_token(token_id) or ""
 
     def _special_id(self, name: str) -> int:
         token_id = self.token_to_id(SPECIAL_TOKEN_NAMES[name])
@@ -54,11 +63,20 @@ class HuggingFaceRuntimeTokenizer:
             raise ValueError(f"tokenizer lacks {SPECIAL_TOKEN_NAMES[name]}")
         return token_id
 
-    def unk_id(self) -> int: return self._special_id("unk")
-    def bos_id(self) -> int: return self._special_id("bos")
-    def eos_id(self) -> int: return self._special_id("eos")
-    def pad_id(self) -> int: return self._special_id("pad")
-    def artifact_paths(self) -> tuple[Path, ...]: return (self.path,)
+    def unk_id(self) -> int:
+        return self._special_id("unk")
+
+    def bos_id(self) -> int:
+        return self._special_id("bos")
+
+    def eos_id(self) -> int:
+        return self._special_id("eos")
+
+    def pad_id(self) -> int:
+        return self._special_id("pad")
+
+    def artifact_paths(self) -> tuple[Path, ...]:
+        return (self.path,)
 
 
 def load_tokenizer(path: str | Path) -> RuntimeTokenizer:
@@ -69,7 +87,15 @@ def load_tokenizer(path: str | Path) -> RuntimeTokenizer:
         tokenizer = HuggingFaceRuntimeTokenizer(resolved)
     else:
         raise ValueError(f"unsupported tokenizer artifact: {resolved}; expected .json")
-    if min(tokenizer.unk_id(), tokenizer.bos_id(), tokenizer.eos_id(), tokenizer.pad_id()) < 0:
+    if (
+        min(
+            tokenizer.unk_id(),
+            tokenizer.bos_id(),
+            tokenizer.eos_id(),
+            tokenizer.pad_id(),
+        )
+        < 0
+    ):
         raise ValueError("tokenizer must define nonnegative unk/bos/eos/pad IDs")
     return tokenizer
 

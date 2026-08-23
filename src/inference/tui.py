@@ -143,13 +143,17 @@ class DemoSession:
             user_text.strip() or "(empty)",
         ]
         if self.chat:
-            lines.append(f"turn={len(self.turns) + 1}  system={'yes' if self.system_prompt else 'no'}")
+            lines.append(
+                f"turn={len(self.turns) + 1}  system={'yes' if self.system_prompt else 'no'}"
+            )
         text = "\n".join(lines)
         elapsed = max(time.perf_counter() - started, 1e-6)
         ids = tuple((self.seed + i) % 12_000 for i in range(n))
         if self.chat:
             self.turns.append((user_text, text))
-        return GenerationResult(text, ids, max(1, len(user_text.encode()) // 4), elapsed)
+        return GenerationResult(
+            text, ids, max(1, len(user_text.encode()) // 4), elapsed
+        )
 
 
 def load_real_session(args: argparse.Namespace) -> tuple[SessionProtocol, ModelCard]:
@@ -525,7 +529,9 @@ class AmarkenTUI(App[None]):
             with VerticalScroll(id="sidebar"):
                 yield Label("sampling", id="sidebar-title")
                 yield Label("max new tokens", classes="field-label")
-                yield Input(value=str(self.args.max_new_tokens), id="max-new", type="integer")
+                yield Input(
+                    value=str(self.args.max_new_tokens), id="max-new", type="integer"
+                )
                 yield Label("temperature  (0 = greedy)", classes="field-label")
                 yield Input(value=str(self.args.temperature), id="temperature")
                 yield Label("top-k  (none disables)", classes="field-label")
@@ -548,7 +554,9 @@ class AmarkenTUI(App[None]):
         with Vertical(id="composer-wrap"):
             yield Static("ready", id="status")
             with Horizontal(id="composer-row"):
-                yield Input(placeholder="prompt or /command  —  enter to send", id="prompt")
+                yield Input(
+                    placeholder="prompt or /command  —  enter to send", id="prompt"
+                )
                 yield Button("Send", id="send", variant="primary")
         yield Footer()
 
@@ -579,7 +587,11 @@ class AmarkenTUI(App[None]):
         log = self.query_one("#transcript", RichLog)
         log.write(Text.from_markup("[b]Amarken inference[/]  —  /help · F1"))
         if self.card.demo:
-            log.write(Text.from_markup("[dim]demo session — replies are local stubs, not model output[/]"))
+            log.write(
+                Text.from_markup(
+                    "[dim]demo session — replies are local stubs, not model output[/]"
+                )
+            )
         if self.session.chat:
             log.write(
                 Text.from_markup(
@@ -593,7 +605,9 @@ class AmarkenTUI(App[None]):
     def _on_boot_failed(self, error: str) -> None:
         banner = self.query_one("#banner", Static)
         banner.update(f"failed to load  ·  {error}")
-        self.query_one("#transcript", RichLog).write(Text.from_markup(f"[red]error:[/] {error}"))
+        self.query_one("#transcript", RichLog).write(
+            Text.from_markup(f"[red]error:[/] {error}")
+        )
         self._set_status(f"error: {error}", kind="error")
         self.notify(error, severity="error", timeout=8)
 
@@ -617,7 +631,9 @@ class AmarkenTUI(App[None]):
 
     def _read_settings(self) -> dict[str, Any]:
         max_new = max(1, int(self.query_one("#max-new", Input).value or "1"))
-        temperature = max(0.0, float(self.query_one("#temperature", Input).value or "0"))
+        temperature = max(
+            0.0, float(self.query_one("#temperature", Input).value or "0")
+        )
         raw_k = (self.query_one("#top-k", Input).value or "none").strip().lower()
         top_k: int | None
         if raw_k in {"", "none", "off", "-"}:
@@ -652,7 +668,9 @@ class AmarkenTUI(App[None]):
         self.session.chat = values["chat"]
         self.session.system_prompt = values["system_prompt"]
         if values["system_prompt"] and not values["chat"]:
-            self.notify("--system is only used when chat mode is on", severity="warning")
+            self.notify(
+                "--system is only used when chat mode is on", severity="warning"
+            )
         if not silent:
             self._set_status(self._settings_line())
             self.notify("settings applied")
@@ -663,7 +681,9 @@ class AmarkenTUI(App[None]):
             return
         self.query_one("#max-new", Input).value = str(self.session.max_new_tokens)
         self.query_one("#temperature", Input).value = str(self.session.temperature)
-        self.query_one("#top-k", Input).value = "none" if self.session.top_k is None else str(self.session.top_k)
+        self.query_one("#top-k", Input).value = (
+            "none" if self.session.top_k is None else str(self.session.top_k)
+        )
         self.query_one("#seed", Input).value = str(self.session.seed)
         self.query_one("#chat", Switch).value = bool(self.session.chat)
         self.query_one("#system", TextArea).text = self.session.system_prompt or ""
@@ -743,7 +763,11 @@ class AmarkenTUI(App[None]):
         self._generate(line)
 
     def _handle_command(self, line: str) -> bool:
-        if self.session is None and not line.lower().split()[0] in {"/help", "/quit", "/exit"}:
+        if self.session is None and not line.lower().split()[0] in {
+            "/help",
+            "/quit",
+            "/exit",
+        }:
             self.notify("model is still loading", severity="warning")
             return True
         try:
@@ -762,17 +786,27 @@ class AmarkenTUI(App[None]):
                 self.action_reset()
             elif command == "/settings":
                 self._set_status(self._settings_line())
-                self.query_one("#transcript", RichLog).write(Text.from_markup(f"[dim]{self._settings_line()}[/]"))
-            elif command == "/max-new" and len(pieces) == 2 and self.session is not None:
+                self.query_one("#transcript", RichLog).write(
+                    Text.from_markup(f"[dim]{self._settings_line()}[/]")
+                )
+            elif (
+                command == "/max-new" and len(pieces) == 2 and self.session is not None
+            ):
                 self.session.max_new_tokens = max(1, int(pieces[1]))
                 self._sync_widgets_from_session()
                 self._set_status(self._settings_line())
-            elif command == "/temperature" and len(pieces) == 2 and self.session is not None:
+            elif (
+                command == "/temperature"
+                and len(pieces) == 2
+                and self.session is not None
+            ):
                 self.session.temperature = max(0.0, float(pieces[1]))
                 self._sync_widgets_from_session()
                 self._set_status(self._settings_line())
             elif command == "/top-k" and len(pieces) == 2 and self.session is not None:
-                self.session.top_k = None if pieces[1].lower() == "none" else max(1, int(pieces[1]))
+                self.session.top_k = (
+                    None if pieces[1].lower() == "none" else max(1, int(pieces[1]))
+                )
                 self._sync_widgets_from_session()
                 self._set_status(self._settings_line())
             elif command == "/seed" and len(pieces) == 2 and self.session is not None:
@@ -780,7 +814,9 @@ class AmarkenTUI(App[None]):
                 self._sync_widgets_from_session()
                 self._set_status(self._settings_line())
             else:
-                self.notify("unknown or malformed command — F1 for help", severity="warning")
+                self.notify(
+                    "unknown or malformed command — F1 for help", severity="warning"
+                )
         except ValueError as error:
             self.notify(str(error), severity="error")
         return True
@@ -830,7 +866,9 @@ class AmarkenTUI(App[None]):
     def on_generation_failed(self, event: GenerationFailed) -> None:
         self.busy = False
         self.query_one("#send", Button).disabled = False
-        self.query_one("#transcript", RichLog).write(Text.from_markup(f"[red]error:[/] {event.error}"))
+        self.query_one("#transcript", RichLog).write(
+            Text.from_markup(f"[red]error:[/] {event.error}")
+        )
         self._set_status(f"error: {event.error}", kind="error")
         self.notify(event.error, severity="error")
         self.query_one("#prompt", Input).focus()
@@ -838,17 +876,33 @@ class AmarkenTUI(App[None]):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, help="trainer, standalone, or model-only .pt checkpoint")
-    parser.add_argument("--tokenizer", type=Path, default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"))
+    parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        help="trainer, standalone, or model-only .pt checkpoint",
+    )
+    parser.add_argument(
+        "--tokenizer",
+        type=Path,
+        default=Path("artifacts/tokenizers/v2/tiktoken-style-tr-bpe-12k.json"),
+    )
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N")
-    parser.add_argument("--precision", choices=("auto", "fp32", "bf16", "fp16"), default="auto")
-    parser.add_argument("--chat", action="store_true", help="retain turns using plain User/Assistant labels")
+    parser.add_argument(
+        "--precision", choices=("auto", "fp32", "bf16", "fp16"), default="auto"
+    )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="retain turns using plain User/Assistant labels",
+    )
     parser.add_argument("--system", help="optional system text used only with --chat")
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--seed", type=int, default=2026)
-    parser.add_argument("--demo", action="store_true", help="run the workbench without loading weights")
+    parser.add_argument(
+        "--demo", action="store_true", help="run the workbench without loading weights"
+    )
     parser.add_argument(
         "--scan",
         type=Path,
@@ -856,7 +910,12 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="directory F3 searches for .pt / .pth / .ckpt files",
     )
-    parser.add_argument("--list-checkpoints", type=Path, metavar="DIR", help="list checkpoint files and exit")
+    parser.add_argument(
+        "--list-checkpoints",
+        type=Path,
+        metavar="DIR",
+        help="list checkpoint files and exit",
+    )
     return parser
 
 
@@ -869,7 +928,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.system and not args.chat:
         raise SystemExit("--system requires --chat")
     if not args.demo and args.checkpoint is None:
-        raise SystemExit("--checkpoint is required unless --demo or --list-checkpoints is used")
+        raise SystemExit(
+            "--checkpoint is required unless --demo or --list-checkpoints is used"
+        )
     AmarkenTUI(args).run()
     return 0
 

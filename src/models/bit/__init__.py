@@ -7,4 +7,11 @@ from ..common import CausalLMOutput
 # Compatibility alias: new code should use CausalLMOutput for both architectures.
 BitOutput = CausalLMOutput
 
-__all__ = ["ArtifactReport", "BitCausalLM", "BitConfig", "BitLinear", "BitOutput", "pack_ternary"]
+__all__ = [
+    "ArtifactReport",
+    "BitCausalLM",
+    "BitConfig",
+    "BitLinear",
+    "BitOutput",
+    "pack_ternary",
+]

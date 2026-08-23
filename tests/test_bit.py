@@ -47,7 +47,11 @@ def test_output_channel_scaling_has_one_scale_per_neuron():
     trits, scale = layer.quantized()
     assert scale.shape == (3, 1)
     inputs = torch.randn(2, 5)
-    assert torch.allclose(layer(inputs), torch.nn.functional.linear(inputs, trits.float() * scale), atol=1e-6)
+    assert torch.allclose(
+        layer(inputs),
+        torch.nn.functional.linear(inputs, trits.float() * scale),
+        atol=1e-6,
+    )
 
 
 def test_forward_loss_backward_and_tied_embeddings():
@@ -69,7 +73,10 @@ def test_left_and_complete_padding_remain_finite():
     output = model(tokens, attention_mask=mask, labels=labels)
     assert torch.isfinite(output.logits).all() and torch.isfinite(output.loss)
     output.loss.backward()
-    assert all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in model.parameters())
+    assert all(
+        parameter.grad is None or torch.isfinite(parameter.grad).all()
+        for parameter in model.parameters()
+    )
 
 
 def test_artifact_accounting_and_export_cover_every_bitlinear():
@@ -78,7 +85,11 @@ def test_artifact_accounting_and_export_cover_every_bitlinear():
     modules = sum(isinstance(module, BitLinear) for module in model.modules())
     assert report.total_parameters == model.parameter_count()
     assert report.ternary_parameters > report.floating_parameters
-    assert report.theoretical_bytes <= report.packed_2bit_bytes < report.training_master_bytes_fp32
+    assert (
+        report.theoretical_bytes
+        <= report.packed_2bit_bytes
+        < report.training_master_bytes_fp32
+    )
     assert len(model.export_ternary()) == modules
 
 

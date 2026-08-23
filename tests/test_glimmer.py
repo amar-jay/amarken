@@ -60,7 +60,10 @@ def test_left_and_complete_padding_have_finite_outputs_and_gradients():
     assert torch.isfinite(output.logits).all()
     assert output.loss is not None and torch.isfinite(output.loss)
     output.loss.backward()
-    assert all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in model.parameters())
+    assert all(
+        parameter.grad is None or torch.isfinite(parameter.grad).all()
+        for parameter in model.parameters()
+    )
 
 
 def test_masks_restore_padded_query_diagonals():
@@ -78,7 +81,9 @@ def test_layers_reuse_only_two_mask_objects_per_forward():
     tokens = torch.randint(0, model.config.vocab_size, (1, 7))
     seen_mask_ids = []
     hooks = [
-        layer.attention.register_forward_pre_hook(lambda _module, args: seen_mask_ids.append(id(args[2])))
+        layer.attention.register_forward_pre_hook(
+            lambda _module, args: seen_mask_ids.append(id(args[2]))
+        )
         for layer in model.layers
     ]
     model(tokens)
@@ -93,7 +98,9 @@ def test_default_config_is_created_per_model_instance():
 
 
 def test_architecture_ablation_switches_remove_only_requested_mechanisms():
-    model = GlimmerCausalLM(tiny_config(use_attention_gate=False, use_qk_norm=False, use_nope_global=False))
+    model = GlimmerCausalLM(
+        tiny_config(use_attention_gate=False, use_qk_norm=False, use_nope_global=False)
+    )
     attention = model.layers[0].attention
     assert attention.gate_proj is None
     assert attention.qk_norm is None and attention.query_scale is None

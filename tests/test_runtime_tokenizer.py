@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from src.tokenization import load_tokenizer, tokenizer_artifact_bytes, tokenizer_fingerprint
+from src.tokenization import (
+    load_tokenizer,
+    tokenizer_artifact_bytes,
+    tokenizer_fingerprint,
+)
 
 
 def test_runtime_tokenizer_contract():
@@ -14,7 +18,12 @@ def test_runtime_tokenizer_contract():
         "English, Türkçe, emoji 🙂 and tabs\tremain exact.",
     ]
     assert tokenizer.vocab_size() == 12_000
-    assert {tokenizer.unk_id(), tokenizer.bos_id(), tokenizer.eos_id(), tokenizer.pad_id()} == {0, 1, 2, 3}
+    assert {
+        tokenizer.unk_id(),
+        tokenizer.bos_id(),
+        tokenizer.eos_id(),
+        tokenizer.pad_id(),
+    } == {0, 1, 2, 3}
     assert all(tokenizer.decode(tokenizer.encode(text)) == text for text in probes)
     assert tokenizer_artifact_bytes(tokenizer) > 0
     assert len(tokenizer_fingerprint(tokenizer)) == 64

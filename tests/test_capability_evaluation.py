@@ -15,10 +15,22 @@ def test_frozen_benchmark_is_balanced_and_mechanically_scored():
     target_counts = Counter(task["target"] for task in tasks)
     assert max(target_counts.values()) - min(target_counts.values()) <= 1
     categories = {task["category"] for task in tasks}
-    assert categories == {"instruction_following", "compositional_reasoning", "retrieval", "state_tracking", "tool_syntax"}
+    assert categories == {
+        "instruction_following",
+        "compositional_reasoning",
+        "retrieval",
+        "state_tracking",
+        "tool_syntax",
+    }
     for category in categories:
         for language in ("en", "tr"):
-            assert sum(task["category"] == category and task["language"] == language for task in tasks) == 3
+            assert (
+                sum(
+                    task["category"] == category and task["language"] == language
+                    for task in tasks
+                )
+                == 3
+            )
 
 
 def test_contamination_scan_detects_long_exact_windows(tmp_path: Path):
@@ -27,8 +39,10 @@ def test_contamination_scan_detects_long_exact_windows(tmp_path: Path):
     benchmark.write_text(json.dumps({"tasks": [{"prompt": phrase}]}), encoding="utf-8")
     train = tmp_path / "train.jsonl"
     train.write_text(
-        json.dumps({"id": "clean", "text": "unrelated short text"}) + "\n" +
-        json.dumps({"id": "leaked", "text": "prefix " + phrase + " suffix"}) + "\n",
+        json.dumps({"id": "clean", "text": "unrelated short text"})
+        + "\n"
+        + json.dumps({"id": "leaked", "text": "prefix " + phrase + " suffix"})
+        + "\n",
         encoding="utf-8",
     )
     result = _contamination_scan(train, benchmark, n=13)

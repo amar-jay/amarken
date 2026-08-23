@@ -80,7 +80,10 @@ def test_shared_stats_schema_is_architecture_aware():
         stats = model.stats(sequence_length=16)
         assert stats.total_parameters == model.parameter_count()
         assert stats.active_parameters == stats.total_parameters
-        assert stats.forward_flops > 0 and stats.flops_per_token == stats.forward_flops / 16
+        assert (
+            stats.forward_flops > 0
+            and stats.flops_per_token == stats.forward_flops / 16
+        )
         assert stats.artifact_bytes > 0 and stats.kv_cache_bytes > 0
     assert dt.stats(16).ternary_parameters == glimmer.stats(16).ternary_parameters == 0
     assert bit.stats(16).ternary_parameters > 0
@@ -108,8 +111,12 @@ def test_packed_segments_reset_positions_and_block_cross_document_attention():
         attention = torch.ones_like(original, dtype=torch.bool)
         segments = torch.tensor([[0, 0, 0, 1, 1, 1]])
         with torch.inference_mode():
-            expected = model(original, attention_mask=attention, segment_ids=segments).logits[:, 3:]
-            actual = model(changed, attention_mask=attention, segment_ids=segments).logits[:, 3:]
+            expected = model(
+                original, attention_mask=attention, segment_ids=segments
+            ).logits[:, 3:]
+            actual = model(
+                changed, attention_mask=attention, segment_ids=segments
+            ).logits[:, 3:]
         assert torch.allclose(expected, actual, atol=1e-6)
 
 
@@ -125,14 +132,22 @@ def test_checkpoint_model_optimizer_metadata_and_rng_round_trip(tmp_path: Path):
         optimizer.zero_grad(set_to_none=True)
         expected = model(tokens).logits
         path = tmp_path / f"{config.model_type}.pt"
-        model.save_checkpoint(path, optimizer=optimizer, step=17, metadata={"seed": 123})
+        model.save_checkpoint(
+            path, optimizer=optimizer, step=17, metadata={"seed": 123}
+        )
 
-        model_class = {"dt": DTCausalLM, "glimmer": GlimmerCausalLM, "bit": BitCausalLM}[config.model_type]
+        model_class = {
+            "dt": DTCausalLM,
+            "glimmer": GlimmerCausalLM,
+            "bit": BitCausalLM,
+        }[config.model_type]
         restored, info = model_class.from_checkpoint(path)
         assert info.step == 17 and info.metadata == {"seed": 123}
         assert torch.equal(restored(tokens).logits, expected)
 
         restored_optimizer = torch.optim.AdamW(restored.parameters(), lr=1e-3)
-        resume_info = restored.restore_training_state(path, restored_optimizer, restore_rng=True)
+        resume_info = restored.restore_training_state(
+            path, restored_optimizer, restore_rng=True
+        )
         assert resume_info == info
         assert restored_optimizer.state_dict()["state"]

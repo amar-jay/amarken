@@ -11,8 +11,16 @@ def test_benchmark_v2_is_large_balanced_and_reproducible(tmp_path):
     rows = []
     for language in ("en", "tr", "code"):
         for index in range(35):
-            rows.append({"id": f"{language}-{index}", "language": language, "text": (f"{language} deterministic heldout text {index}. " * 8)})
-    validation.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            rows.append(
+                {
+                    "id": f"{language}-{index}",
+                    "language": language,
+                    "text": (f"{language} deterministic heldout text {index}. " * 8),
+                }
+            )
+    validation.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
     first, second = tmp_path / "first.json", tmp_path / "second.json"
     a, b = build(validation, first), build(validation, second)
     assert a == b
@@ -20,7 +28,9 @@ def test_benchmark_v2_is_large_balanced_and_reproducible(tmp_path):
     assert len(a["multiple_choice"]) == 240
     assert len(a["generative"]) == 120
     assert len(a["language_model"]) == 90
-    assert Counter(task["options"].index(task["answer"]) for task in a["multiple_choice"]) == {0: 60, 1: 60, 2: 60, 3: 60}
+    assert Counter(
+        task["options"].index(task["answer"]) for task in a["multiple_choice"]
+    ) == {0: 60, 1: 60, 2: 60, 3: 60}
 
 
 def test_confidence_intervals_and_exact_normalization():

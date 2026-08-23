@@ -18,7 +18,9 @@ class TokenizedExample:
 
     def __post_init__(self) -> None:
         if not self.input_ids or len(self.input_ids) != len(self.assistant_mask):
-            raise ValueError("input_ids and nonempty assistant_mask must have equal length")
+            raise ValueError(
+                "input_ids and nonempty assistant_mask must have equal length"
+            )
 
 
 @dataclass(frozen=True)
@@ -68,13 +70,15 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
                 labels.clear()
                 segments.clear()
                 return
-            blocks.append(PackedBlock(
-                input_ids=tuple(tokens + [pad_token_id] * padding),
-                labels=tuple(block_labels + [-100] * padding),
-                attention_mask=tuple([True] * valid + [False] * padding),
-                # -1 is reserved for padding and never equals a real document ID.
-                segment_ids=tuple(segments + [-1] * padding),
-            ))
+            blocks.append(
+                PackedBlock(
+                    input_ids=tuple(tokens + [pad_token_id] * padding),
+                    labels=tuple(block_labels + [-100] * padding),
+                    attention_mask=tuple([True] * valid + [False] * padding),
+                    # -1 is reserved for padding and never equals a real document ID.
+                    segment_ids=tuple(segments + [-1] * padding),
+                )
+            )
             tokens.clear()
             labels.clear()
             segments.clear()
@@ -85,7 +89,10 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
             stream_tokens = list(example.input_ids) + [eos_token_id]
             # EOS closes a record but is not trained by default because the source
             # mask cannot tell whether the preceding assistant turn ended the sample.
-            stream_labels = [token if mask else -100 for token, mask in zip(example.input_ids, example.assistant_mask)] + [-100]
+            stream_labels = [
+                token if mask else -100
+                for token, mask in zip(example.input_ids, example.assistant_mask)
+            ] + [-100]
             # A packed record's first token would otherwise be predicted from the
             # preceding record's EOS/context. Mask that artificial cross-document
             # transition even when the record starts directly with an assistant.
@@ -95,9 +102,9 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
             offset = 0
             while offset < len(stream_tokens):
                 take = min(sequence_length - len(tokens), len(stream_tokens) - offset)
-                tokens.extend(stream_tokens[offset:offset + take])
-                labels.extend(stream_labels[offset:offset + take])
-                segments.extend(stream_segments[offset:offset + take])
+                tokens.extend(stream_tokens[offset : offset + take])
+                labels.extend(stream_labels[offset : offset + take])
+                segments.extend(stream_segments[offset : offset + take])
                 offset += take
                 if len(tokens) == sequence_length:
                     emit()
@@ -118,8 +125,20 @@ class PackedSequenceDataset(Sequence[PackedBlock]):
             raise ValueError("batch indices cannot be empty")
         selected = [self.blocks[index] for index in indices]
         return {
-            "input_ids": torch.tensor([block.input_ids for block in selected], dtype=torch.long, device=device),
-            "labels": torch.tensor([block.labels for block in selected], dtype=torch.long, device=device),
-            "attention_mask": torch.tensor([block.attention_mask for block in selected], dtype=torch.bool, device=device),
-            "segment_ids": torch.tensor([block.segment_ids for block in selected], dtype=torch.long, device=device),
+            "input_ids": torch.tensor(
+                [block.input_ids for block in selected], dtype=torch.long, device=device
+            ),
+            "labels": torch.tensor(
+                [block.labels for block in selected], dtype=torch.long, device=device
+            ),
+            "attention_mask": torch.tensor(
+                [block.attention_mask for block in selected],
+                dtype=torch.bool,
+                device=device,
+            ),
+            "segment_ids": torch.tensor(
+                [block.segment_ids for block in selected],
+                dtype=torch.long,
+                device=device,
+            ),
         }

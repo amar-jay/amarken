@@ -51,26 +51,58 @@ def parameter_groups(model: AmarkenCausalLM, config: OptimizerConfig) -> list[di
             grouped["ternary_master"].append(parameter)
         # Biases, one-dimensional normalization scales and embeddings are not
         # decayed; matrix weights receive ordinary AdamW decoupled decay.
-        elif local_name == "bias" or parameter.ndim < 2 or isinstance(owner, nn.Embedding) or name == "token_embedding.weight":
+        elif (
+            local_name == "bias"
+            or parameter.ndim < 2
+            or isinstance(owner, nn.Embedding)
+            or name == "token_embedding.weight"
+        ):
             grouped["no_decay"].append(parameter)
         else:
             grouped["decay"].append(parameter)
-    if sum(parameter.numel() for values in grouped.values() for parameter in values) != model.parameter_count(True):
-        raise RuntimeError("optimizer grouping did not cover each trainable parameter exactly once")
+    if sum(
+        parameter.numel() for values in grouped.values() for parameter in values
+    ) != model.parameter_count(True):
+        raise RuntimeError(
+            "optimizer grouping did not cover each trainable parameter exactly once"
+        )
     result = []
     if grouped["decay"]:
-        result.append({"params": grouped["decay"], "group_name": "decay", "weight_decay": config.weight_decay, "lr": config.learning_rate, "base_lr": config.learning_rate})
+        result.append(
+            {
+                "params": grouped["decay"],
+                "group_name": "decay",
+                "weight_decay": config.weight_decay,
+                "lr": config.learning_rate,
+                "base_lr": config.learning_rate,
+            }
+        )
     if grouped["no_decay"]:
-        result.append({"params": grouped["no_decay"], "group_name": "no_decay", "weight_decay": 0.0, "lr": config.learning_rate, "base_lr": config.learning_rate})
+        result.append(
+            {
+                "params": grouped["no_decay"],
+                "group_name": "no_decay",
+                "weight_decay": 0.0,
+                "lr": config.learning_rate,
+                "base_lr": config.learning_rate,
+            }
+        )
     if grouped["ternary_master"]:
-        result.append({
-            "params": grouped["ternary_master"], "group_name": "ternary_master",
-            "weight_decay": config.bit_weight_decay,
-            "lr": config.learning_rate * config.bit_learning_rate_multiplier,
-            "base_lr": config.learning_rate * config.bit_learning_rate_multiplier,
-        })
+        result.append(
+            {
+                "params": grouped["ternary_master"],
+                "group_name": "ternary_master",
+                "weight_decay": config.bit_weight_decay,
+                "lr": config.learning_rate * config.bit_learning_rate_multiplier,
+                "base_lr": config.learning_rate * config.bit_learning_rate_multiplier,
+            }
+        )
     return result
 
 
 def create_optimizer(model: AmarkenCausalLM, config: OptimizerConfig) -> AdamW:
-    return AdamW(parameter_groups(model, config), betas=(config.beta1, config.beta2), eps=config.epsilon)
+    return AdamW(
+        parameter_groups(model, config),
+        betas=(config.beta1, config.beta2),
+        eps=config.epsilon,
+    )

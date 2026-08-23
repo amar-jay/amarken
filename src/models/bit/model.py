@@ -20,7 +20,9 @@ from .config import BitConfig
 from ..common import AmarkenCausalLM, CausalLMOutput, packed_positions
 
 
-def _effective_ternary(weight: Tensor, eps: float, granularity: str) -> tuple[Tensor, Tensor, Tensor]:
+def _effective_ternary(
+    weight: Tensor, eps: float, granularity: str
+) -> tuple[Tensor, Tensor, Tensor]:
     """Return STE weight, trits, and tensor- or output-channel absmean scales."""
     # Paper equation: gamma=mean(abs(W)); round+clip(W/gamma) gives trits. FP32
     # statistics make thresholds deterministic under mixed-precision autocast.
@@ -62,14 +64,22 @@ class RMSNorm(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         # FP32 reduction prevents low-precision variance overflow/underflow.
-        y = x.float() * torch.rsqrt(x.float().square().mean(-1, keepdim=True) + self.eps)
+        y = x.float() * torch.rsqrt(
+            x.float().square().mean(-1, keepdim=True) + self.eps
+        )
         return (y * self.weight.float()).to(x.dtype)
 
 
 class BitLinear(nn.Module):
     """Bias-free linear projection with FP master and ternary effective weights."""
 
-    def __init__(self, in_features: int, out_features: int, eps: float, scale_granularity: str = "tensor"):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        eps: float,
+        scale_granularity: str = "tensor",
+    ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -81,11 +91,15 @@ class BitLinear(nn.Module):
 
     def quantized(self) -> tuple[Tensor, Tensor]:
         """Detached integer trits and scale for inspection/export."""
-        _, trits, scale = _effective_ternary(self.weight, self.quantization_eps, self.scale_granularity)
+        _, trits, scale = _effective_ternary(
+            self.weight, self.quantization_eps, self.scale_granularity
+        )
         return trits.detach(), scale.detach()
 
     def forward(self, x: Tensor) -> Tensor:
-        effective, _, _ = _effective_ternary(self.weight, self.quantization_eps, self.scale_granularity)
+        effective, _, _ = _effective_ternary(
+            self.weight, self.quantization_eps, self.scale_granularity
+        )
         return F.linear(x, effective)
 
 
@@ -94,7 +108,9 @@ class RotaryEmbedding(nn.Module):
 
     def __init__(self, head_dim: int, theta: float):
         super().__init__()
-        inv = 1.0 / (theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
+        inv = 1.0 / (
+            theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim)
+        )
         self.register_buffer("inv_freq", inv, persistent=False)
 
     def forward(self, positions: Tensor, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
@@ -118,7 +134,10 @@ class BitAttention(nn.Module):
         q_width = config.num_attention_heads * config.head_dim
         kv_width = config.num_key_value_heads * config.head_dim
         make = lambda input_width, output_width: BitLinear(
-            input_width, output_width, config.quantization_eps, config.weight_scale_granularity
+            input_width,
+            output_width,
+            config.quantization_eps,
+            config.weight_scale_granularity,
         )
         self.q_proj = make(config.hidden_size, q_width)
         self.k_proj = make(config.hidden_size, kv_width)
@@ -128,11 +147,25 @@ class BitAttention(nn.Module):
         self.attn_sub_norm = RMSNorm(q_width, config.rms_norm_eps)
         self.o_proj = make(q_width, config.hidden_size)
 
-    def forward(self, x: Tensor, rope: tuple[Tensor, Tensor], mask: Tensor | None) -> Tensor:
+    def forward(
+        self, x: Tensor, rope: tuple[Tensor, Tensor], mask: Tensor | None
+    ) -> Tensor:
         batch, length, _ = x.shape
-        q = self.q_proj(x).view(batch, length, self.config.num_attention_heads, -1).transpose(1, 2)
-        k = self.k_proj(x).view(batch, length, self.config.num_key_value_heads, -1).transpose(1, 2)
-        v = self.v_proj(x).view(batch, length, self.config.num_key_value_heads, -1).transpose(1, 2)
+        q = (
+            self.q_proj(x)
+            .view(batch, length, self.config.num_attention_heads, -1)
+            .transpose(1, 2)
+        )
+        k = (
+            self.k_proj(x)
+            .view(batch, length, self.config.num_key_value_heads, -1)
+            .transpose(1, 2)
+        )
+        v = (
+            self.v_proj(x)
+            .view(batch, length, self.config.num_key_value_heads, -1)
+            .transpose(1, 2)
+        )
         q, k = _apply_rope(q, *rope), _apply_rope(k, *rope)
         # Repeat is the portable training path. Projection/KV-cache dimensions still
         # retain GQA savings; optimized inference should use a native grouped kernel.
@@ -156,7 +189,10 @@ class ReLU2GLU(nn.Module):
     def __init__(self, config: BitConfig):
         super().__init__()
         make = lambda input_width, output_width: BitLinear(
-            input_width, output_width, config.quantization_eps, config.weight_scale_granularity
+            input_width,
+            output_width,
+            config.quantization_eps,
+            config.weight_scale_granularity,
         )
         self.gate_proj = make(config.hidden_size, config.intermediate_size)
         self.up_proj = make(config.hidden_size, config.intermediate_size)
@@ -180,7 +216,9 @@ class BitDecoderLayer(nn.Module):
         self.post_attention_norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
         self.mlp = ReLU2GLU(config)
 
-    def forward(self, x: Tensor, rope: tuple[Tensor, Tensor], mask: Tensor | None) -> Tensor:
+    def forward(
+        self, x: Tensor, rope: tuple[Tensor, Tensor], mask: Tensor | None
+    ) -> Tensor:
         x = x + self.attention(self.input_norm(x), rope, mask)
         return x + self.mlp(self.post_attention_norm(x))
 
@@ -210,7 +248,9 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         # projection errors otherwise obscure the contribution of BitLinear blocks.
         self.token_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
         self.rotary_embedding = RotaryEmbedding(config.head_dim, config.rope_theta)
-        self.layers = nn.ModuleList(BitDecoderLayer(config) for _ in range(config.num_hidden_layers))
+        self.layers = nn.ModuleList(
+            BitDecoderLayer(config) for _ in range(config.num_hidden_layers)
+        )
         self.final_norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.apply(self._init_weights)
@@ -221,15 +261,25 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         if isinstance(module, (BitLinear, nn.Linear, nn.Embedding)):
             nn.init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
 
-    def _resource_accounting(self, sequence_length: int, element_bytes: int) -> tuple[int, int, int, int]:
-        ternary = sum(module.weight.numel() for module in self.modules() if isinstance(module, BitLinear))
+    def _resource_accounting(
+        self, sequence_length: int, element_bytes: int
+    ) -> tuple[int, int, int, int]:
+        ternary = sum(
+            module.weight.numel()
+            for module in self.modules()
+            if isinstance(module, BitLinear)
+        )
         # Every BitLinear and the FP tied LM head performs a dense MAC in this
         # reference implementation; ternary kernels may reduce energy, not FLOP count.
-        linear_flops = 2 * sequence_length * (
-            ternary + self.config.hidden_size * self.config.vocab_size
+        linear_flops = (
+            2
+            * sequence_length
+            * (ternary + self.config.hidden_size * self.config.vocab_size)
         )
         pairs = sequence_length * (sequence_length + 1) // 2
-        attention_flops = self.config.num_hidden_layers * 4 * self.config.hidden_size * pairs
+        attention_flops = (
+            self.config.num_hidden_layers * 4 * self.config.hidden_size * pairs
+        )
         kv_elements = (
             self.config.num_hidden_layers
             * 2
@@ -237,13 +287,26 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
             * self.config.head_dim
             * sequence_length
         )
-        return linear_flops + attention_flops, kv_elements * element_bytes, self.artifact_report(element_bytes).packed_2bit_bytes, ternary
+        return (
+            linear_flops + attention_flops,
+            kv_elements * element_bytes,
+            self.artifact_report(element_bytes).packed_2bit_bytes,
+            ternary,
+        )
 
-    def _padding_causal_mask(self, attention_mask: Tensor, batch: int, length: int, segment_ids: Tensor | None = None) -> Tensor:
+    def _padding_causal_mask(
+        self,
+        attention_mask: Tensor,
+        batch: int,
+        length: int,
+        segment_ids: Tensor | None = None,
+    ) -> Tensor:
         if attention_mask.shape != (batch, length):
             raise ValueError("attention_mask must have shape [batch, sequence]")
         valid = attention_mask.to(dtype=torch.bool)
-        causal = torch.ones((length, length), device=valid.device, dtype=torch.bool).tril()
+        causal = torch.ones(
+            (length, length), device=valid.device, dtype=torch.bool
+        ).tril()
         allowed = causal.unsqueeze(0) & valid[:, None, :]
         if segment_ids is not None:
             if segment_ids.shape != (batch, length):
@@ -251,21 +314,34 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
             allowed &= segment_ids[:, :, None] == segment_ids[:, None, :]
         # Restore padded-query self edges after key masking: avoids all-masked rows
         # and backend-dependent NaNs while ignored padded labels carry no loss.
-        allowed |= (~valid)[:, :, None] & torch.eye(length, device=valid.device, dtype=torch.bool).unsqueeze(0)
-        return allowed.unsqueeze(1)  # [B,1,T,T], boolean True means participate in SDPA.
+        allowed |= (~valid)[:, :, None] & torch.eye(
+            length, device=valid.device, dtype=torch.bool
+        ).unsqueeze(0)
+        return allowed.unsqueeze(
+            1
+        )  # [B,1,T,T], boolean True means participate in SDPA.
 
     def artifact_report(self, floating_bytes: int = 2) -> ArtifactReport:
         """Estimate deployable weights; excludes tokenizer/container alignment."""
-        ternary = sum(module.weight.numel() for module in self.modules() if isinstance(module, BitLinear))
+        ternary = sum(
+            module.weight.numel()
+            for module in self.modules()
+            if isinstance(module, BitLinear)
+        )
         total = self.parameter_count()
         floating = total - ternary
         scales = sum(
             1 if module.scale_granularity == "tensor" else module.out_features
-            for module in self.modules() if isinstance(module, BitLinear)
+            for module in self.modules()
+            if isinstance(module, BitLinear)
         )
         # log2(3) is information-theoretic, while common kernels pack four 2-bit
         # trits per byte. Each BitLinear also needs one FP32 dequantization scale.
-        theoretical = math.ceil(ternary * math.log2(3) / 8) + floating * floating_bytes + scales * 4
+        theoretical = (
+            math.ceil(ternary * math.log2(3) / 8)
+            + floating * floating_bytes
+            + scales * 4
+        )
         packed = math.ceil(ternary / 4) + floating * floating_bytes + scales * 4
         return ArtifactReport(total, ternary, floating, theoretical, packed, total * 4)
 
@@ -276,7 +352,12 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
             if isinstance(module, BitLinear):
                 trits, scale = module.quantized()
                 packed, padding = pack_ternary(trits.cpu())
-                result[name] = {"packed": packed, "scale": scale.cpu(), "shape": tuple(trits.shape), "padding": padding}
+                result[name] = {
+                    "packed": packed,
+                    "scale": scale.cpu(),
+                    "shape": tuple(trits.shape),
+                    "padding": padding,
+                }
         return result
 
     def forward(
@@ -309,7 +390,11 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         rope = self.rotary_embedding(positions, hidden.dtype)
         for layer in self.layers:
             if self.gradient_checkpointing and self.training:
-                hidden = checkpoint(lambda state, block=layer: block(state, rope, mask), hidden, use_reentrant=False)
+                hidden = checkpoint(
+                    lambda state, block=layer: block(state, rope, mask),
+                    hidden,
+                    use_reentrant=False,
+                )
             else:
                 hidden = layer(hidden, rope, mask)
         logits = self.lm_head(self.final_norm(hidden)).float()
@@ -317,5 +402,7 @@ class BitCausalLM(AmarkenCausalLM[BitConfig]):
         if labels is not None:
             if labels.shape != input_ids.shape:
                 raise ValueError("labels must have the same shape as input_ids")
-            loss = F.cross_entropy(logits[:, :-1].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1))
+            loss = F.cross_entropy(
+                logits[:, :-1].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1)
+            )
         return CausalLMOutput(logits, loss)

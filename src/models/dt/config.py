@@ -26,11 +26,15 @@ class DTConfig:
         if self.hidden_size != self.num_attention_heads * self.head_dim:
             raise ValueError("hidden_size must equal num_attention_heads * head_dim")
         if self.num_attention_heads % self.num_key_value_heads:
-            raise ValueError("num_attention_heads must be divisible by num_key_value_heads")
+            raise ValueError(
+                "num_attention_heads must be divisible by num_key_value_heads"
+            )
         if self.head_dim % 2:
             raise ValueError("head_dim must be even for RoPE")
         if min(self.vocab_size, self.intermediate_size, self.num_hidden_layers) < 1:
-            raise ValueError("vocab, intermediate size, and layer count must be positive")
+            raise ValueError(
+                "vocab, intermediate size, and layer count must be positive"
+            )
         if not 0 <= self.attention_dropout < 1:
             raise ValueError("attention_dropout must be in [0,1)")
 

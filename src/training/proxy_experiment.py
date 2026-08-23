@@ -30,7 +30,9 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _tokenize(path: Path, processor: RuntimeTokenizer, token_budget: int) -> list[TokenizedExample]:
+def _tokenize(
+    path: Path, processor: RuntimeTokenizer, token_budget: int
+) -> list[TokenizedExample]:
     """Read stable JSONL order until exactly `token_budget` source tokens exist."""
     examples, consumed = [], 0
     with path.open("r", encoding="utf-8", errors="strict") as stream:
@@ -49,16 +51,29 @@ def _tokenize(path: Path, processor: RuntimeTokenizer, token_budget: int) -> lis
             if consumed == token_budget:
                 break
     if consumed != token_budget:
-        raise ValueError(f"{path} supplied {consumed}, expected {token_budget} tokenizer tokens")
+        raise ValueError(
+            f"{path} supplied {consumed}, expected {token_budget} tokenizer tokens"
+        )
     return examples
 
 
 @torch.no_grad()
-def _evaluate(model, dataset: PackedSequenceDataset, device: torch.device, precision: str, batches: int = 32) -> float:
+def _evaluate(
+    model,
+    dataset: PackedSequenceDataset,
+    device: torch.device,
+    precision: str,
+    batches: int = 32,
+) -> float:
     model.eval()
     weighted_loss = targets = 0
-    autocast = nullcontext if precision == "fp32" else lambda: torch.autocast(
-        device_type=device.type, dtype=torch.bfloat16 if precision == "bf16" else torch.float16
+    autocast = (
+        nullcontext
+        if precision == "fp32"
+        else lambda: torch.autocast(
+            device_type=device.type,
+            dtype=torch.bfloat16 if precision == "bf16" else torch.float16,
+        )
     )
     for start in range(0, min(len(dataset), batches)):
         batch = dataset.batch([start], device)
@@ -89,15 +104,31 @@ def run(config_path: Path, report_path: Path) -> dict:
     processor = load_tokenizer(tokenizer_path)
     if processor.vocab_size() != 12_000:
         raise ValueError("proxy tournament requires the selected matched 12k tokenizer")
-    train_examples = _tokenize(Path(config["train_data"]), processor, config["train_token_budget"])
-    validation_examples = _tokenize(Path(config["validation_data"]), processor, config["validation_token_budget"])
-    train_dataset = PackedSequenceDataset(train_examples, config["sequence_length"], processor.eos_id(), processor.pad_id())
-    validation_dataset = PackedSequenceDataset(validation_examples, config["sequence_length"], processor.eos_id(), processor.pad_id())
+    train_examples = _tokenize(
+        Path(config["train_data"]), processor, config["train_token_budget"]
+    )
+    validation_examples = _tokenize(
+        Path(config["validation_data"]), processor, config["validation_token_budget"]
+    )
+    train_dataset = PackedSequenceDataset(
+        train_examples,
+        config["sequence_length"],
+        processor.eos_id(),
+        processor.pad_id(),
+    )
+    validation_dataset = PackedSequenceDataset(
+        validation_examples,
+        config["sequence_length"],
+        processor.eos_id(),
+        processor.pad_id(),
+    )
     optimizer_config = OptimizerConfig(
-        learning_rate=config["learning_rate"], weight_decay=config["weight_decay"],
+        learning_rate=config["learning_rate"],
+        weight_decay=config["weight_decay"],
         # Equal decay/LR makes Bit's model-specific group structurally distinct but
         # numerically matched to full-precision projection groups in this control.
-        bit_learning_rate_multiplier=1.0, bit_weight_decay=config["weight_decay"],
+        bit_learning_rate_multiplier=1.0,
+        bit_weight_decay=config["weight_decay"],
     )
     output_root = Path(config["output_dir"])
     results = []
@@ -112,8 +143,11 @@ def run(config_path: Path, report_path: Path) -> dict:
         trainer_config = TrainerConfig(
             batch_size=config["batch_size"],
             gradient_accumulation_steps=config["gradient_accumulation_steps"],
-            precision=config["precision"], gradient_checkpointing=config["gradient_checkpointing"],
-            max_grad_norm=config["max_grad_norm"], seed=config["seed"], log_every_steps=1,
+            precision=config["precision"],
+            gradient_checkpointing=config["gradient_checkpointing"],
+            max_grad_norm=config["max_grad_norm"],
+            seed=config["seed"],
+            log_every_steps=1,
             checkpoint_every_steps=config["optimizer_updates"] + 1,
             output_dir=output_root / model_type,
             # Optional keys preserve old smoke configs while letting serious runs
@@ -123,52 +157,94 @@ def run(config_path: Path, report_path: Path) -> dict:
             total_steps=config.get("total_steps", config["optimizer_updates"]),
             min_lr_ratio=config.get("min_lr_ratio", 0.1),
         )
-        trainer = Trainer(model, train_dataset, trainer_config, optimizer_config, device)
-        initial_validation_loss = _evaluate(model, validation_dataset, device, config["precision"])
+        trainer = Trainer(
+            model, train_dataset, trainer_config, optimizer_config, device
+        )
+        initial_validation_loss = _evaluate(
+            model, validation_dataset, device, config["precision"]
+        )
         started = time.perf_counter()
         records = trainer.train(config["optimizer_updates"])
         training_seconds = time.perf_counter() - started
-        final_validation_loss = _evaluate(model, validation_dataset, device, config["precision"])
+        final_validation_loss = _evaluate(
+            model, validation_dataset, device, config["precision"]
+        )
         final_checkpoint = output_root / model_type / "final.pt"
-        trainer.save_checkpoint(final_checkpoint, metadata={
-            "tokenizer_fingerprint": tokenizer_fingerprint(processor),
-            "tokenizer_kind": processor.kind,
-            "tokenizer_path": str(tokenizer_path),
-            "train_data_sha256": _sha256(Path(config["train_data"])),
-            "validation_data_sha256": _sha256(Path(config["validation_data"])),
-        })
-        results.append({
-            "model_type": model_type, "model_config": asdict(model_config), "stats": asdict(stats),
-            "initial_validation_loss": initial_validation_loss,
-            "final_validation_loss": final_validation_loss,
-            "validation_loss_change": final_validation_loss - initial_validation_loss,
-            "first_train_loss": records[0]["loss"], "final_train_loss": records[-1]["loss"],
-            "mean_train_loss": statistics.fmean(record["loss"] for record in records),
-            "training_seconds": training_seconds,
-            "tokens_per_second": trainer.state.consumed_tokens / training_seconds,
-            "optimizer_updates": trainer.state.update_step,
-            "consumed_tokens": trainer.state.consumed_tokens,
-            "final_gradient_health": {key: value for key, value in records[-1].items() if key.startswith("grad_")},
-            "final_ternary_statistics": {key: value for key, value in records[-1].items() if key.startswith("ternary_")},
-            "checkpoint": {"path": str(final_checkpoint), "sha256": _sha256(final_checkpoint), "bytes": final_checkpoint.stat().st_size},
-        })
+        trainer.save_checkpoint(
+            final_checkpoint,
+            metadata={
+                "tokenizer_fingerprint": tokenizer_fingerprint(processor),
+                "tokenizer_kind": processor.kind,
+                "tokenizer_path": str(tokenizer_path),
+                "train_data_sha256": _sha256(Path(config["train_data"])),
+                "validation_data_sha256": _sha256(Path(config["validation_data"])),
+            },
+        )
+        results.append(
+            {
+                "model_type": model_type,
+                "model_config": asdict(model_config),
+                "stats": asdict(stats),
+                "initial_validation_loss": initial_validation_loss,
+                "final_validation_loss": final_validation_loss,
+                "validation_loss_change": final_validation_loss
+                - initial_validation_loss,
+                "first_train_loss": records[0]["loss"],
+                "final_train_loss": records[-1]["loss"],
+                "mean_train_loss": statistics.fmean(
+                    record["loss"] for record in records
+                ),
+                "training_seconds": training_seconds,
+                "tokens_per_second": trainer.state.consumed_tokens / training_seconds,
+                "optimizer_updates": trainer.state.update_step,
+                "consumed_tokens": trainer.state.consumed_tokens,
+                "final_gradient_health": {
+                    key: value
+                    for key, value in records[-1].items()
+                    if key.startswith("grad_")
+                },
+                "final_ternary_statistics": {
+                    key: value
+                    for key, value in records[-1].items()
+                    if key.startswith("ternary_")
+                },
+                "checkpoint": {
+                    "path": str(final_checkpoint),
+                    "sha256": _sha256(final_checkpoint),
+                    "bytes": final_checkpoint.stat().st_size,
+                },
+            }
+        )
     # Equality gates turn accidental per-arm changes into a failed experiment,
     # rather than a misleading comparison table.
-    matched = len({result["consumed_tokens"] for result in results}) == 1 and len({result["optimizer_updates"] for result in results}) == 1
+    matched = (
+        len({result["consumed_tokens"] for result in results}) == 1
+        and len({result["optimizer_updates"] for result in results}) == 1
+    )
     report = {
-        "format_version": 1, "experiment_id": config["experiment_id"], "passed": matched,
+        "format_version": 1,
+        "experiment_id": config["experiment_id"],
+        "passed": matched,
         "interpretation": "smoke-scale optimization comparison; not a capability ranking",
-        "config_sha256": _sha256(config_path), "tokenizer_sha256": tokenizer_fingerprint(processor),
+        "config_sha256": _sha256(config_path),
+        "tokenizer_sha256": tokenizer_fingerprint(processor),
         "train_data_sha256": _sha256(Path(config["train_data"])),
         "validation_data_sha256": _sha256(Path(config["validation_data"])),
-        "torch_version": torch.__version__, "tokenizer_kind": processor.kind,
-        "python_version": platform.python_version(), "shared": {key: value for key, value in config.items() if key not in {"models"}},
-        "train_blocks": len(train_dataset), "validation_blocks": len(validation_dataset),
+        "torch_version": torch.__version__,
+        "tokenizer_kind": processor.kind,
+        "python_version": platform.python_version(),
+        "shared": {
+            key: value for key, value in config.items() if key not in {"models"}
+        },
+        "train_blocks": len(train_dataset),
+        "validation_blocks": len(validation_dataset),
         "results": results,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = report_path.with_name(report_path.name + ".tmp")
-    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     temporary.replace(report_path)
     return report
 
@@ -176,11 +252,18 @@ def run(config_path: Path, report_path: Path) -> dict:
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/proxy_10m.json"))
-    parser.add_argument("--report", type=Path, default=Path("experiments/proxy_10m.json"))
+    parser.add_argument(
+        "--report", type=Path, default=Path("experiments/proxy_10m.json")
+    )
     args = parser.parse_args()
     report = run(args.config, args.report)
     for result in report["results"]:
-        print(result["model_type"], result["stats"]["total_parameters"], result["final_train_loss"], result["final_validation_loss"])
+        print(
+            result["model_type"],
+            result["stats"]["total_parameters"],
+            result["final_train_loss"],
+            result["final_validation_loss"],
+        )
     return 0 if report["passed"] else 1
 
 

@@ -78,7 +78,9 @@ class GlimmerConfig:
             raise ValueError("hidden_size must equal num_attention_heads * head_dim")
         # Integer grouping is required to replicate each KV head equally.
         if self.num_attention_heads % self.num_key_value_heads:
-            raise ValueError("num_attention_heads must be divisible by num_key_value_heads")
+            raise ValueError(
+                "num_attention_heads must be divisible by num_key_value_heads"
+            )
         # rotate_half splits each head into equal real/imaginary coordinate sets.
         if self.head_dim % 2:
             raise ValueError("head_dim must be even for RoPE")
@@ -95,9 +97,11 @@ class GlimmerConfig:
         # divisible by four this preserves a global information aggregation step
         # immediately before final norm/head, exactly as HF's Muse config does.
         return tuple(
-            "full_attention"
-            if (self.num_hidden_layers - 1 - index) % 4 == 0
-            else "sliding_attention"
+            (
+                "full_attention"
+                if (self.num_hidden_layers - 1 - index) % 4 == 0
+                else "sliding_attention"
+            )
             for index in range(self.num_hidden_layers)
         )
 
@@ -114,4 +118,5 @@ class GlimmerConfig:
         # dictionary round-trips through GlimmerConfig(**data). Derived layer_types
         # and logit_multiplier remain deterministic properties of these fields.
         return asdict(self)
+
     model_type: ClassVar[str] = "glimmer"

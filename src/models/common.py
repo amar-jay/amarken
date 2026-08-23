@@ -15,7 +15,9 @@ import torch
 from torch import Tensor, nn
 
 
-def packed_positions(attention_mask: Tensor, segment_ids: Tensor | None = None) -> Tensor:
+def packed_positions(
+    attention_mask: Tensor, segment_ids: Tensor | None = None
+) -> Tensor:
     """Return zero-based positions, resetting at every packed document boundary."""
     valid = attention_mask.bool()
     if segment_ids is None:
@@ -27,7 +29,9 @@ def packed_positions(attention_mask: Tensor, segment_ids: Tensor | None = None) 
     boundary = torch.ones_like(valid)
     boundary[:, 1:] = segment_ids[:, 1:] != segment_ids[:, :-1]
     boundary |= ~valid
-    starts = torch.where(boundary, indices, torch.zeros_like(indices)).cummax(dim=-1).values
+    starts = (
+        torch.where(boundary, indices, torch.zeros_like(indices)).cummax(dim=-1).values
+    )
     return torch.where(valid, indices - starts, torch.zeros_like(indices))
 
 
@@ -95,10 +99,16 @@ class AmarkenCausalLM(nn.Module, ABC, Generic[ConfigT]):
 
     def parameter_count(self, trainable_only: bool = False) -> int:
         # parameters() deduplicates tied tensors, which is the project's counting rule.
-        return sum(p.numel() for p in self.parameters() if not trainable_only or p.requires_grad)
+        return sum(
+            p.numel()
+            for p in self.parameters()
+            if not trainable_only or p.requires_grad
+        )
 
     @abstractmethod
-    def _resource_accounting(self, sequence_length: int, element_bytes: int) -> tuple[int, int, int, int]:
+    def _resource_accounting(
+        self, sequence_length: int, element_bytes: int
+    ) -> tuple[int, int, int, int]:
         """Return (forward FLOPs, KV bytes, artifact bytes, ternary parameters)."""
 
     def stats(self, sequence_length: int, element_bytes: int = 2) -> ModelStats:
@@ -122,7 +132,9 @@ class AmarkenCausalLM(nn.Module, ABC, Generic[ConfigT]):
             flops_per_token=forward_flops / sequence_length,
             artifact_bytes=artifact_bytes,
             # Training master count excludes gradients and optimizer states by design.
-            training_parameter_bytes=sum(p.numel() * p.element_size() for p in self.parameters()),
+            training_parameter_bytes=sum(
+                p.numel() * p.element_size() for p in self.parameters()
+            ),
             kv_cache_bytes=kv_bytes,
         )
 
@@ -162,24 +174,37 @@ class AmarkenCausalLM(nn.Module, ABC, Generic[ConfigT]):
                 # No-cache fallback retains only the configured context. Cropping is
                 # deterministic and keeps mask/token alignment for long generations.
                 context_tokens = tokens[:, -self.config.max_position_embeddings :]
-                context_mask = None if mask is None else mask[:, -self.config.max_position_embeddings :]
+                context_mask = (
+                    None
+                    if mask is None
+                    else mask[:, -self.config.max_position_embeddings :]
+                )
                 logits = self(context_tokens, attention_mask=context_mask).logits[:, -1]
                 if temperature == 0.0:
                     next_token = logits.argmax(dim=-1)
                 else:
                     sample_logits = logits / temperature
                     if top_k is not None:
-                        threshold = torch.topk(sample_logits, top_k, dim=-1).values[:, -1:]
-                        sample_logits = sample_logits.masked_fill(sample_logits < threshold, float("-inf"))
+                        threshold = torch.topk(sample_logits, top_k, dim=-1).values[
+                            :, -1:
+                        ]
+                        sample_logits = sample_logits.masked_fill(
+                            sample_logits < threshold, float("-inf")
+                        )
                     probabilities = torch.softmax(sample_logits, dim=-1)
-                    next_token = torch.multinomial(probabilities, 1, generator=generator).squeeze(-1)
+                    next_token = torch.multinomial(
+                        probabilities, 1, generator=generator
+                    ).squeeze(-1)
                 if eos_token_id is not None:
                     # Keep finished rows stable while unfinished batch members continue.
                     next_token = torch.where(finished, eos_token_id, next_token)
                     finished |= next_token.eq(eos_token_id)
                 tokens = torch.cat((tokens, next_token[:, None]), dim=1)
                 if mask is not None:
-                    mask = torch.cat((mask, torch.ones_like(next_token[:, None], dtype=torch.bool)), dim=1)
+                    mask = torch.cat(
+                        (mask, torch.ones_like(next_token[:, None], dtype=torch.bool)),
+                        dim=1,
+                    )
                 if eos_token_id is not None and finished.all():
                     break
         finally:
@@ -236,10 +261,14 @@ class AmarkenCausalLM(nn.Module, ABC, Generic[ConfigT]):
         if payload.get("format_version") != 1:
             raise ValueError("unsupported checkpoint format")
         if payload.get("model_type") != cls.config_type.model_type:
-            raise ValueError(f"checkpoint is {payload.get('model_type')!r}, not {cls.config_type.model_type!r}")
+            raise ValueError(
+                f"checkpoint is {payload.get('model_type')!r}, not {cls.config_type.model_type!r}"
+            )
         model = cls(cls.config_type(**payload["config"]))
         model.load_state_dict(payload["model_state"], strict=True)
-        return model, CheckpointInfo(int(payload.get("step", 0)), dict(payload.get("metadata", {})))
+        return model, CheckpointInfo(
+            int(payload.get("step", 0)), dict(payload.get("metadata", {}))
+        )
 
     def restore_training_state(
         self,
@@ -250,7 +279,9 @@ class AmarkenCausalLM(nn.Module, ABC, Generic[ConfigT]):
     ) -> CheckpointInfo:
         """Restore an existing model and optional optimizer/RNG for exact resume."""
         payload = torch.load(path, map_location=map_location, weights_only=True)
-        if payload.get("model_type") != self.config.model_type or payload.get("config") != asdict(self.config):
+        if payload.get("model_type") != self.config.model_type or payload.get(
+            "config"
+        ) != asdict(self.config):
             raise ValueError("checkpoint architecture/config does not match this model")
         self.load_state_dict(payload["model_state"], strict=True)
         if optimizer is not None:
@@ -261,4 +292,6 @@ class AmarkenCausalLM(nn.Module, ABC, Generic[ConfigT]):
             torch.set_rng_state(payload["cpu_rng_state"].cpu())
             if torch.cuda.is_available() and "cuda_rng_state_all" in payload:
                 torch.cuda.set_rng_state_all(payload["cuda_rng_state_all"])
-        return CheckpointInfo(int(payload.get("step", 0)), dict(payload.get("metadata", {})))
+        return CheckpointInfo(
+            int(payload.get("step", 0)), dict(payload.get("metadata", {}))
+        )

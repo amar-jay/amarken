@@ -20,7 +20,6 @@ from torch import Tensor
 
 from src.models import BitConfig, DTConfig, GlimmerConfig, ModelStats, create_model
 
-
 # Four deterministic, intentionally tiny sequences. Some token contexts conflict,
 # so the achievable CE is nonzero; exact prefix continuation is the stronger memory
 # check. IDs fit a 32-token synthetic vocabulary and require no tokenizer/data I/O.
@@ -126,8 +125,12 @@ def _causal_error(model, corpus: Tensor) -> float:
 def _padding_error(model, corpus: Tensor) -> float:
     model.eval()
     unpadded = corpus[:1, :6]
-    padded = torch.cat((torch.zeros((1, 2), dtype=torch.long, device=corpus.device), unpadded), dim=1)
-    mask = torch.tensor([[0, 0, 1, 1, 1, 1, 1, 1]], dtype=torch.bool, device=corpus.device)
+    padded = torch.cat(
+        (torch.zeros((1, 2), dtype=torch.long, device=corpus.device), unpadded), dim=1
+    )
+    mask = torch.tensor(
+        [[0, 0, 1, 1, 1, 1, 1, 1]], dtype=torch.bool, device=corpus.device
+    )
     with torch.inference_mode():
         reference = model(unpadded).logits
         candidate = model(padded, attention_mask=mask).logits[:, 2:]
@@ -140,17 +143,25 @@ def _nested_equal(left: Any, right: Any) -> bool:
     if isinstance(left, Tensor) and isinstance(right, Tensor):
         return torch.equal(left.cpu(), right.cpu())
     if isinstance(left, dict) and isinstance(right, dict):
-        return left.keys() == right.keys() and all(_nested_equal(left[key], right[key]) for key in left)
+        return left.keys() == right.keys() and all(
+            _nested_equal(left[key], right[key]) for key in left
+        )
     if isinstance(left, (list, tuple)) and isinstance(right, type(left)):
-        return len(left) == len(right) and all(_nested_equal(a, b) for a, b in zip(left, right))
+        return len(left) == len(right) and all(
+            _nested_equal(a, b) for a, b in zip(left, right)
+        )
     return left == right
 
 
-def _checkpoint_exact(model, optimizer: torch.optim.Optimizer, corpus: Tensor, directory: Path) -> bool:
+def _checkpoint_exact(
+    model, optimizer: torch.optim.Optimizer, corpus: Tensor, directory: Path
+) -> bool:
     model.eval()
     expected = model(corpus[:2]).logits.detach().cpu()
     path = directory / f"{model.config.model_type}-roundtrip.pt"
-    model.save_checkpoint(path, optimizer=optimizer, step=120, metadata={"gate": "roundtrip"})
+    model.save_checkpoint(
+        path, optimizer=optimizer, step=120, metadata={"gate": "roundtrip"}
+    )
     restored, info = type(model).from_checkpoint(path)
     actual = restored(corpus[:2].cpu()).logits.detach().cpu()
     restored_optimizer = _optimizer(restored)
@@ -166,11 +177,14 @@ def _checkpoint_exact(model, optimizer: torch.optim.Optimizer, corpus: Tensor, d
 def _state_equal(left, right) -> bool:
     left_state, right_state = left.state_dict(), right.state_dict()
     return left_state.keys() == right_state.keys() and all(
-        torch.equal(left_state[name].cpu(), right_state[name].cpu()) for name in left_state
+        torch.equal(left_state[name].cpu(), right_state[name].cpu())
+        for name in left_state
     )
 
 
-def _deterministic_resume_exact(config, corpus: Tensor, directory: Path, seed: int) -> bool:
+def _deterministic_resume_exact(
+    config, corpus: Tensor, directory: Path, seed: int
+) -> bool:
     total_steps, split_step = 12, 6
 
     def initialize():
@@ -190,35 +204,48 @@ def _deterministic_resume_exact(config, corpus: Tensor, directory: Path, seed: i
     for _ in range(total_steps):
         stochastic_step(uninterrupted, uninterrupted_optimizer)
     uninterrupted_cpu_rng = torch.get_rng_state().clone()
-    uninterrupted_cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    uninterrupted_cuda_rng = (
+        torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    )
 
     split, split_optimizer = initialize()
     for _ in range(split_step):
         stochastic_step(split, split_optimizer)
     checkpoint = directory / f"{config.model_type}-resume.pt"
-    split.save_checkpoint(checkpoint, split_optimizer, step=split_step, metadata={"gate": "resume"})
+    split.save_checkpoint(
+        checkpoint, split_optimizer, step=split_step, metadata={"gate": "resume"}
+    )
 
     # Fresh construction consumes RNG; restore_training_state must rewind it to the
     # checkpoint value and recover optimizer moments before the remaining steps.
     resumed = create_model(config).to(corpus.device)
     resumed_optimizer = _optimizer(resumed)
-    info = resumed.restore_training_state(checkpoint, resumed_optimizer, restore_rng=True)
+    info = resumed.restore_training_state(
+        checkpoint, resumed_optimizer, restore_rng=True
+    )
     for _ in range(split_step, total_steps):
         stochastic_step(resumed, resumed_optimizer)
     rng_equal = torch.equal(uninterrupted_cpu_rng, torch.get_rng_state())
     if uninterrupted_cuda_rng is not None:
         rng_equal = rng_equal and all(
-            torch.equal(left, right) for left, right in zip(uninterrupted_cuda_rng, torch.cuda.get_rng_state_all())
+            torch.equal(left, right)
+            for left, right in zip(
+                uninterrupted_cuda_rng, torch.cuda.get_rng_state_all()
+            )
         )
     return (
         info.step == split_step
         and _state_equal(uninterrupted, resumed)
-        and _nested_equal(uninterrupted_optimizer.state_dict(), resumed_optimizer.state_dict())
+        and _nested_equal(
+            uninterrupted_optimizer.state_dict(), resumed_optimizer.state_dict()
+        )
         and rng_equal
     )
 
 
-def _run_model(config, corpus: Tensor, steps: int, seed: int, directory: Path) -> GateResult:
+def _run_model(
+    config, corpus: Tensor, steps: int, seed: int, directory: Path
+) -> GateResult:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
@@ -234,7 +261,9 @@ def _run_model(config, corpus: Tensor, steps: int, seed: int, directory: Path) -
 
     prompt = corpus[:1, :4]
     expected = corpus[0].tolist()
-    generated = model.generate(prompt, max_new_tokens=len(expected) - prompt.shape[1])[0].tolist()
+    generated = model.generate(prompt, max_new_tokens=len(expected) - prompt.shape[1])[
+        0
+    ].tolist()
     causal_error = _causal_error(model, corpus)
     padding_error = _padding_error(model, corpus)
     checkpoint_exact = _checkpoint_exact(model, optimizer, corpus, directory)
@@ -285,7 +314,10 @@ def run_correctness_suite(
     torch.use_deterministic_algorithms(True)
     corpus = TINY_CORPUS.to(target)
     with tempfile.TemporaryDirectory(prefix="amarken-correctness-") as directory:
-        results = tuple(_run_model(config, corpus, steps, seed, Path(directory)) for config in _configs())
+        results = tuple(
+            _run_model(config, corpus, steps, seed, Path(directory))
+            for config in _configs()
+        )
     return SuiteResult(
         passed=all(result.passed for result in results),
         seed=seed,
