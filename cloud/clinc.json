@@ -1,0 +1,23 @@
+{
+  "name": "clinc-qwen3-v1",
+  "dataset": "clinc/clinc_oos",
+  "fallback": false,
+  "epochs": 3,
+  "batch_size": 16,
+  "candidate_chunk_size": 32,
+  "checkpoint_steps": 10,
+  "include_head_baseline": true,
+  "max_length": 2048,
+  "review_file": null,
+  "wandb": {
+    "mode": "offline",
+    "project": "amarken",
+    "entity": null,
+    "log_checkpoints": false
+  },
+  "validation_steps": 100,
+  "checkpoint_backup": {
+    "uri": null,
+    "endpoint_url": null
+  }
+}

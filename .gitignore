@@ -84,3 +84,9 @@ archive/*/experiments/
 archive/*/artifacts/
 # Local backbone downloads
 .cache/
+
+# Cloud environment state and source bundles
+.cloud-state/
+.cloud-bin/
+artifacts/cloud/
+bundle-manifest.json

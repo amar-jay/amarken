@@ -1,18 +1,21 @@
 [project]
 name = "amarken"
 version = "0.1.0"
-description = "Add your description here"
+description = "amarken"
 readme = "README.md"
 authors = [{ name = "amar-jay", email = "abdelmanan.abdelrahman03@gmail.com" }]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.14"
 dependencies = [
+  "boto3>=1.35",
   "datasets>=5.1.0",
+  "matplotlib>=3.8",
   "peft>=0.21.2",
   "torch>=2.6",
   "torchvision>=0.29.1",
   "tqdm>=4.70.1",
+  "wandb>=0.22",
   "transformers>=4.56",
 ]
 

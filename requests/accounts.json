@@ -1,0 +1,16 @@
+{
+  "state": "Someone made transactions on my account without my permission.",
+  "questions": [
+    {
+      "id": "intent",
+      "kind": "choice",
+      "question": "Which intent does this request express?",
+      "options": [
+        "report_fraud",
+        "credit_limit",
+        "freeze_account",
+        "oos"
+      ]
+    }
+  ]
+}

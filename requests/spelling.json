@@ -1,0 +1,11 @@
+{
+  "state": "Answer questions accurately.",
+  "questions": [
+    {
+      "id": "intent",
+      "kind": "choice",
+      "question": "Which of these is correctly spelled?",
+      "options": ["accommodate", "acommodate", "acomodate", "accomodate"]
+    }
+  ]
+}

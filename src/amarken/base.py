@@ -1,12 +1,13 @@
 """Pinned Qwen feature backbone; no generation or decision head."""
+
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import torch
 from torch import Tensor, nn
 from transformers import AutoModel, AutoTokenizer
 
-from amarken.constants import BASES, REVISIONS
+from amarken.constants import BASES, HUB_CACHE, REVISIONS
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class BaseConfig:
     max_length: int = 2048
     device: str = "cpu"
     dtype: str = "float32"
+    cache_dir: str = HUB_CACHE
 
     def __post_init__(self):
         if self.model_id not in REVISIONS:
@@ -49,8 +51,12 @@ class BaseModel(nn.Module):
     @classmethod
     def load(cls, config: BaseConfig | None = None, *, local_files_only=False):
         config = config or BaseConfig()
-        common = dict(revision=config.revision, trust_remote_code=False,
-                      local_files_only=local_files_only)
+        common = {
+            "revision": config.revision,
+            "cache_dir": config.cache_dir,
+            "trust_remote_code": False,
+            "local_files_only": local_files_only,
+        }
         tokenizer = AutoTokenizer.from_pretrained(config.model_id, **common)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -69,12 +75,19 @@ class BaseModel(nn.Module):
         return self.model.config.hidden_size
 
     def tokenize(self, texts: Sequence[str]) -> dict[str, Tensor]:
-        if isinstance(texts, str) or not texts or any(
-            not isinstance(text, str) or not text.strip() for text in texts
+        if (
+            isinstance(texts, str)
+            or not texts
+            or any(not isinstance(text, str) or not text.strip() for text in texts)
         ):
             raise ValueError("Provide a nonempty batch of nonempty strings")
-        batch = self.tokenizer(list(texts), padding=True, truncation=False,
-                               return_tensors="pt", return_attention_mask=True)
+        batch = self.tokenizer(
+            list(texts),
+            padding=True,
+            truncation=False,
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
         if batch["input_ids"].shape[1] > self.settings.max_length:
             raise ValueError("Input exceeds max_length; truncation is disabled")
         device = next(self.model.parameters()).device
@@ -86,8 +99,14 @@ class BaseModel(nn.Module):
             raise ValueError("Expected matching [batch, tokens] inputs and mask")
         if input_ids.shape[1] > self.settings.max_length:
             raise ValueError("Input exceeds max_length")
-        if not torch.all((attention_mask == 0) | (attention_mask == 1)) or not torch.all(attention_mask.any(dim=1)):
+        if not torch.all(
+            (attention_mask == 0) | (attention_mask == 1)
+        ) or not torch.all(attention_mask.any(dim=1)):
             raise ValueError("Invalid or empty attention mask")
-        result = self.model(input_ids=input_ids, attention_mask=attention_mask,
-                            use_cache=False, return_dict=True)
+        result = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            use_cache=False,
+            return_dict=True,
+        )
         return pool_last_token(result.last_hidden_state, attention_mask)
