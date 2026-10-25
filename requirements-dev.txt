@@ -1,8 +1,0 @@
-# Install the runtime/model dependencies required during test collection.
--r requirements.txt
-
-pytest>=9.0,<10
-
-# typeguard is already present as an auto-loaded pytest plugin in the ML
-# environment and requires NoExtraItems, introduced in typing_extensions 4.14.
-typing-extensions>=4.14,<5
