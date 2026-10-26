@@ -26,10 +26,32 @@ from __future__ import annotations
 
 import os
 import warnings
+from dataclasses import dataclass
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
-from amarken.constants import WANDB_CACHE, PROJECT_VERSION, PROJECT_NAME
+from amarken.constants import CHECKPOINT_DIR, WANDB_CACHE, PROJECT_VERSION, PROJECT_NAME
+
+
+@dataclass(frozen=True)
+class CheckpointConfig:
+    """Local checkpoints with optional W&B or S3-compatible replication.
+
+    S3 credentials use boto3's normal environment/profile/IAM credential chain.
+    Use a distinct prefix (or filenames) for independent training runs.
+    """
+
+    backend: str = "wandb"
+    bucket: str | None = None
+    prefix: str = "checkpoints"
+    endpoint_url: str | None = None
+    region_name: str | None = None
+
+    def __post_init__(self):
+        if self.backend not in {"local", "wandb", "s3"}:
+            raise ValueError("Checkpoint backend must be local, wandb, or s3")
+        if self.backend == "s3" and not self.bucket:
+            raise ValueError("An S3 bucket is required for checkpoint storage")
 
 
 class WandbLogger:
@@ -49,11 +71,16 @@ class WandbLogger:
         enabled: bool = True,
         rank: int | None = None,
         mode: str | None = None,
+        checkpoints: CheckpointConfig | Mapping[str, Any] | None = None,
         **init_kwargs: Any,
     ) -> None:
         # RANK is global under torchrun; LOCAL_RANK is insufficient on multi-node.
         self.rank = int(os.environ.get("RANK", "0")) if rank is None else rank
         self.enabled = enabled and self.rank == 0
+        self.checkpoints = (CheckpointConfig(**checkpoints)
+                            if isinstance(checkpoints, Mapping)
+                            else checkpoints or CheckpointConfig())
+        self._storage_client: Any = None
         self.run: Any = None
         self._sdk: Any = None
         self._finished = False
@@ -74,12 +101,12 @@ class WandbLogger:
         if mode is not None:
             options["mode"] = mode
 
-        options["settings"]=wandb.Settings(
+        options.setdefault("settings", wandb.Settings(
             disable_code=True,
             x_disable_meta=True,
             x_disable_machine_info=True,
             init_timeout=30,
-        ),
+        ))
         self.run = wandb.init(**options)
 
     @property
@@ -204,23 +231,55 @@ class WandbLogger:
             return artifact.download(root=str(root) if root is not None else None)
         return None
 
-    def save_checkpoint(self, state: Mapping[str, Any], path: str | Path, *,
+    def save_checkpoint(self, state: Mapping[str, Any], path: str | Path = "latest.pt", *,
                         name: str | None = None, aliases: Sequence[str] = ("latest",),
                         metadata: Mapping[str, Any] | None = None) -> Any:
-        """Save an explicit PyTorch state dict and version it as a model artifact.
+        """Save beneath CHECKPOINT_DIR, then replicate to the configured backend.
 
-        Include model/optimizer/scheduler/scaler states, step, RNG and sampler
-        state as needed. Return the artifact; wait() before overwriting this file.
-        This helper does not gather sharded state or automatically load objects.
-        Disabled/nonzero-rank calls do nothing, including no local disk write.
+        `path` is relative to the fixed directory; absolute paths and escapes are
+        rejected. Nonzero ranks do nothing. Local/S3 saving works with enabled=False
+        (W&B tracking disabled). Returns a Path, S3 URI, or W&B artifact handle.
+        Wait on W&B artifact handles before overwriting the same checkpoint.
+        Include optimizer/scheduler/RNG state as needed; sharded state must be
+        gathered by the caller. Upload failures propagate, retaining the local file.
         """
-        if self._can_write():
-            import torch
-            destination = Path(path).expanduser().resolve()
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(dict(state), destination)
+        if self.rank != 0:
+            return None
+        if self._finished:
+            raise RuntimeError("This logger has already finished.")
+        relative = Path(path)
+        root = CHECKPOINT_DIR.resolve()
+        destination = (root / relative).resolve()
+        if relative.is_absolute() or not destination.is_relative_to(root) or destination == root:
+            raise ValueError("Checkpoint path must be a file beneath CHECKPOINT_DIR")
+        if self.checkpoints.backend == "wandb" and not self._can_write():
+            raise RuntimeError("W&B checkpoint storage requires an active run; use local or s3")
+        import torch
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        # Replace atomically so interrupted serialization preserves an older file.
+        import tempfile
+        with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+        try:
+            torch.save(dict(state), temporary_path)
+            temporary_path.replace(destination)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        if self.checkpoints.backend == "s3":
+            if self._storage_client is None:
+                import boto3
+                self._storage_client = boto3.client(
+                    "s3", endpoint_url=self.checkpoints.endpoint_url,
+                    region_name=self.checkpoints.region_name,
+                )
+            prefix = self.checkpoints.prefix.strip("/")
+            key = "/".join(filter(None, (prefix, destination.relative_to(root).as_posix())))
+            self._storage_client.upload_file(str(destination), self.checkpoints.bucket, key)
+            return f"s3://{self.checkpoints.bucket}/{key}"
+        if self.checkpoints.backend == "wandb":
             return self.log_artifact(destination, name=name or f"model-{self.run.id}",
                                      type="model", aliases=aliases, metadata=metadata)
+        return destination
 
     def log_code(self, root: str | Path = ".", **kwargs: Any) -> Any:
         """Opt in explicitly; use include_fn/exclude_fn to select source files."""
