@@ -124,6 +124,41 @@ or UUID; artifact version history is retained independently of local files.
 The synthetic example constructs an MLP; `model_id` records the task's model name.
 The generic trainer accepts an already constructed model, rather than loading it.
 
+## Inference
+
+Run the synthetic classifier using a saved training checkpoint:
+
+```bash
+uv run amarken infer --checkpoint checkpoints/synthetic-example/best.pt \
+  --input '[1, 1, 0, 0, 0, 0, 0, 0]'
+```
+
+Supply one sample with 8 numeric features or a batch shaped `[N, 8]`.
+For a JSON data file, use `--input-file inputs.json` instead of `--input`.
+The command prints JSON with `predictions` (class indices) and `probabilities`
+(one probability per class). The device comes from `device` in the same config
+file used for training. Pass `--config configs/training-example.json` to choose
+that file; the example config is the default for both commands.
+For isolated runs, include the entered run name/UUID in the checkpoint path.
+
+Inference reads model configuration and weights from the checkpoint, uses
+evaluation/inference mode and does not initialize W&B, prompt for a run name or
+restore optimizer/RNG state. The CLI supports the synthetic example architecture.
+For custom tasks, use the reusable loader with a factory that reconstructs your
+architecture from the checkpoint's saved config:
+
+```python
+import torch
+from amarken.inference import load_model
+
+model = load_model("checkpoints/my-task/best.pt", model_factory=build_model)
+# build_model(config_dict) must return the matching torch.nn.Module.
+with torch.inference_mode():
+    predictions = model(inputs)
+```
+
+## Custom training
+
 For your own task, import `TrainingConfig`, `Trainer`, and `seed_everything` from
 `amarken.trainer`. Seed before constructing the model and loaders, and supply
 `loss_fn(model, batch, device)` returning a scalar loss. The callback moves its
@@ -142,3 +177,8 @@ schedulers need a custom loop. Download remote checkpoints locally before resume
 
 `src/example` contains compatibility imports and a thin entry point; reusable
 training and storage implementations live in `src/amarken`.
+
+`amarken/cli.py` owns argument definitions, the single parsing call, command
+dispatch and terminal output. `amarken/main.py` contains the training function;
+`amarken/inference.py` contains model loading and prediction functions. Neither
+workflow parses arguments or depends on argparse.

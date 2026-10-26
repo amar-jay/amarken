@@ -14,10 +14,10 @@
     "max_pending": 2,
     "monitor": "val/loss",
     "mode": "min",
-    "overwrite": false
+    "overwrite": true
   },
   "wandb": {
-    "enabled": true,
+    "enabled": false,
     "mode": "online"
   }
 }

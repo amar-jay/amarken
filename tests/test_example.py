@@ -1,5 +1,8 @@
+import io
+import json
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from threading import Event
 from unittest.mock import Mock, patch
@@ -7,8 +10,11 @@ from unittest.mock import Mock, patch
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
+from amarken.cli import main as cli_main
+from amarken.inference import load_model
 from amarken.logger import CheckpointConfig, WandbLogger
 from amarken.main import loss_fn
+from amarken.modules.example import build_example_model
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 from amarken.utils import prompt_run_name
 
@@ -61,6 +67,89 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue(
                     torch.equal(expected, resumed.model.state_dict()[key]), key
                 )
+
+            # Load actual resumed weights without constructing an optimizer/logger.
+            inference_model = load_model(
+                Path(directory) / first.checkpoint_prefix / "latest.pt",
+                model_factory=lambda config: torch.nn.Sequential(
+                    torch.nn.Linear(2, 4), torch.nn.Dropout(0.2), torch.nn.Linear(4, 2)
+                ),
+            )
+            self.assertFalse(inference_model.training)
+            sample = torch.ones(2, 2)
+            with torch.inference_mode():
+                torch.testing.assert_close(
+                    inference_model(sample), resumed.model.eval()(sample)
+                )
+
+            # Exercise the CLI's built-in model, JSON input and file input.
+            model = build_example_model().eval()
+            checkpoint = Path(directory) / "inference.pt"
+            torch.save(
+                {
+                    "format_version": 1,
+                    "config": {"model_id": "synthetic-mlp"},
+                    "model": model.state_dict(),
+                },
+                checkpoint,
+            )
+            features = [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            with redirect_stdout(io.StringIO()) as output:
+                cli_main(
+                    [
+                        "infer",
+                        "--checkpoint",
+                        str(checkpoint),
+                        "--input",
+                        json.dumps(features),
+                    ]
+                )
+            result = json.loads(output.getvalue())
+            with torch.inference_mode():
+                expected = model(torch.tensor([features])).softmax(-1)
+            torch.testing.assert_close(torch.tensor(result["probabilities"]), expected)
+            self.assertEqual(result["predictions"], expected.argmax(-1).tolist())
+            input_file = Path(directory) / "inputs.json"
+            input_file.write_text(json.dumps([features, features]))
+            with redirect_stdout(io.StringIO()) as output:
+                cli_main(
+                    [
+                        "infer",
+                        "--checkpoint",
+                        str(checkpoint),
+                        "--input-file",
+                        str(input_file),
+                    ]
+                )
+            self.assertEqual(len(json.loads(output.getvalue())["predictions"]), 2)
+            with (
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as invalid,
+            ):
+                cli_main(
+                    ["infer", "--checkpoint", str(checkpoint), "--input", "[1, 2]"]
+                )
+            self.assertEqual(invalid.exception.code, 2)
+            config_file = Path(directory) / "config.json"
+            config_file.write_text(json.dumps({"device": "cpu:0"}))
+            with (
+                patch(
+                    "amarken.cli.predict_example", return_value={"predictions": [1]}
+                ) as predict,
+                redirect_stdout(io.StringIO()),
+            ):
+                cli_main(
+                    [
+                        "infer",
+                        "--config",
+                        str(config_file),
+                        "--checkpoint",
+                        str(checkpoint),
+                        "--input",
+                        json.dumps(features),
+                    ]
+                )
+            self.assertEqual(predict.call_args.kwargs["device"], "cpu:0")
 
     def test_checkpoint_policies(self):
         nested = TrainingConfig(wandb={"enabled": True, "mode": "online"})
@@ -191,6 +280,20 @@ class TrainerTests(unittest.TestCase):
                             repeated, "_epoch_loss", side_effect=[4.0, 4.0]
                         ):
                             repeated.fit()
+
+        # The entry point parses training options once and passes typed values.
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = Path(directory) / "config.json"
+            config_file.write_text("{}")
+            with (
+                patch("amarken.cli.train_example", return_value=("test", [])) as train,
+                redirect_stdout(io.StringIO()),
+            ):
+                cli_main(
+                    ["example", "--config", str(config_file), "--resume", "saved.pt"]
+                )
+            self.assertIsInstance(train.call_args.args[0], TrainingConfig)
+            self.assertEqual(train.call_args.kwargs["resume"], Path("saved.pt"))
 
         # A held writer proves snapshot isolation while training state mutates.
         with (

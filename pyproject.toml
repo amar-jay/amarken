@@ -12,13 +12,14 @@ dependencies = [
   "datasets>=5.1.0",
   "matplotlib>=3.8",
   "peft>=0.21.2",
+  "questionary>=2.1.1",
   "torch>=2.6",
+  "torchmetrics>=1.9.0",
   "torchvision>=0.29.1",
-  "tqdm>=4.70.1",
-  "wandb>=0.22",
   "transformers>=4.56",
   "trl>=1.16.0",
-  "questionary>=2.1.1",
+  "tqdm>=4.70.1",
+  "wandb>=0.22",
 ]
 
 [project.scripts]
@@ -43,7 +44,7 @@ dev = [
 [tool.poe.tasks]
 test = "python -m unittest discover -s tests -v"
 lint = [
-    { cmd = "ruff check ." },
+    { cmd = "ruff check . --fix" },
     { cmd = "ruff format ." },
     { cmd = "black --check ." },
 ]
