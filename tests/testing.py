@@ -11,10 +11,11 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from amarken.cli import main as cli_main
-from amarken.inference import load_model
+from amarken.inference import load_model, run_inference
 from amarken.logger import CheckpointConfig, WandbLogger
 from amarken.main import loss_fn
-from amarken.modules.example import build_example_model
+from amarken.modules.example import build_model
+from amarken.modules.example import predict as predict_numeric
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 from amarken.utils import prompt_run_name
 
@@ -69,12 +70,15 @@ class TrainerTests(unittest.TestCase):
                 )
 
             # Load actual resumed weights without constructing an optimizer/logger.
-            inference_model = load_model(
-                Path(directory) / first.checkpoint_prefix / "latest.pt",
-                model_factory=lambda config: torch.nn.Sequential(
+            with patch(
+                "amarken.modules.example.build_model",
+                return_value=torch.nn.Sequential(
                     torch.nn.Linear(2, 4), torch.nn.Dropout(0.2), torch.nn.Linear(4, 2)
                 ),
-            )
+            ):
+                inference_model = load_model(
+                    Path(directory) / first.checkpoint_prefix / "latest.pt"
+                )
             self.assertFalse(inference_model.training)
             sample = torch.ones(2, 2)
             with torch.inference_mode():
@@ -83,7 +87,7 @@ class TrainerTests(unittest.TestCase):
                 )
 
             # Exercise the CLI's built-in model, JSON input and file input.
-            model = build_example_model().eval()
+            model = build_model().eval()
             checkpoint = Path(directory) / "inference.pt"
             torch.save(
                 {
@@ -134,7 +138,7 @@ class TrainerTests(unittest.TestCase):
             config_file.write_text(json.dumps({"device": "cpu:0"}))
             with (
                 patch(
-                    "amarken.cli.predict_example", return_value={"predictions": [1]}
+                    "amarken.cli.run_inference", return_value={"predictions": [1]}
                 ) as predict,
                 redirect_stdout(io.StringIO()),
             ):
@@ -150,6 +154,78 @@ class TrainerTests(unittest.TestCase):
                     ]
                 )
             self.assertEqual(predict.call_args.kwargs["device"], "cpu:0")
+
+            # Both implementations expose the same build/load/predict calls.
+            self.assertEqual(predict_numeric(model, features), result)
+            from transformers import AutoModel, Qwen3Config
+
+            from amarken.modules import base
+
+            architecture = Qwen3Config(
+                vocab_size=32,
+                hidden_size=16,
+                intermediate_size=32,
+                num_hidden_layers=1,
+                num_attention_heads=2,
+                num_key_value_heads=1,
+                head_dim=8,
+                max_position_embeddings=4096,
+            )
+            tiny = AutoModel.from_config(architecture)
+            tokenizer = Mock(
+                pad_token_id=0,
+                eos_token="<eos>",
+                return_value={
+                    "input_ids": torch.tensor([[1, 2, 3]]),
+                    "attention_mask": torch.ones(1, 3, dtype=torch.long),
+                },
+            )
+            with (
+                patch(
+                    "amarken.modules.base.AutoModel.from_pretrained", return_value=tiny
+                ) as pretrained,
+                patch(
+                    "amarken.modules.base.AutoConfig.from_pretrained",
+                    return_value=architecture,
+                ),
+                patch(
+                    "amarken.modules.base.AutoTokenizer.from_pretrained",
+                    return_value=tokenizer,
+                ),
+            ):
+                backbone = base.build_model(device="cpu")
+                backbone.train()
+                batch = backbone.tokenize(["hello"])
+                optimizer = torch.optim.SGD(backbone.parameters(), lr=0.01)
+                backbone(**batch).sum().backward()
+                optimizer.step()
+                expected = base.predict(backbone, "hello")
+                trainer = Trainer(
+                    backbone, [], None, TrainingConfig(), optimizer=optimizer
+                )
+                with WandbLogger(
+                    enabled=False,
+                    checkpoints=CheckpointConfig(backend="local", async_save=True),
+                ) as logger:
+                    pending = logger.save_checkpoint(
+                        trainer.state_dict(), "backbone.pt"
+                    )
+                    logger.flush_checkpoints()
+                restored = base.load_model(pending.result(), device="cpu")
+                self.assertEqual(pretrained.call_count, 1)
+                self.assertFalse(restored.training)
+                torch.testing.assert_close(
+                    torch.tensor(base.predict(restored, ["hello"])["features"]),
+                    torch.tensor(expected["features"]),
+                )
+                self.assertEqual(backbone.hidden_size, 16)
+                with (
+                    patch("amarken.inference.load_model", base.load_model),
+                    patch("amarken.inference.predict", base.predict),
+                ):
+                    self.assertEqual(
+                        run_inference(pending.result(), ["hello"]), expected
+                    )
 
     def test_checkpoint_policies(self):
         nested = TrainingConfig(wandb={"enabled": True, "mode": "online"})

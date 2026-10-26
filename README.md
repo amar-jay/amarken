@@ -141,21 +141,46 @@ file used for training. Pass `--config configs/training-example.json` to choose
 that file; the example config is the default for both commands.
 For isolated runs, include the entered run name/UUID in the checkpoint path.
 
-Inference reads model configuration and weights from the checkpoint, uses
+Inference restores the selected implementation from checkpoint weights, uses
 evaluation/inference mode and does not initialize W&B, prompt for a run name or
-restore optimizer/RNG state. The CLI supports the synthetic example architecture.
-For custom tasks, use the reusable loader with a factory that reconstructs your
-architecture from the checkpoint's saved config:
+restore optimizer/RNG state. The selected implementation controls model construction, checkpoint loading and
+prediction. Both `src/amarken/modules/example.py` and `src/amarken/modules/base.py`
+expose the same three functions:
 
 ```python
-import torch
-from amarken.inference import load_model
+# Change only this module path to switch implementations.
+from amarken.modules.example import build_model, load_model, predict
+# from amarken.modules.base import build_model, load_model, predict
 
-model = load_model("checkpoints/my-task/best.pt", model_factory=build_model)
-# build_model(config_dict) must return the matching torch.nn.Module.
-with torch.inference_mode():
-    predictions = model(inputs)
+model = build_model(device="cpu")  # New model / pretrained backbone
+model = load_model("checkpoints/my-task/best.pt", device="cpu")
+result = predict(model, inputs)  # Reuses the loaded model
 ```
+
+`src/amarken/model.py` contains the import selection used by both training and
+inference. Change `modules.example` to `modules.base` there to select the
+Hugging Face implementation. There is no registry or model factory to configure.
+`inference.py` only loads the selected model and calls its `predict()` function.
+
+The numeric example accepts 8-feature samples and returns class predictions and
+probabilities. The Hugging Face backbone accepts a string or list of strings
+and returns pooled `features`; add a head and task-specific interpretation there
+if needed. For text inference, pass JSON such as `--input '["hello", "world"]'`.
+Inputs and outputs remain specific to each implementation, behind matching calls.
+
+Hugging Face settings live in `constants.py`: `BASE_MODEL_ID`, `REVISIONS`,
+`BASE_MAX_LENGTH`, `BASE_DTYPE`, `BASE_LOCAL_FILES_ONLY`, and `HUB_CACHE`.
+The example dimensions are defined there too. Keep architecture settings the
+same when restoring trained checkpoints. Backbone restore loads the pinned
+config and tokenizer from the Hub/cache, constructs the architecture, then
+loads checkpoint weights without reloading the original pretrained weights.
+Set `BASE_LOCAL_FILES_ONLY=True` to require cached config/tokenizer assets.
+
+Dataset preparation and loss handling stay task-specific in `main.py` and
+`modules/loss_fn.py`. The supplied training command still uses synthetic numeric
+data; selecting the text backbone does not turn that data into a text dataset.
+Either implementation module can be deleted once the other is selected and
+its unused imports are removed. The synthetic defaults require no Hub downloads.
 
 ## Custom training
 

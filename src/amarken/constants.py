@@ -34,3 +34,14 @@ WANDB_MODES = ("disabled", "offline", "online")
 
 # Stable across working directories; keep training state outside SDK caches.
 CHECKPOINT_DIR = Path(__file__).resolve().parents[2] / "checkpoints"
+
+# Optional Hugging Face backbone settings. Keep these consistent with checkpoints.
+BASE_MODEL_ID = BASES[0]
+BASE_MAX_LENGTH = 2048
+BASE_DTYPE = "float32"
+BASE_LOCAL_FILES_ONLY = False
+
+# Numeric example architecture.
+EXAMPLE_INPUT_SIZE = 8
+EXAMPLE_HIDDEN_SIZE = 16
+EXAMPLE_NUM_CLASSES = 2

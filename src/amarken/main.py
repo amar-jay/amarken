@@ -1,11 +1,9 @@
-"""Synthetic training workflow, independent of command-line parsing."""
-
 from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from amarken.modules.example import build_example_model
+from amarken.model import build_model
 from amarken.modules.loss_fn import loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 
@@ -25,7 +23,7 @@ def train_example(config: TrainingConfig, *, resume: Path | None = None):
     validation = DataLoader(
         TensorDataset(inputs[128:], labels[128:]), batch_size=config.batch_size
     )
-    model = build_example_model()
+    model = build_model(device=config.device)
     trainer = Trainer(model, train, loss_fn, config, validation_loader=validation)
     if resume is not None:
         trainer.resume(resume)

@@ -42,3 +42,15 @@ def prepare_run(trainer: "Trainer") -> None:
         # Only an explicit resume may reuse an isolated run's directory.
         directory.mkdir(parents=True, exist_ok=trainer._resumed)
     trainer._directory_prepared = True
+
+
+def load_checkpoint_weights(checkpoint: str | Path) -> dict:
+    """Read model weights from an amarken training checkpoint, on CPU."""
+    import torch
+
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    if not isinstance(state, dict) or state.get("format_version") != 1:
+        raise ValueError("Expected an amarken training checkpoint (format_version=1)")
+    if not isinstance(state.get("model"), dict):
+        raise TypeError("Checkpoint must contain model weights")
+    return state["model"]

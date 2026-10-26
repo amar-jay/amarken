@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from amarken.inference import predict_example
+from amarken.inference import run_inference
 from amarken.main import train_example
 from amarken.trainer import TrainingConfig
 
@@ -30,7 +30,9 @@ def parser():
         help="Local best.pt or latest.pt training checkpoint",
     )
     source = infer.add_mutually_exclusive_group(required=True)
-    source.add_argument("--input", help="JSON array: 8 features or a batch of samples")
+    source.add_argument(
+        "--input", help="JSON input accepted by the selected model implementation"
+    )
     source.add_argument(
         "--input-file", type=Path, help="JSON file containing input features"
     )
@@ -53,7 +55,7 @@ def main(argv=None):
                 if args.input_file is not None
                 else args.input
             )
-            result = predict_example(
+            result = run_inference(
                 args.checkpoint, json.loads(raw), device=config.device
             )
             print(json.dumps(result, allow_nan=False))
