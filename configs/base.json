@@ -8,7 +8,7 @@
   "batch_size": 16,
   "epochs": 3,
   "device": "cuda",
-  "precision": "float32",
+  "precision": "float16",
   "run_name": "qwen-backbone",
   "checkpoints": {
     "backend": "local",
