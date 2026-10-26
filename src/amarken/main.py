@@ -6,12 +6,8 @@ import json
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
+from amarken.modules.loss_fn import loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
-
-
-def loss_fn(model, batch, device):
-    inputs, targets = (value.to(device) for value in batch)
-    return torch.nn.functional.cross_entropy(model(inputs), targets)
 
 
 def main(argv=None):

@@ -13,7 +13,7 @@ def parser():
 
 def main():
     args = parser().parse_args()
-    from amarken.example import main as example_main
+    from amarken.main import main as example_main
 
     options = ["--config", args.config]
     if args.resume:

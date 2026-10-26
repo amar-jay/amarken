@@ -26,11 +26,12 @@ from __future__ import annotations
 
 import os
 import warnings
-from dataclasses import dataclass
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-from amarken.constants import CHECKPOINT_DIR, WANDB_CACHE, PROJECT_VERSION, PROJECT_NAME
+from typing import Any, Self
+
+from amarken.constants import CHECKPOINT_DIR, PROJECT_NAME, PROJECT_VERSION, WANDB_CACHE
 
 
 @dataclass(frozen=True)
@@ -372,7 +373,7 @@ class WandbLogger:
             self.run.finish(exit_code=exit_code)
             self._finished = True
 
-    def __enter__(self) -> WandbLogger:
+    def __enter__(self) -> Self:
         if self._finished:
             raise RuntimeError("Cannot reopen a finished run.")
         return self

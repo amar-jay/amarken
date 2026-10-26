@@ -1,14 +1,14 @@
-import tempfile
-import unittest
 import importlib
 import sys
+import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from amarken.example import loss_fn
+from amarken.main import loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 
 
