@@ -175,8 +175,7 @@ worker RNG, NumPy RNG, custom samplers and distributed state need task-specific
 handling. Schedulers are stepped once per epoch without arguments; metric-driven
 schedulers need a custom loop. Download remote checkpoints locally before resume.
 
-`src/example` contains compatibility imports and a thin entry point; reusable
-training and storage implementations live in `src/amarken`.
+Training and storage implementations live in `src/amarken`.
 
 `amarken/cli.py` owns argument definitions, the single parsing call, command
 dispatch and terminal output. `amarken/main.py` contains the training function;
