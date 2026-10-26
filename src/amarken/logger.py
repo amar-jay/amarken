@@ -24,9 +24,11 @@ state separately; W&B resume does not reload model/optimizer/RNG state.
 
 from __future__ import annotations
 
+import copy
 import os
 import warnings
 from collections.abc import Mapping, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -43,6 +45,8 @@ class CheckpointConfig:
     Use a distinct prefix (or filenames) for independent training runs.
     """
 
+    async_save: bool = False
+    max_pending: int = 2
     policy: str = "default"
     every_n_epochs: int = 1
     monitor: str = "val/loss"
@@ -54,6 +58,10 @@ class CheckpointConfig:
     region_name: str | None = None
 
     def __post_init__(self):
+        if type(self.async_save) is not bool:
+            raise ValueError("async_save must be a boolean")
+        if type(self.max_pending) is not int or self.max_pending < 1:
+            raise ValueError("max_pending must be a positive integer")
         if self.policy not in {"best", "default", "all"}:
             raise ValueError("Checkpoint policy must be best, default, or all")
         if type(self.every_n_epochs) is not int or self.every_n_epochs < 1:
@@ -100,6 +108,10 @@ class WandbLogger:
         self.run: Any = None
         self._sdk: Any = None
         self._finished = False
+        self._closing = False
+        self._checkpoint_executor: ThreadPoolExecutor | None = None
+        self._pending_checkpoints: list[Future] = []
+        self._checkpoint_error: Exception | None = None
         if not self.enabled:
             return
 
@@ -304,7 +316,12 @@ class WandbLogger:
 
         `path` is relative to the fixed directory; absolute paths and escapes are
         rejected. Nonzero ranks do nothing. Local/S3 saving works with enabled=False
-        (W&B tracking disabled). Returns a Path, S3 URI, or W&B artifact handle.
+        (W&B tracking disabled). Sync returns a Path, S3 URI, or W&B artifact.
+        With async_save=True, returns a Future resolving to the same result;
+        serialization and upload run in order on one worker after a blocking CPU
+        snapshot. max_pending bounds snapshots; a full queue blocks submission.
+        Call flush_checkpoints() or finish() before reading files or exiting.
+        This logger's checkpoint methods are called from one training thread.
         Set overwrite=False to reject existing local files.
         Wait on W&B artifact handles before overwriting the same checkpoint.
         Include optimizer/scheduler/RNG state as needed; sharded state must be
@@ -312,7 +329,7 @@ class WandbLogger:
         """
         if self.rank != 0:
             return None
-        if self._finished:
+        if self._finished or self._closing:
             raise RuntimeError("This logger has already finished.")
         relative = Path(path)
         root = CHECKPOINT_DIR.resolve()
@@ -327,6 +344,98 @@ class WandbLogger:
             raise RuntimeError(
                 "W&B checkpoint storage requires an active run; use local or s3"
             )
+        self.check_checkpoint_errors()
+        options = {
+            "name": name,
+            "aliases": tuple(aliases),
+            "metadata": copy.deepcopy(metadata),
+            "overwrite": overwrite,
+        }
+        if not self.checkpoints.async_save:
+            return self._save_checkpoint_sync(state, destination, **options)
+        # Apply backpressure BEFORE allocating another full CPU snapshot.
+        while len(self._pending_checkpoints) >= self.checkpoints.max_pending:
+            self._pending_checkpoints[0].result()
+            self.check_checkpoint_errors()
+        snapshot = self._snapshot_checkpoint(state)
+        if self._checkpoint_executor is None:
+            self._checkpoint_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="checkpoint"
+            )
+        future = self._checkpoint_executor.submit(
+            self._save_checkpoint_async, snapshot, destination, **options
+        )
+        self._pending_checkpoints.append(future)
+        return future
+
+    @staticmethod
+    def _snapshot_checkpoint(state):
+        """Copy container state and detach tensors to independent CPU storage."""
+        import torch
+
+        memo = {}
+        visited = set()
+
+        def collect(value):
+            if id(value) in visited:
+                return
+            visited.add(id(value))
+            if isinstance(value, torch.Tensor):
+                memo[id(value)] = value.detach().to(device="cpu", copy=True)
+            elif isinstance(value, Mapping):
+                for key, item in value.items():
+                    collect(key)
+                    collect(item)
+            elif isinstance(value, (list, tuple, set, frozenset)):
+                for item in value:
+                    collect(item)
+
+        collect(state)
+        # Retains OrderedDict state_dict metadata and shared object references.
+        return copy.deepcopy(state, memo)
+
+    def _save_checkpoint_async(self, state, destination, **options):
+        result = self._save_checkpoint_sync(state, destination, **options)
+        if self.checkpoints.backend == "wandb" and result is not None:
+            # Complete upload before a subsequent job reuses this filename.
+            result.wait()
+        return result
+
+    def check_checkpoint_errors(self) -> None:
+        """Nonblocking poll; raise worker errors on the training thread."""
+        if self._checkpoint_error is not None:
+            raise self._checkpoint_error
+        remaining = []
+        for future in self._pending_checkpoints:
+            if future.done():
+                try:
+                    future.result()
+                except Exception as error:
+                    self._checkpoint_error = error
+                    raise
+            else:
+                remaining.append(future)
+        self._pending_checkpoints = remaining
+
+    def flush_checkpoints(self) -> None:
+        """Wait for all queued saves and uploads, then propagate worker errors.
+
+        Call from the training thread. Does not close an externally owned run.
+        """
+        for future in self._pending_checkpoints:
+            try:
+                future.result()
+            except Exception as error:  # noqa: BLE001
+                # Drain every job before re-raising the first failure.
+                if self._checkpoint_error is None:
+                    self._checkpoint_error = error
+        self._pending_checkpoints.clear()
+        if self._checkpoint_error is not None:
+            raise self._checkpoint_error
+
+    def _save_checkpoint_sync(
+        self, state, destination, *, name, aliases, metadata, overwrite
+    ):
         import torch
 
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -356,7 +465,13 @@ class WandbLogger:
                 )
             prefix = self.checkpoints.prefix.strip("/")
             key = "/".join(
-                filter(None, (prefix, destination.relative_to(root).as_posix()))
+                filter(
+                    None,
+                    (
+                        prefix,
+                        destination.relative_to(CHECKPOINT_DIR.resolve()).as_posix(),
+                    ),
+                )
             )
             self._storage_client.upload_file(
                 str(destination), self.checkpoints.bucket, key
@@ -386,9 +501,23 @@ class WandbLogger:
         return self.sdk.Api(**kwargs)
 
     def finish(self, exit_code: int = 0) -> None:
-        """Idempotent after a successful finish. Flushes the run through W&B."""
-        if self.active:
-            self.run.finish(exit_code=exit_code)
+        """Drain saves, stop the worker, then finish W&B, including on failure."""
+        if self._finished:
+            return
+        self._closing = True
+        try:
+            try:
+                self.flush_checkpoints()
+            except Exception:
+                exit_code = exit_code or 1
+                raise
+            finally:
+                if self._checkpoint_executor is not None:
+                    self._checkpoint_executor.shutdown(wait=True)
+                    self._checkpoint_executor = None
+                if self.active:
+                    self.run.finish(exit_code=exit_code)
+        finally:
             self._finished = True
 
     def __enter__(self) -> Self:
@@ -408,7 +537,7 @@ class WandbLogger:
             if exc_type is None:
                 raise
             warnings.warn(
-                f"W&B finish failed during training exception: {finish_error}",
+                f"Logger finish failed during training exception: {finish_error}",
                 RuntimeWarning,
                 stacklevel=2,
             )

@@ -8,10 +8,12 @@
   "precision": "float32",
   "run_name": "synthetic-example",
   "wandb_enabled": false,
-  "wandb_mode": "offline",
+  "wandb_mode": "online",
   "checkpoints": {
     "backend": "local",
     "policy": "default",
+    "async_save": true,
+    "max_pending": 2,
     "every_n_epochs": 1,
     "monitor": "val/loss",
     "mode": "min"

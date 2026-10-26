@@ -23,6 +23,8 @@ into `TrainingConfig`; the trainer passes its checkpoint settings to the logger.
   "checkpoints": {
     "backend": "local",
     "policy": "default",
+    "async_save": true,
+    "max_pending": 2,
     "every_n_epochs": 1,
     "monitor": "val/loss",
     "mode": "min",
@@ -51,6 +53,33 @@ Every backend first saves under the fixed `checkpoints/` directory, outside
 SDK caches. Only global rank zero writes. Failed uploads retain the local file
 and raise an error. Bucket keys use `prefix` plus the checkpoint's relative path;
 reusing a key overwrites it.
+
+## Asynchronous saving
+
+Set `checkpoints.async_save` to `true` in the same config (enabled in the example).
+The code default is `false` for synchronous saves. `max_pending` limits the total
+number of queued/running checkpoint snapshots; the default is 2.
+
+With async saving, the training thread first copies tensors to independent CPU
+storage and deep-copies the remaining state. This snapshot blocks briefly and
+uses additional host memory. Disk serialization and local/S3/W&B storage then
+run on a single background worker, preserving save order. W&B uploads complete
+before a later job can replace the same file. If the queue is full, the next
+save waits before allocating another snapshot. File replacement remains atomic;
+serialization failures leave an older checkpoint intact.
+
+The trainer polls worker errors between batches and waits for pending saves at
+the end of training, including on exceptions. Upload failures raise and retain
+the local file. A hard process kill can lose pending work. Resume only from a
+completed checkpoint.
+
+When using the logger directly, use its context manager or call `finish()` to
+flush and close the worker. Async `save_checkpoint()` returns a `Future`; call
+`future.result()` to wait for that save or `flush_checkpoints()` to wait for all
+saves without closing the logger. Externally supplied trainer loggers are
+flushed by the trainer but must be closed by their owner. Keep logger/checkpoint
+calls on the training thread; snapshots support ordinary nested tensor state
+containers, including model/optimizer state dictionaries.
 
 ## Training example
 

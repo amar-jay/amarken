@@ -2,6 +2,7 @@
 
 import os
 import random
+import warnings
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -161,6 +162,8 @@ class Trainer:
         self.model.train(training)
         total, batches = 0.0, 0
         for batch in loader:
+            if self.logger is not None:
+                self.logger.check_checkpoint_errors()
             if training:
                 self.optimizer.zero_grad(set_to_none=True)
             with torch.set_grad_enabled(training), self._autocast():
@@ -191,7 +194,20 @@ class Trainer:
                     return self._fit()
                 finally:
                     self.logger = None
-        return self._fit()
+        try:
+            history = self._fit()
+        except BaseException:
+            try:
+                self.logger.flush_checkpoints()
+            except Exception as error:  # noqa: BLE001 - preserve the training exception
+                warnings.warn(
+                    f"Checkpoint flush failed during training exception: {error}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            raise
+        self.logger.flush_checkpoints()
+        return history
 
     @property
     def checkpoint_prefix(self):
@@ -236,7 +252,11 @@ class Trainer:
                 aliases=aliases,
                 overwrite=settings.policy != "all",
             )
-            if settings.backend == "wandb" and artifact is not None:
+            if (
+                not settings.async_save
+                and settings.backend == "wandb"
+                and artifact is not None
+            ):
                 artifact.wait()
 
     def _fit(self):
