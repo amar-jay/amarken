@@ -145,12 +145,12 @@ Inference restores the selected implementation from checkpoint weights, uses
 evaluation/inference mode and does not initialize W&B, prompt for a run name or
 restore optimizer/RNG state. The selected implementation controls model construction, checkpoint loading and
 prediction. Both `src/amarken/modules/example.py` and `src/amarken/modules/base.py`
-expose the same three functions:
+expose the same model functions and a module-specific loss:
 
 ```python
 # Change only this module path to switch implementations.
-from amarken.modules.example import build_model, load_model, predict
-# from amarken.modules.base import build_model, load_model, predict
+from amarken.modules.example import build_model, load_model, loss_fn, predict
+# from amarken.modules.base import build_model, load_model, loss_fn, predict
 
 model = build_model(device="cpu")  # New model / pretrained backbone
 model = load_model("checkpoints/my-task/best.pt", device="cpu")
@@ -177,7 +177,7 @@ loads checkpoint weights without reloading the original pretrained weights.
 Set `BASE_LOCAL_FILES_ONLY=True` to require cached config/tokenizer assets.
 
 Dataset preparation and loss handling stay task-specific in `main.py` and
-`modules/loss_fn.py`. The supplied training command still uses synthetic numeric
+the selected module's `loss_fn`. The supplied training command still uses synthetic numeric
 data; selecting the text backbone does not turn that data into a text dataset.
 Either implementation module can be deleted once the other is selected and
 its unused imports are removed. The synthetic defaults require no Hub downloads.
@@ -216,8 +216,10 @@ inputs = model.tokenize(["hello", "another text"])
 features = model(inputs)
 ```
 
-The backbone unpacks that dictionary internally. The example loss moves either
-a tensor or dictionary of tensors to the configured device, then calls
-`model(inputs)`. Tokenization, targets, and a task-specific loss/head are still
-your task's responsibility; the existing numeric training data cannot be
-passed directly to the text backbone.
+The backbone unpacks that dictionary internally. Each implementation owns its
+`loss_fn(model, batch, device)`, selected alongside the model imports in
+`model.py`. The numeric example keeps its existing cross-entropy behavior.
+The base implementation is an explicit task-loss placeholder: pooled features
+do not define a classification or language-modeling objective. Implement that
+function when your task/targets are defined. Dataset preparation is unchanged;
+the numeric training data still cannot be passed directly to the text backbone.

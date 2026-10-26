@@ -13,8 +13,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from amarken.cli import main as cli_main
 from amarken.inference import run_inference
 from amarken.logger import CheckpointConfig, WandbLogger
-from amarken.main import loss_fn
-from amarken.modules.example import build_model, load_model
+from amarken.modules.example import build_model, load_model, loss_fn
 from amarken.modules.example import predict as predict_numeric
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 from amarken.utils import prompt_run_name
@@ -203,11 +202,13 @@ class TrainerTests(unittest.TestCase):
                     return_value=tokenizer,
                 ),
             ):
+                with self.assertRaisesRegex(NotImplementedError, "task.*loss"):
+                    base.loss_fn(None, None, "cpu")
                 backbone = base.build_model(device="cpu")
                 backbone.train()
                 batch = backbone.tokenize(["hello"])
                 optimizer = torch.optim.SGD(backbone.parameters(), lr=0.01)
-                loss_fn(backbone, (batch, torch.tensor([0])), "cpu").backward()
+                backbone(batch).sum().backward()
                 with self.assertRaisesRegex(ValueError, "attention_mask"):
                     backbone({"input_ids": batch["input_ids"]})
                 with self.assertRaisesRegex(TypeError, "tokenized dictionary"):

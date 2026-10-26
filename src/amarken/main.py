@@ -3,8 +3,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from amarken.model import build_model
-from amarken.modules.loss_fn import loss_fn
+from amarken.model import build_model, loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 
 

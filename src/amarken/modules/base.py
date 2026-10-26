@@ -176,3 +176,17 @@ def predict(model: BaseModel, inputs: str | Sequence[str]) -> dict:
     with torch.inference_mode():
         features = model(batch)
     return {"features": features.float().cpu().tolist()}
+
+
+def loss_fn(model, batch, device):
+    """Task-loss hook with the same signature as the numeric implementation.
+
+    BaseModel returns pooled features, not classification logits or a language
+    modeling loss. Implement your objective here once the task/targets are
+    defined. Tokenized inputs should be moved to device and passed as one
+    dictionary: features = model(inputs).
+    """
+    raise NotImplementedError(
+        "Define your task's loss in amarken/modules/base.py:loss_fn. "
+        "BaseModel currently returns pooled features and has no task objective."
+    )

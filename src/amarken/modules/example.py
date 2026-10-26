@@ -56,3 +56,9 @@ def predict(model: nn.Module, inputs: Any) -> dict:
         "predictions": probabilities.argmax(-1).cpu().tolist(),
         "probabilities": probabilities.cpu().tolist(),
     }
+
+
+def loss_fn(model, batch, device):
+    """Cross-entropy for the existing numeric classification example."""
+    inputs, targets = (value.to(device) for value in batch)
+    return torch.nn.functional.cross_entropy(model(inputs), targets)
