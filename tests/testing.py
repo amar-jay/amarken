@@ -638,7 +638,7 @@ class TrainerTests(unittest.TestCase):
                 redirect_stdout(io.StringIO()),
             ):
                 cli_main(
-                    ["example", "--config", str(config_file), "--resume", "saved.pt"]
+                    ["train", "--config", str(config_file), "--resume", "saved.pt"]
                 )
             self.assertIsInstance(train.call_args.args[0], TrainingConfig)
             self.assertEqual(train.call_args.kwargs["resume"], Path("saved.pt"))

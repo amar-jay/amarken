@@ -88,8 +88,8 @@ containers, including model/optimizer state dictionaries.
 Run the small CPU classification task (no downloads or W&B account needed):
 
 ```bash
-uv run amarken example --config configs/training-example.json
-uv run amarken example --config configs/training-example.json \
+uv run amarken train --config configs/training-example.json
+uv run amarken train --config configs/training-example.json \
   --resume "checkpoints/synthetic-example/latest.pt"
 ```
 
@@ -317,7 +317,7 @@ Select the random dataset and numeric model together for a download-free run.
 To train and infer with the current text setup:
 
 ```bash
-uv run amarken example --config configs/training-base.json
+uv run amarken train --config configs/training-base.json
 uv run amarken infer --config configs/training-base.json \
   --checkpoint checkpoints/qwen-backbone/best.pt \
   --input-file samples/input-base.json

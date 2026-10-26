@@ -24,10 +24,10 @@ def parser():
             "--config", type=Path, required=True, help="JSON config file"
         )
     commands = root.add_subparsers(dest="command", required=True)
-    example = commands.add_parser(
-        "example", parents=[common], help="Train the synthetic classification example"
+    train = commands.add_parser(
+        "train", parents=[common], help="Train the selected model and dataset"
     )
-    example.add_argument("--resume", type=Path, help="Local checkpoint file to resume")
+    train.add_argument("--resume", type=Path, help="Local checkpoint file to resume")
     infer = commands.add_parser(
         "infer", parents=[common], help="Run inference from a saved checkpoint"
     )
@@ -69,7 +69,7 @@ def main(argv=None):
     args = root.parse_args(argv)
     try:
         config = TrainingConfig(**json.loads(args.config.read_text()))
-        if args.command == "example":
+        if args.command == "train":
             checkpoint_prefix, history = train_example(config, resume=args.resume)
             print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
             for metrics in history:

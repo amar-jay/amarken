@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import torch
+from tqdm.auto import tqdm
 
 from amarken.constants import BASES
 from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
@@ -192,22 +193,31 @@ class Trainer:
     def _epoch_loss(self, loader, *, training):
         self.model.train(training)
         total, batches = 0.0, 0
-        for batch in loader:
-            if self.logger is not None:
-                self.logger.check_checkpoint_errors()
-            if training:
-                self.optimizer.zero_grad(set_to_none=True)
-            with torch.set_grad_enabled(training), self._autocast():
-                loss = self.loss_fn(self.model, batch, self.device)
-            if loss.ndim != 0 or not torch.isfinite(loss).item():
-                raise ValueError("loss_fn must return a finite scalar loss")
-            if training:
-                self.scaler.scale(loss).backward()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-                self.global_step += 1
-            total += loss.detach().item()
-            batches += 1
+        phase = "Train" if training else "Validation"
+        with tqdm(
+            loader,
+            desc=f"Epoch {self.epoch + 1}/{self.config.epochs} {phase}",
+            unit="batch",
+            dynamic_ncols=True,
+            disable=None,
+        ) as progress:
+            for batch in progress:
+                if self.logger is not None:
+                    self.logger.check_checkpoint_errors()
+                if training:
+                    self.optimizer.zero_grad(set_to_none=True)
+                with torch.set_grad_enabled(training), self._autocast():
+                    loss = self.loss_fn(self.model, batch, self.device)
+                if loss.ndim != 0 or not torch.isfinite(loss).item():
+                    raise ValueError("loss_fn must return a finite scalar loss")
+                if training:
+                    self.scaler.scale(loss).backward()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.global_step += 1
+                total += loss.detach().item()
+                batches += 1
+                progress.set_postfix(loss=total / batches, refresh=False)
         if not batches:
             raise ValueError("Dataloaders must contain at least one batch")
         return total / batches
