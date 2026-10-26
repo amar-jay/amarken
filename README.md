@@ -149,8 +149,14 @@ expose the same model functions and a module-specific loss:
 
 ```python
 # Change only this module path to switch implementations.
-from amarken.modules.example import build_model, load_model, loss_fn, predict
-# from amarken.modules.base import build_model, load_model, loss_fn, predict
+from amarken.modules.example import (
+    build_model,
+    load_model,
+    loss_fn,
+    predict,
+    validation_step,
+)
+# from amarken.modules.base import build_model, load_model, loss_fn, predict, validation_step
 
 model = build_model(device="cpu")  # New model / pretrained backbone
 model = load_model("checkpoints/my-task/best.pt", device="cpu")
@@ -231,7 +237,13 @@ head with a cross-entropy objective. It exposes the same `build_model`,
 in `src/amarken/model.py` to:
 
 ```python
-from amarken.modules.classification import build_model, load_model, loss_fn, predict
+from amarken.modules.classification import (
+    build_model,
+    load_model,
+    loss_fn,
+    predict,
+    validation_step,
+)
 ```
 
 `CLASSIFICATION_LABELS` in `constants.py` defaults to `("negative", "positive")`.
@@ -258,8 +270,12 @@ Datasets follow the same import-selection pattern as models:
 
 ```python
 # src/amarken/dataset.py — choose one implementation:
-from amarken.datasets.huggingface import build_dataset, build_dataloaders
-# from amarken.datasets.example import build_dataset, build_dataloaders
+from amarken.datasets.huggingface import (
+    build_dataset,
+    build_dataloaders,
+    build_test_dataset,
+)
+# from amarken.datasets.example import build_dataset, build_dataloaders, build_test_dataset
 ```
 
 Both expose the same interface:
@@ -318,3 +334,45 @@ and `load_model`, with the same signatures across all implementations.
 For bfloat16 weights and execution, set `"precision": "bfloat16"` in your config.
 No separate dtype constant is needed. Direct Python calls can pass
 `precision="bfloat16"` to either function; their default is `float32`.
+
+### Final validation
+
+Evaluate a saved checkpoint on the configured validation split:
+
+```bash
+uv run amarken validate \
+  --config configs/training-classification.json \
+  --checkpoint checkpoints/qwen-backbone/best.pt
+```
+
+The command prints JSON with `samples`, `val/loss`, and `val/accuracy` (a fraction
+from 0 to 1). It uses the config's `val_size`, seed, batch size, device and precision.
+This evaluates the validation data used during training, not an independent test set.
+It does not train or start a W&B run. Both classification and numeric model modules
+provide `validation_step(model, batch, device)` alongside `loss_fn`; replace the
+metrics there for another objective. The feature-only base module leaves this hook
+for your task, just like its loss function. Include `validation_step` when switching
+the imports in `model.py`.
+
+### Held-out test evaluation
+
+```bash
+uv run amarken test \
+  --config configs/training-classification.json \
+  --checkpoint checkpoints/qwen-backbone/best.pt
+```
+
+Set `test_size` in JSON (default 32). Output contains `samples`, `test/loss` and
+`test/accuracy`. This command loads a checkpoint without training or selecting it.
+For Hugging Face data, the labeled validation source is shuffled with a fixed
+partition seed and divided in half: one half for validation and checkpoint
+selection, the other exclusively for testing. With SST-2 this allows up to 436
+examples per half. The run seed samples within these fixed halves; changing sizes
+or run seeds cannot move a row between them. Training still uses the train source.
+The numeric example uses a separate random stream for its test samples.
+
+**Existing checkpoints:** earlier runs used the entire validation source for
+checkpoint selection. Their new test subset may therefore have been seen during
+validation. Retrain with this partitioning before treating test results as held out.
+Keep the test set for final evaluation; use validation to tune your training.
+When switching `dataset.py`, also import `build_test_dataset` from the chosen module.

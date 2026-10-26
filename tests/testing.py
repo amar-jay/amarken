@@ -167,6 +167,90 @@ class TrainerTests(unittest.TestCase):
             self.assertEqual(predict.call_args.kwargs["device"], "cpu:0")
             self.assertEqual(predict.call_args.kwargs["precision"], "bfloat16")
 
+            # Final validation evaluates the checkpoint and weights uneven batches by samples.
+            from amarken.modules.example import validation_step
+            from amarken.validation import run_validation
+
+            validation_inputs = torch.tensor([features, features, features])
+            with torch.inference_mode():
+                logits = model(validation_inputs)
+            labels = logits.argmax(-1)
+            labels[-1] = 1 - labels[-1]
+            rows = TensorDataset(validation_inputs, labels)
+            with (
+                patch("amarken.validation.load_model", side_effect=load_model),
+                patch(
+                    "amarken.validation.validation_step", side_effect=validation_step
+                ),
+                patch("amarken.validation.build_dataset", return_value=(rows, rows)),
+                patch(
+                    "amarken.validation.build_dataloaders",
+                    return_value=(None, DataLoader(rows, batch_size=2)),
+                ),
+            ):
+                metrics = run_validation(checkpoint, TrainingConfig())
+                self.assertEqual(metrics["samples"], 3)
+                self.assertAlmostEqual(metrics["val/accuracy"], 2 / 3)
+                self.assertAlmostEqual(
+                    metrics["val/loss"],
+                    torch.nn.functional.cross_entropy(logits, labels).item(),
+                    places=6,
+                )
+            with (
+                patch("amarken.cli.run_validation", return_value=metrics) as validate,
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                cli_main(
+                    [
+                        "validate",
+                        "--config",
+                        str(config_file),
+                        "--checkpoint",
+                        str(checkpoint),
+                    ]
+                )
+            self.assertEqual(json.loads(output.getvalue()), metrics)
+            self.assertEqual(validate.call_args.args[1].precision, "bfloat16")
+
+            with (
+                patch("amarken.validation.load_model", side_effect=load_model),
+                patch(
+                    "amarken.validation.validation_step", side_effect=validation_step
+                ),
+                patch("amarken.validation.build_dataset") as training_data,
+                patch(
+                    "amarken.validation.build_test_dataset", return_value=rows
+                ) as test_data,
+                patch(
+                    "amarken.validation.build_dataloaders",
+                    return_value=(None, DataLoader(rows, batch_size=2)),
+                ),
+            ):
+                test_metrics = run_validation(
+                    checkpoint, TrainingConfig(test_size=3), split="test"
+                )
+                training_data.assert_not_called()
+                test_data.assert_called_once_with(seed=42, test_size=3)
+                self.assertAlmostEqual(test_metrics["test/accuracy"], 2 / 3)
+                self.assertNotIn("val/accuracy", test_metrics)
+            with (
+                patch(
+                    "amarken.cli.run_validation", return_value=test_metrics
+                ) as evaluate,
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                cli_main(
+                    [
+                        "test",
+                        "--config",
+                        str(config_file),
+                        "--checkpoint",
+                        str(checkpoint),
+                    ]
+                )
+            self.assertEqual(json.loads(output.getvalue()), test_metrics)
+            self.assertEqual(evaluate.call_args.kwargs["split"], "test")
+
             # Both implementations expose the same build/load/predict calls.
             self.assertEqual(predict_numeric(model, features), result)
             from transformers import AutoModel, Qwen3Config
@@ -356,6 +440,16 @@ class TrainerTests(unittest.TestCase):
                         seed=42, train_size=3, val_size=2
                     )
                     self.assertEqual((len(text_train), len(text_validation)), (3, 2))
+                    held_out = hub_data.build_test_dataset(seed=42, test_size=2)
+                    self.assertTrue(
+                        set(text_validation["sentence"]).isdisjoint(
+                            held_out["sentence"]
+                        )
+                    )
+                    changed_seed = hub_data.build_test_dataset(seed=99, test_size=2)
+                    self.assertEqual(
+                        set(held_out["sentence"]), set(changed_seed["sentence"])
+                    )
                     self.assertEqual(
                         hub_load.call_args.kwargs["split"], ["train", "validation"]
                     )

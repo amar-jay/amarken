@@ -4,6 +4,10 @@ Use datasets.example with modules.example, or datasets.huggingface with
 modules.classification. Both expose the same dataset/dataloader functions.
 """
 
-from amarken.datasets.huggingface import build_dataloaders, build_dataset
+from amarken.datasets.huggingface import (
+    build_dataloaders,
+    build_dataset,
+    build_test_dataset,
+)
 
-__all__ = ["build_dataloaders", "build_dataset"]
+__all__ = ["build_dataloaders", "build_dataset", "build_test_dataset"]

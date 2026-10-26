@@ -23,6 +23,7 @@ class TrainingConfig:
     batch_size: int = 16
     train_size: int = 128
     val_size: int = 32
+    test_size: int = 32
     epochs: int = 3
     device: str = "cpu"
     precision: str = "float32"
@@ -39,7 +40,7 @@ class TrainingConfig:
             self.checkpoints = CheckpointConfig(**self.checkpoints)
         if self.epochs < 1 or self.batch_size < 1 or self.learning_rate <= 0:
             raise ValueError("epochs, batch_size and learning_rate must be positive")
-        for name in ("train_size", "val_size"):
+        for name in ("train_size", "val_size", "test_size"):
             size = getattr(self, name)
             if type(size) is not int or size < 1:
                 raise ValueError(f"{name} must be a positive integer")

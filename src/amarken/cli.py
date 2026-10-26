@@ -7,6 +7,7 @@ from pathlib import Path
 from amarken.inference import run_inference
 from amarken.main import train_example
 from amarken.trainer import TrainingConfig
+from amarken.validation import run_validation
 
 
 def parser():
@@ -43,6 +44,23 @@ def parser():
     source.add_argument(
         "--input-file", type=Path, help="JSON file containing input features"
     )
+    validate = commands.add_parser(
+        "validate",
+        parents=[common],
+        help="Evaluate a checkpoint on the validation split",
+    )
+    validate.add_argument(
+        "--checkpoint",
+        type=Path,
+        required=True,
+        help="Local best.pt or latest.pt checkpoint",
+    )
+    test = commands.add_parser(
+        "test",
+        parents=[common],
+        help="Evaluate a checkpoint on the held-out test split",
+    )
+    test.add_argument("--checkpoint", type=Path, required=True)
     return root
 
 
@@ -56,6 +74,15 @@ def main(argv=None):
             print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
             for metrics in history:
                 print(json.dumps(metrics))
+        elif args.command == "test":
+            print(
+                json.dumps(
+                    run_validation(args.checkpoint, config, split="test"),
+                    allow_nan=False,
+                )
+            )
+        elif args.command == "validate":
+            print(json.dumps(run_validation(args.checkpoint, config), allow_nan=False))
         elif args.command == "infer":
             raw = (
                 args.input_file.read_text()
@@ -69,5 +96,5 @@ def main(argv=None):
                 precision=config.precision,
             )
             print(json.dumps(result, allow_nan=False))
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError, NotImplementedError) as error:
         root.error(str(error))

@@ -191,3 +191,10 @@ def loss_fn(model, batch, device):
         "Define your task's loss in amarken/modules/base.py:loss_fn. "
         "BaseModel currently returns pooled features and has no task objective."
     )
+
+
+def validation_step(model, batch, device) -> dict:
+    """Define metrics alongside your task objective when using the backbone."""
+    raise NotImplementedError(
+        "Define task-specific validation metrics in modules/base.py"
+    )

@@ -80,3 +80,15 @@ def loss_fn(model: TextClassifier, batch, device):
         raise TypeError("Classification inputs must be a tokenized dictionary")
     inputs = {key: value.to(device) for key, value in inputs.items()}
     return torch.nn.functional.cross_entropy(model(inputs).float(), targets.to(device))
+
+
+def validation_step(model, batch, device) -> dict:
+    """Return batch-mean metrics; validation aggregates them by sample count."""
+    inputs, targets = batch
+    inputs = {key: value.to(device) for key, value in inputs.items()}
+    targets = targets.to(device)
+    logits = model(inputs).float()
+    return {
+        "loss": torch.nn.functional.cross_entropy(logits, targets).item(),
+        "accuracy": (logits.argmax(-1) == targets).float().mean().item(),
+    }

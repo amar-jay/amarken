@@ -38,3 +38,13 @@ def build_dataloaders(
         DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=0),
         DataLoader(validation, batch_size=batch_size, num_workers=0),
     )
+
+
+def build_test_dataset(*, seed: int = 42, test_size: int = 32) -> Dataset:
+    """Use a separate random stream so test rows are independent of split sizes."""
+    if type(test_size) is not int or test_size < 1:
+        raise ValueError("test_size must be a positive integer")
+    generator = torch.Generator().manual_seed(seed + 1)
+    inputs = torch.randn(test_size, EXAMPLE_INPUT_SIZE, generator=generator)
+    targets = (inputs[:, 0] + inputs[:, 1] > 0).long()
+    return TensorDataset(inputs, targets)

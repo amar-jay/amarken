@@ -18,8 +18,12 @@ from amarken.constants import (
 )
 
 
-def build_dataset(
-    *, seed: int = 42, train_size: int = 128, val_size: int = 32
+def _build_dataset(
+    *,
+    seed: int = 42,
+    train_size: int = 128,
+    val_size: int = 32,
+    _test: bool = False,
 ) -> tuple[Dataset, Dataset]:
     train, validation = load_dataset(
         HF_DATASET_ID,
@@ -27,6 +31,16 @@ def build_dataset(
         revision=HF_DATASET_REVISION,
         split=[HF_DATASET_TRAIN_SPLIT, HF_DATASET_VALIDATION_SPLIT],
         cache_dir=DATA_CACHE,
+    )
+
+    # A fixed partition seed keeps validation/test membership independent of
+    # the run's sampling seed. SST-2's public test labels are unavailable.
+    if len(validation) < 2:
+        raise ValueError("Need at least two labeled rows for validation and test")
+    validation = validation.shuffle(seed=0)
+    boundary = len(validation) // 2
+    validation = validation.select(
+        range(boundary, len(validation)) if _test else range(boundary)
     )
 
     def sample(dataset, size):
@@ -44,6 +58,12 @@ def build_dataset(
         return dataset
 
     return sample(train, train_size), sample(validation, val_size)
+
+
+def build_dataset(
+    *, seed: int = 42, train_size: int = 128, val_size: int = 32
+) -> tuple[Dataset, Dataset]:
+    return _build_dataset(seed=seed, train_size=train_size, val_size=val_size)
 
 
 def build_dataloaders(
@@ -90,3 +110,9 @@ def build_dataloaders(
             validation, batch_size=batch_size, collate_fn=collate, num_workers=0
         ),
     )
+
+
+def build_test_dataset(*, seed: int = 42, test_size: int = 32) -> Dataset:
+    """Load the held-out half of the labeled validation source split."""
+    _, test = _build_dataset(seed=seed, train_size=1, val_size=test_size, _test=True)
+    return test

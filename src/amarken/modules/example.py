@@ -64,3 +64,15 @@ def loss_fn(model, batch, device):
     """Cross-entropy for the existing numeric classification example."""
     inputs, targets = (value.to(device) for value in batch)
     return torch.nn.functional.cross_entropy(model(inputs), targets)
+
+
+def validation_step(model, batch, device) -> dict:
+    """Return batch-mean metrics; validation aggregates them by sample count."""
+    inputs, targets = batch
+    inputs = inputs.to(device)
+    targets = targets.to(device)
+    logits = model(inputs).float()
+    return {
+        "loss": torch.nn.functional.cross_entropy(logits, targets).item(),
+        "accuracy": (logits.argmax(-1) == targets).float().mean().item(),
+    }
