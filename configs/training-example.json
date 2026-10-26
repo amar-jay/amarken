@@ -1,0 +1,13 @@
+{
+  "model_id": "synthetic-mlp",
+  "seed": 42,
+  "learning_rate": 0.01,
+  "batch_size": 16,
+  "epochs": 3,
+  "device": "cpu",
+  "precision": "float32",
+  "run_name": "synthetic-example",
+  "wandb_enabled": false,
+  "wandb_mode": "offline",
+  "checkpoints": { "backend": "local" }
+}

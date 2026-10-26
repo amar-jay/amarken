@@ -77,9 +77,11 @@ class WandbLogger:
         # RANK is global under torchrun; LOCAL_RANK is insufficient on multi-node.
         self.rank = int(os.environ.get("RANK", "0")) if rank is None else rank
         self.enabled = enabled and self.rank == 0
-        self.checkpoints = (CheckpointConfig(**checkpoints)
-                            if isinstance(checkpoints, Mapping)
-                            else checkpoints or CheckpointConfig())
+        self.checkpoints = (
+            CheckpointConfig(**checkpoints)
+            if isinstance(checkpoints, Mapping)
+            else checkpoints or CheckpointConfig()
+        )
         self._storage_client: Any = None
         self.run: Any = None
         self._sdk: Any = None
@@ -92,7 +94,9 @@ class WandbLogger:
 
         self._sdk = wandb
         if wandb.run is not None:
-            raise RuntimeError("A W&B run is already active; use one run owner per process.")
+            raise RuntimeError(
+                "A W&B run is already active; use one run owner per process."
+            )
         options = dict(init_kwargs)
         if project is not None:
             options["project"] = project
@@ -101,12 +105,15 @@ class WandbLogger:
         if mode is not None:
             options["mode"] = mode
 
-        options.setdefault("settings", wandb.Settings(
-            disable_code=True,
-            x_disable_meta=True,
-            x_disable_machine_info=True,
-            init_timeout=30,
-        ))
+        options.setdefault(
+            "settings",
+            wandb.Settings(
+                disable_code=True,
+                x_disable_meta=True,
+                x_disable_machine_info=True,
+                init_timeout=30,
+            ),
+        )
         self.run = wandb.init(**options)
 
     @property
@@ -114,6 +121,7 @@ class WandbLogger:
         """Native wandb module: Image, Audio, Video, Table, plot, sweep, agent..."""
         if self._sdk is None:
             import wandb
+
             self._sdk = wandb
         return self._sdk
 
@@ -160,7 +168,9 @@ class WandbLogger:
         if self._can_write():
             return self.run.define_metric(name, **kwargs)
 
-    def update_config(self, values: Mapping[str, Any], *, allow_val_change: bool = False) -> None:
+    def update_config(
+        self, values: Mapping[str, Any], *, allow_val_change: bool = False
+    ) -> None:
         if self._can_write():
             self.run.config.update(dict(values), allow_val_change=allow_val_change)
 
@@ -177,20 +187,45 @@ class WandbLogger:
         if self._can_write():
             self.run.unwatch(models)
 
-    def log_media(self, key: str, kind: str, value: Any, *,
-                  media_kwargs: Mapping[str, Any] | None = None, **log_kwargs: Any) -> None:
+    def log_media(
+        self,
+        key: str,
+        kind: str,
+        value: Any,
+        *,
+        media_kwargs: Mapping[str, Any] | None = None,
+        **log_kwargs: Any,
+    ) -> None:
         """kind: Image, Audio, Video, Histogram, Html, Object3D, or Molecule.
 
         For complex/multiple media objects, build them with logger.sdk and log().
         """
-        allowed = {"Image", "Audio", "Video", "Histogram", "Html", "Object3D", "Molecule"}
+        allowed = {
+            "Image",
+            "Audio",
+            "Video",
+            "Histogram",
+            "Html",
+            "Object3D",
+            "Molecule",
+        }
         if kind not in allowed:
             raise ValueError(f"kind must be one of {sorted(allowed)}")
         if self._can_write():
-            self.log({key: getattr(self.sdk, kind)(value, **dict(media_kwargs or {}))}, **log_kwargs)
+            self.log(
+                {key: getattr(self.sdk, kind)(value, **dict(media_kwargs or {}))},
+                **log_kwargs,
+            )
 
-    def log_table(self, key: str, *, columns: Sequence[str] | None = None,
-                  data: Any = None, dataframe: Any = None, **log_kwargs: Any) -> Any:
+    def log_table(
+        self,
+        key: str,
+        *,
+        columns: Sequence[str] | None = None,
+        data: Any = None,
+        dataframe: Any = None,
+        **log_kwargs: Any,
+    ) -> Any:
         if self._can_write():
             if dataframe is not None:
                 if columns is not None or data is not None:
@@ -201,39 +236,55 @@ class WandbLogger:
             self.log({key: table}, **log_kwargs)
             return table
 
-    def log_artifact(self, path: str | Path, *, name: str, type: str = "dataset",
-                     aliases: Sequence[str] | None = None,
-                     metadata: Mapping[str, Any] | None = None,
-                     description: str | None = None) -> Any:
+    def log_artifact(
+        self,
+        path: str | Path,
+        *,
+        name: str,
+        type: str = "dataset",
+        aliases: Sequence[str] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+        description: str | None = None,
+    ) -> Any:
         """Version a local file/directory. Return the logged artifact handle."""
         if self._can_write():
             source = Path(path).expanduser().resolve()
             if not source.exists():
                 raise FileNotFoundError(source)
-            artifact = self.sdk.Artifact(name, type=type, metadata=dict(metadata or {}),
-                                         description=description)
+            artifact = self.sdk.Artifact(
+                name, type=type, metadata=dict(metadata or {}), description=description
+            )
             if source.is_dir():
                 artifact.add_dir(str(source))
             else:
                 artifact.add_file(str(source))
-            return self.run.log_artifact(artifact, aliases=list(aliases) if aliases is not None else None)
+            return self.run.log_artifact(
+                artifact, aliases=list(aliases) if aliases is not None else None
+            )
 
     def use_artifact(self, name: str, **kwargs: Any) -> Any:
         """Record an input dependency; name may include entity/project/name:alias."""
         if self._can_write():
             return self.run.use_artifact(name, **kwargs)
 
-    def download_artifact(self, name: str, *, root: str | Path | None = None,
-                          **kwargs: Any) -> str | None:
+    def download_artifact(
+        self, name: str, *, root: str | Path | None = None, **kwargs: Any
+    ) -> str | None:
         """Rank-zero only. Coordinate other ranks with your framework's barriers."""
         artifact = self.use_artifact(name, **kwargs)
         if artifact is not None:
             return artifact.download(root=str(root) if root is not None else None)
         return None
 
-    def save_checkpoint(self, state: Mapping[str, Any], path: str | Path = "latest.pt", *,
-                        name: str | None = None, aliases: Sequence[str] = ("latest",),
-                        metadata: Mapping[str, Any] | None = None) -> Any:
+    def save_checkpoint(
+        self,
+        state: Mapping[str, Any],
+        path: str | Path = "latest.pt",
+        *,
+        name: str | None = None,
+        aliases: Sequence[str] = ("latest",),
+        metadata: Mapping[str, Any] | None = None,
+    ) -> Any:
         """Save beneath CHECKPOINT_DIR, then replicate to the configured backend.
 
         `path` is relative to the fixed directory; absolute paths and escapes are
@@ -250,15 +301,25 @@ class WandbLogger:
         relative = Path(path)
         root = CHECKPOINT_DIR.resolve()
         destination = (root / relative).resolve()
-        if relative.is_absolute() or not destination.is_relative_to(root) or destination == root:
+        if (
+            relative.is_absolute()
+            or not destination.is_relative_to(root)
+            or destination == root
+        ):
             raise ValueError("Checkpoint path must be a file beneath CHECKPOINT_DIR")
         if self.checkpoints.backend == "wandb" and not self._can_write():
-            raise RuntimeError("W&B checkpoint storage requires an active run; use local or s3")
+            raise RuntimeError(
+                "W&B checkpoint storage requires an active run; use local or s3"
+            )
         import torch
+
         destination.parent.mkdir(parents=True, exist_ok=True)
         # Replace atomically so interrupted serialization preserves an older file.
         import tempfile
-        with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as temporary:
+
+        with tempfile.NamedTemporaryFile(
+            dir=destination.parent, delete=False
+        ) as temporary:
             temporary_path = Path(temporary.name)
         try:
             torch.save(dict(state), temporary_path)
@@ -268,17 +329,28 @@ class WandbLogger:
         if self.checkpoints.backend == "s3":
             if self._storage_client is None:
                 import boto3
+
                 self._storage_client = boto3.client(
-                    "s3", endpoint_url=self.checkpoints.endpoint_url,
+                    "s3",
+                    endpoint_url=self.checkpoints.endpoint_url,
                     region_name=self.checkpoints.region_name,
                 )
             prefix = self.checkpoints.prefix.strip("/")
-            key = "/".join(filter(None, (prefix, destination.relative_to(root).as_posix())))
-            self._storage_client.upload_file(str(destination), self.checkpoints.bucket, key)
+            key = "/".join(
+                filter(None, (prefix, destination.relative_to(root).as_posix()))
+            )
+            self._storage_client.upload_file(
+                str(destination), self.checkpoints.bucket, key
+            )
             return f"s3://{self.checkpoints.bucket}/{key}"
         if self.checkpoints.backend == "wandb":
-            return self.log_artifact(destination, name=name or f"model-{self.run.id}",
-                                     type="model", aliases=aliases, metadata=metadata)
+            return self.log_artifact(
+                destination,
+                name=name or f"model-{self.run.id}",
+                type="model",
+                aliases=aliases,
+                metadata=metadata,
+            )
         return destination
 
     def log_code(self, root: str | Path = ".", **kwargs: Any) -> Any:
@@ -311,7 +383,9 @@ class WandbLogger:
         except Exception as finish_error:
             if exc_type is None:
                 raise
-            warnings.warn(f"W&B finish failed during training exception: {finish_error}",
-                          RuntimeWarning, stacklevel=2)
+            warnings.warn(
+                f"W&B finish failed during training exception: {finish_error}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         return False
-

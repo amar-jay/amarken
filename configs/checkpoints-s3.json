@@ -1,7 +1,0 @@
-{
-  "backend": "s3",
-  "bucket": "my-training-bucket",
-  "prefix": "amarken/run-001",
-  "endpoint_url": null,
-  "region_name": "us-east-1"
-}

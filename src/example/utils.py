@@ -1,4 +1,7 @@
-_LAYER_IDX_REQUIRED_MSG = "{cls} requires `layer_idx` when `past_key_values` is provided."
+_LAYER_IDX_REQUIRED_MSG = (
+    "{cls} requires `layer_idx` when `past_key_values` is provided."
+)
+
 
 def require_cache_layer_idx(module, past_key_values):
     layer_idx = getattr(module, "layer_idx", None)

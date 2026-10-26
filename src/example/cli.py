@@ -1,13 +1,6 @@
-"""Local preparation, training, calibration and prediction commands."""
+"""Thin entry point for the reusable synthetic training example."""
 
-import argparse
+from amarken.example import main
 
-def parser():
-    root = argparse.ArgumentParser(description="amarken")
-    # ...
-    return root
-
-
-def main():
-    args = parser().parse_args()
-    #...
+if __name__ == "__main__":
+    main()

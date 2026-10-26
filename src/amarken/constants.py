@@ -1,13 +1,12 @@
 """
 Constants across codebases are defined here.
-This includes model names, dataset names, and other constants that are 
+This includes model names, dataset names, and other constants that are
 can change over time. Rather than hardcoding these or creating unnecessary flags,
 they are defined here to be imported and used across the codebase.
 """
 
 import tomllib
 from pathlib import Path
-
 
 with Path("pyproject.toml").open("rb") as f:
     project = tomllib.load(f)["project"]
