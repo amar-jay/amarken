@@ -2,15 +2,20 @@
 
 import os
 import random
+import sys
 import warnings
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
 from tqdm.auto import tqdm
 
+from amarken import distributed
 from amarken.constants import BASES
 from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
 from amarken.utils import prepare_run
@@ -70,8 +75,7 @@ class Trainer:
 
     Resume is at epoch boundaries. For reproducible resume use num_workers=0,
     global PyTorch RNG shuffling and deterministic data transforms. Custom
-    samplers, worker RNG, distributed training and gradient accumulation are
-    intentionally left to task-specific implementations.
+    worker RNG and gradient accumulation are left to task-specific implementations.
     """
 
     def __init__(
@@ -87,13 +91,19 @@ class Trainer:
         logger=None,
         run_label: str | None = None,
     ):
-        if int(os.environ.get("WORLD_SIZE", "1")) > 1:
+        if int(os.environ.get("WORLD_SIZE", "1")) > 1 and not distributed.active():
             raise ValueError(
-                "Trainer supports a single process; distributed training needs a custom loop"
+                "Initialize distributed.training_process before constructing the trainer"
             )
         self.config = config
         self.device = torch.device(config.device)
         self.model = model.to(self.device)
+        if distributed.active():
+            self.model = DistributedDataParallel(
+                self.model,
+                device_ids=[self.device.index] if self.device.type == "cuda" else None,
+            )
+            seed_everything(config.seed + distributed.rank())
         self.train_loader = train_loader
         self.validation_loader = validation_loader
         self.loss_fn = loss_fn
@@ -134,7 +144,9 @@ class Trainer:
             "run_id": self.run_id,
             "run_label": self.run_label,
             "best_metric": self.best_metric,
-            "model": self.model.state_dict(),
+            "model": distributed.unwrap(self.model).state_dict(),
+            "world_size": distributed.world_size(),
+            "rank_rng": getattr(self, "_rank_rng", None),
             "optimizer": self.optimizer.state_dict(),
             "scheduler": (
                 self.scheduler.state_dict() if self.scheduler is not None else None
@@ -146,12 +158,16 @@ class Trainer:
             "python_rng": random.getstate(),
             "torch_rng": torch.get_rng_state(),
             "cuda_rng": (
-                torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+                torch.cuda.get_rng_state_all()
+                if self.device.type == "cuda" and not distributed.active()
+                else None
             ),
         }
 
     def resume(self, path: str | Path):
         state = torch.load(path, map_location="cpu", weights_only=True)
+        if state.get("world_size", 1) != distributed.world_size():
+            raise ValueError("Resume requires the same world size")
         if state["format_version"] != 1:
             raise ValueError("Unsupported checkpoint format")
         if (state["scheduler"] is None) != (self.scheduler is None):
@@ -179,78 +195,133 @@ class Trainer:
         if Path(self.run_id).name != self.run_id or self.run_id in {".", "..", ""}:
             raise ValueError("Invalid checkpoint run ID")
         self._resumed = True
-        self.model.load_state_dict(state["model"])
+        distributed.unwrap(self.model).load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         if self.scheduler is not None:
             self.scheduler.load_state_dict(state["scheduler"])
         self.scaler.load_state_dict(state["scaler"])
         self.epoch, self.global_step = state["epoch"], state["global_step"]
-        random.setstate(state["python_rng"])
-        torch.set_rng_state(state["torch_rng"])
-        if state["cuda_rng"] is not None and torch.cuda.is_available():
-            torch.cuda.set_rng_state_all(state["cuda_rng"])
+        rng = state
+        if state.get("rank_rng") is not None:
+            rng = state["rank_rng"][distributed.rank()]
+        random.setstate(rng["python_rng"])
+        torch.set_rng_state(rng["torch_rng"])
+        if rng.get("cuda_local_rng") is not None:
+            torch.cuda.set_rng_state(rng["cuda_local_rng"], self.device)
+        elif rng["cuda_rng"] is not None and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(rng["cuda_rng"])
+
+    def _gather_rng(self):
+        cuda_rng = None
+        if self.device.type == "cuda":
+            cuda_rng = torch.cuda.get_rng_state(self.device)
+        rng = {
+            "python_rng": random.getstate(),
+            "torch_rng": torch.get_rng_state(),
+            "cuda_rng": None,
+            "cuda_local_rng": cuda_rng,
+        }
+        if distributed.active():
+            states = [None] * distributed.world_size()
+            dist.all_gather_object(states, rng)
+            self._rank_rng = states
 
     def _epoch_loss(self, loader, *, training):
         self.model.train(training)
-        total, batches = 0.0, 0
+        total, samples = 0.0, 0
         phase = "Train" if training else "Validation"
         with tqdm(
             loader,
             desc=f"Epoch {self.epoch + 1}/{self.config.epochs} {phase}",
             unit="batch",
             dynamic_ncols=True,
-            disable=None,
+            disable=None if distributed.primary() else True,
         ) as progress:
             for batch in progress:
-                if self.logger is not None:
-                    self.logger.check_checkpoint_errors()
+                if training:
+                    distributed.primary_call(
+                        lambda: (
+                            self.logger.check_checkpoint_errors()
+                            if self.logger
+                            else None
+                        )
+                    )
                 if training:
                     self.optimizer.zero_grad(set_to_none=True)
                 with torch.set_grad_enabled(training), self._autocast():
-                    loss = self.loss_fn(self.model, batch, self.device)
-                if loss.ndim != 0 or not torch.isfinite(loss).item():
+                    loss = self.loss_fn(
+                        self.model if training else distributed.unwrap(self.model),
+                        batch,
+                        self.device,
+                    )
+                valid = loss.ndim == 0 and torch.isfinite(loss).item()
+                if training and distributed.active():
+                    flag = torch.tensor(int(valid), device=self.device)
+                    dist.all_reduce(flag, op=dist.ReduceOp.MIN)
+                    valid = bool(flag.item())
+                if not valid:
                     raise ValueError("loss_fn must return a finite scalar loss")
                 if training:
                     self.scaler.scale(loss).backward()
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                     self.global_step += 1
-                total += loss.detach().item()
-                batches += 1
-                progress.set_postfix(loss=total / batches, refresh=False)
-        if not batches:
+                count = len(batch[1])
+                total += loss.detach().item() * count
+                samples += count
+                progress.set_postfix(loss=total / samples, refresh=False)
+        if training and distributed.active():
+            aggregate = torch.tensor(
+                [total, samples], dtype=torch.float64, device=self.device
+            )
+            dist.all_reduce(aggregate)
+            total, samples = aggregate.tolist()
+        if not samples:
             raise ValueError("Dataloaders must contain at least one batch")
-        return total / batches
+        return total / samples
 
     def fit(self):
-        prepare_run(self)
-        if self.logger is None:
-            with WandbLogger(
-                enabled=self.config.wandb.enabled,
-                mode=self.config.wandb.mode,
-                name=self.run_label or self.run_id,
-                config=asdict(self.config),
-                checkpoints=self.config.checkpoints,
-            ) as logger:
-                self.logger = logger
-                try:
-                    return self._fit()
-                finally:
-                    self.logger = None
-        try:
-            history = self._fit()
-        except BaseException:
-            try:
-                self.logger.flush_checkpoints()
-            except Exception as error:  # noqa: BLE001 - preserve the training exception
-                warnings.warn(
-                    f"Checkpoint flush failed during training exception: {error}",
-                    RuntimeWarning,
-                    stacklevel=2,
+        def prepare():
+            prepare_run(self)
+            return self.run_id, self.run_label
+
+        self.run_id, self.run_label = distributed.primary_call(prepare)
+        stack = ExitStack()
+        original_logger = self.logger
+
+        def open_logger():
+            if self.logger is None:
+                self.logger = stack.enter_context(
+                    WandbLogger(
+                        enabled=self.config.wandb.enabled,
+                        mode=self.config.wandb.mode,
+                        name=self.run_label or self.run_id,
+                        config=asdict(self.config),
+                        checkpoints=self.config.checkpoints,
+                    )
                 )
+
+        try:
+            distributed.primary_call(open_logger)
+            history = self._fit()
+            distributed.primary_call(lambda: self.logger.flush_checkpoints())
+            distributed.primary_call(stack.close)
+            return history
+        except BaseException:
+            if distributed.primary():
+                try:
+                    if self.logger is not None:
+                        self.logger.flush_checkpoints()
+                    stack.__exit__(*sys.exc_info())
+                except Exception as error:  # noqa: BLE001 - preserve original failure
+                    warnings.warn(
+                        f"Checkpoint cleanup failed: {error}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
             raise
-        self.logger.flush_checkpoints()
-        return history
+        finally:
+            self.logger = original_logger
 
     @property
     def checkpoint_prefix(self):
@@ -299,19 +370,36 @@ class Trainer:
         if settings.monitor not in available:
             raise ValueError(f"Checkpoint monitor {settings.monitor!r} is unavailable")
         history = []
-        self.logger.define_metric("train/*", step_metric="global_step")
-        self.logger.define_metric("val/*", step_metric="global_step")
+
+        def define_metrics():
+            self.logger.define_metric("train/*", step_metric="global_step")
+            self.logger.define_metric("val/*", step_metric="global_step")
+
+        distributed.primary_call(define_metrics)
         while self.epoch < self.config.epochs:
+            sampler = getattr(self.train_loader, "sampler", None)
+            if hasattr(sampler, "set_epoch"):
+                sampler.set_epoch(self.epoch)
             metrics = {"train/loss": self._epoch_loss(self.train_loader, training=True)}
             if self.validation_loader is not None:
-                metrics["val/loss"] = self._epoch_loss(
-                    self.validation_loader, training=False
+                # Match rank-zero buffers before evaluation and future training.
+                if distributed.active():
+                    for buffer in distributed.unwrap(self.model).buffers():
+                        dist.broadcast(buffer, src=0)
+                metrics["val/loss"] = distributed.primary_call(
+                    lambda: self._epoch_loss(self.validation_loader, training=False)
                 )
             if self.scheduler is not None:
                 self.scheduler.step()
             self.epoch += 1
             metrics["epoch"] = self.epoch
-            self.logger.log(metrics, global_step=self.global_step)
-            self._save_checkpoints(metrics)
+            self._gather_rng()
+
+            def log_and_save(metrics=metrics):
+                self.logger.log(metrics, global_step=self.global_step)
+                self._save_checkpoints(metrics)
+                return self.best_metric
+
+            self.best_metric = distributed.primary_call(log_and_save)
             history.append(metrics)
         return history

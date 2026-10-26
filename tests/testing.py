@@ -1,5 +1,8 @@
 import io
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -45,6 +48,79 @@ class TrainerTests(unittest.TestCase):
         )
 
     def test_resume_matches_uninterrupted_training(self):
+        from amarken.distributed import training_process
+
+        for local_rank in (0, 1):
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "WORLD_SIZE": "2",
+                        "LOCAL_WORLD_SIZE": "2",
+                        "LOCAL_RANK": str(local_rank),
+                    },
+                ),
+                patch("torch.cuda.device_count", return_value=1),
+                patch("torch.cuda.set_device") as set_device,
+                patch("torch.distributed.init_process_group") as initialize,
+                self.assertRaisesRegex(ValueError, "only 1 CUDA devices are visible"),
+                training_process("cuda"),
+            ):
+                self.fail("Oversized GPU launch should fail before entering training")
+            set_device.assert_not_called()
+            initialize.assert_not_called()
+
+        with tempfile.TemporaryDirectory() as distributed_directory:
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+            environment["OMP_NUM_THREADS"] = "1"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "torch.distributed.run",
+                    "--standalone",
+                    "--nproc-per-node=2",
+                    str(Path(__file__).resolve()),
+                    "--ddp-worker",
+                    distributed_directory,
+                ],
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            reports = [
+                json.loads(
+                    (Path(distributed_directory) / f"rank-{rank}.json").read_text()
+                )
+                for rank in range(2)
+            ]
+            self.assertEqual(reports[0]["history"], reports[1]["history"])
+            self.assertEqual(reports[0]["prompts"], 2)
+            self.assertEqual(reports[1]["prompts"], 0)
+            self.assertEqual(reports[0]["loggers"], 3)
+            self.assertEqual(reports[1]["loggers"], 0)
+            self.assertTrue(
+                set(reports[0]["indices"]).isdisjoint(reports[1]["indices"])
+            )
+            self.assertEqual(
+                len(reports[0]["indices"]) + len(reports[1]["indices"]), 32
+            )
+            # DDP weights remain loadable by the existing numeric inference module.
+            weights = (
+                Path(distributed_directory)
+                / "checkpoints"
+                / "full"
+                / "shared"
+                / "latest.pt"
+            )
+            load_model(weights)
+            with self.assertRaisesRegex(ValueError, "same world size"):
+                self.make_trainer(3).resume(weights)
+
         with (
             tempfile.TemporaryDirectory() as directory,
             patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
@@ -783,3 +859,119 @@ class TrainerTests(unittest.TestCase):
             finally:
                 release.set()
                 logger.finish()
+
+
+def distributed_worker(directory):
+    """Two-process integration exercise, launched only by the existing test."""
+    from amarken import distributed
+    from amarken.datasets.example import build_dataloaders, build_dataset
+    from amarken.utils import load_checkpoint_weights
+
+    training_losses = []
+
+    def objective(model, batch, device):
+        inputs, targets = (item.to(device) for item in batch)
+        logits = model(inputs)
+        if model.training:
+            logits = logits + torch.randn_like(logits) * 0.1
+        loss = torch.nn.functional.cross_entropy(logits, targets)
+        if model.training:
+            training_losses.append((loss.detach().item(), len(targets)))
+        return loss
+
+    directory = Path(directory)
+    with distributed.training_process("cpu"):  # noqa: SIM117 - verify cleanup below
+        with (
+            patch("amarken.logger.CHECKPOINT_DIR", directory / "checkpoints"),
+            patch("amarken.utils.prompt_run_name", return_value="shared") as prompt,
+            patch("amarken.trainer.WandbLogger", wraps=WandbLogger) as logger_factory,
+        ):
+
+            def create(name, epochs):
+                seed_everything(42)
+                model = build_model()
+                train_data, validation_data = build_dataset(train_size=32, val_size=7)
+                train, validation = build_dataloaders(
+                    train_data, validation_data, batch_size=3
+                )
+                config = TrainingConfig(
+                    epochs=epochs,
+                    run_name=name,
+                    checkpoints=CheckpointConfig(
+                        backend="local", overwrite=False, async_save=True
+                    ),
+                )
+                return Trainer(
+                    model, train, objective, config, validation_loader=validation
+                )
+
+            full = create("full", 2)
+            history = full.fit()
+            indices = list(full.train_loader.sampler)
+            local_losses = training_losses[-len(full.train_loader) :]
+            gathered_losses = [None] * distributed.world_size()
+            torch.distributed.all_gather_object(gathered_losses, local_losses)
+            loss_sum = sum(
+                value * count for losses in gathered_losses for value, count in losses
+            )
+            sample_count = sum(
+                count for losses in gathered_losses for _, count in losses
+            )
+            assert abs(history[-1]["train/loss"] - loss_sum / sample_count) < 1e-7
+
+            # Validation covers all seven rows, including the short final batch.
+            validation = full.validation_loader.dataset
+            with torch.inference_mode():
+                expected = objective(
+                    distributed.unwrap(full.model).eval(), validation.tensors, "cpu"
+                ).item()
+            assert abs(history[-1]["val/loss"] - expected) < 1e-6
+            parameters = torch.cat(
+                [p.detach().flatten() for p in full.model.parameters()]
+            )
+            reference = parameters.clone()
+            torch.distributed.broadcast(reference, 0)
+            torch.testing.assert_close(parameters, reference, rtol=0, atol=0)
+            partial = create("partial", 1)
+            partial.fit()
+            path = directory / "checkpoints" / "partial" / "shared" / "latest.pt"
+            resumed = create("partial", 2)
+            resumed.resume(path)
+            resumed_history = resumed.fit()
+            assert resumed_history[-1] == history[-1]
+            for key, value in distributed.unwrap(full.model).state_dict().items():
+                torch.testing.assert_close(
+                    value,
+                    distributed.unwrap(resumed.model).state_dict()[key],
+                    rtol=0,
+                    atol=0,
+                )
+            checkpoint = directory / "checkpoints" / "full" / "shared" / "latest.pt"
+            assert all(
+                not key.startswith("module.")
+                for key in load_checkpoint_weights(checkpoint)
+            )
+            # A rank-zero failure must reach every worker without hanging.
+            try:
+                distributed.primary_call(
+                    lambda: (_ for _ in ()).throw(ValueError("expected failure"))
+                )
+            except RuntimeError as error:
+                assert "expected failure" in str(error)
+            else:
+                raise AssertionError("Rank-zero failure was not propagated")
+            (directory / f"rank-{distributed.rank()}.json").write_text(
+                json.dumps(
+                    {
+                        "history": history,
+                        "indices": indices,
+                        "prompts": prompt.call_count,
+                        "loggers": logger_factory.call_count,
+                    }
+                )
+            )
+    assert not distributed.active()
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--ddp-worker":
+    distributed_worker(sys.argv[2])

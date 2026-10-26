@@ -376,3 +376,50 @@ checkpoint selection. Their new test subset may therefore have been seen during
 validation. Retrain with this partitioning before treating test results as held out.
 Keep the test set for final evaluation; use validation to tune your training.
 When switching `dataset.py`, also import `build_test_dataset` from the chosen module.
+
+### Multi-GPU training (DDP)
+
+Use one process per GPU, with `"device": "cuda"` in JSON:
+
+```bash
+uv run torchrun --standalone --nproc-per-node=2 --no-python \
+  amarken train --config configs/training-classification.json
+```
+
+DDP replicates the complete model on each GPU; it does not combine GPU memory.
+The launch environment enables it automatically. Use plain `amarken train` for
+single-device training. Fixed GPU indices such as `cuda:0` are unsuitable for a
+multi-GPU config: each process gets its own GPU from `LOCAL_RANK`.
+
+`batch_size` is per GPU: with two GPUs and batch size 4, the global batch size is
+8. Training samples are distributed and reshuffled each epoch. When the sample
+count is not divisible by the GPU count, the sampler repeats some rows so every
+rank takes the same number of steps. Training loss includes these repeated rows.
+Batch-mean loss callbacks are aggregated using sample counts.
+
+Rank zero alone handles the run-name prompt, directory creation, tqdm, W&B, and
+checkpoint writes/uploads. The full validation split runs on rank zero with no
+padded duplicate samples; its loss and checkpoint decisions are shared with all
+ranks. Async checkpoint serialization remains on rank zero, with communication
+on the training thread. Keep task-specific collectives out of validation callbacks.
+
+Resume with the same number of processes and the same training settings:
+
+```bash
+uv run torchrun --standalone --nproc-per-node=2 --no-python \
+  amarken train --config configs/training-classification.json \
+  --resume checkpoints/qwen-backbone/latest.pt
+```
+
+Checkpoints retain ordinary model weights for single-process inference/evaluation,
+and additionally save world size and each rank's RNG state. Training resume
+requires the same world size; older checkpoints count as single-process runs.
+Exact epoch-boundary reproducibility assumes unchanged data, seed, batch size,
+optimizer/scheduler settings and deterministic operations, with zero loader workers.
+`infer`, `validate`, and `test` remain single-process commands.
+
+The existing test suite includes a bounded two-process CPU/Gloo integration test
+for synchronization, sampling, weighted metrics, resume, checkpoint compatibility,
+and rank-zero failure propagation. The command above is the CUDA smoke check;
+run it on a host with at least two GPUs and confirm one checkpoint directory,
+one logging run, and successful resume.

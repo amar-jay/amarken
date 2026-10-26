@@ -4,7 +4,7 @@ Switch base to example below to use the numeric example. Each module
 exports build_model, load_model, predict, loss_fn and validation_step.
 """
 
-from amarken.modules.classification import (
+from amarken.modules.example import (
     build_model,
     load_model,
     loss_fn,

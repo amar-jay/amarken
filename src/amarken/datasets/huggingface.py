@@ -16,6 +16,7 @@ from amarken.constants import (
     HF_DATASET_TRAIN_SPLIT,
     HF_DATASET_VALIDATION_SPLIT,
 )
+from amarken.distributed import train_sampler
 
 
 def _build_dataset(
@@ -98,11 +99,13 @@ def build_dataloaders(
             )
         return inputs, targets
 
+    sampler = train_sampler(train)
     return (
         DataLoader(
             train,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=sampler is None,
+            sampler=sampler,
             collate_fn=collate,
             num_workers=0,
         ),

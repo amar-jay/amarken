@@ -1,12 +1,19 @@
+from dataclasses import replace
 from pathlib import Path
 
 from amarken.dataset import build_dataloaders, build_dataset
+from amarken.distributed import training_process
 from amarken.model import build_model, loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 
 
 def train_example(config: TrainingConfig, *, resume: Path | None = None):
     """Train the selected model and dataset without parsing command-line arguments."""
+    with training_process(config.device) as device:
+        return _train(replace(config, device=device), resume=resume)
+
+
+def _train(config, *, resume):
     seed_everything(config.seed)
     model = build_model(device=config.device, precision=config.precision)
     train_data, validation_data = build_dataset(

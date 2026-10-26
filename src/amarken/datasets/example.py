@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from amarken.constants import EXAMPLE_INPUT_SIZE
+from amarken.distributed import train_sampler
 
 
 def build_dataset(
@@ -34,8 +35,15 @@ def build_dataloaders(
     tokenize: Callable | None = None,
 ) -> tuple[DataLoader, DataLoader]:
     """Same signature as huggingface; numeric tensors need no tokenizer."""
+    sampler = train_sampler(train)
     return (
-        DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=0),
+        DataLoader(
+            train,
+            batch_size=batch_size,
+            shuffle=sampler is None,
+            sampler=sampler,
+            num_workers=0,
+        ),
         DataLoader(validation, batch_size=batch_size, num_workers=0),
     )
 

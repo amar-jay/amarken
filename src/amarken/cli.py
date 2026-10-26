@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from amarken.inference import run_inference
@@ -68,12 +69,17 @@ def main(argv=None):
     root = parser()
     args = root.parse_args(argv)
     try:
+        if args.command != "train" and int(os.environ.get("WORLD_SIZE", "1")) > 1:
+            raise ValueError(
+                "Only train supports torchrun; run evaluation and inference in one process"
+            )
         config = TrainingConfig(**json.loads(args.config.read_text()))
         if args.command == "train":
             checkpoint_prefix, history = train_example(config, resume=args.resume)
-            print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
-            for metrics in history:
-                print(json.dumps(metrics))
+            if int(os.environ.get("RANK", "0")) == 0:
+                print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
+                for metrics in history:
+                    print(json.dumps(metrics))
         elif args.command == "test":
             print(
                 json.dumps(

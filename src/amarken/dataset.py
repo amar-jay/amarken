@@ -4,7 +4,7 @@ Use datasets.example with modules.example, or datasets.huggingface with
 modules.classification. Both expose the same dataset/dataloader functions.
 """
 
-from amarken.datasets.huggingface import (
+from amarken.datasets.example import (
     build_dataloaders,
     build_dataset,
     build_test_dataset,
