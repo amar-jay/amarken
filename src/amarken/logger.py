@@ -38,6 +38,18 @@ from amarken.constants import CHECKPOINT_DIR, PROJECT_NAME, PROJECT_VERSION, WAN
 
 
 @dataclass(frozen=True)
+class WandbConfig:
+    enabled: bool = False
+    mode: str = "offline"
+
+    def __post_init__(self):
+        if type(self.enabled) is not bool:
+            raise ValueError("wandb.enabled must be a boolean")
+        if self.mode not in {"online", "offline", "disabled"}:
+            raise ValueError("wandb.mode must be online, offline, or disabled")
+
+
+@dataclass(frozen=True)
 class CheckpointConfig:
     """Local checkpoints with optional W&B or S3-compatible replication.
 

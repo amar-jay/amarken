@@ -18,8 +18,10 @@ into `TrainingConfig`; the trainer passes its checkpoint settings to the logger.
   "device": "cpu",
   "precision": "float32",
   "run_name": "synthetic-example",
-  "wandb_enabled": false,
-  "wandb_mode": "offline",
+  "wandb": {
+    "enabled": false,
+    "mode": "offline"
+  },
   "checkpoints": {
     "backend": "local",
     "policy": "default",
@@ -41,10 +43,10 @@ Edit the `checkpoints` section in that same file to select storage:
 | Backend | Settings |
 | --- | --- |
 | `local` | Keep checkpoints locally; no remote storage. |
-| `wandb` | Set `wandb_enabled` to `true`; save local files and W&B model artifacts. |
+| `wandb` | Set `wandb.enabled` to `true`; save local files and W&B model artifacts. |
 | `s3` | Set `bucket`, optionally `prefix`, `region_name` and `endpoint_url` for S3-compatible storage. |
 
-W&B metric tracking is controlled by `wandb_enabled` and `wandb_mode` in the
+W&B metric tracking is controlled by `wandb.enabled` and `wandb.mode` in the
 same config, independently of checkpoint storage. Bucket storage works with
 W&B disabled. Credentials come from AWS environment variables, an AWS profile
 or an IAM role; keep them out of the config.

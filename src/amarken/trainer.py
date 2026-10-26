@@ -11,7 +11,7 @@ from uuid import uuid4
 import torch
 
 from amarken.constants import BASES
-from amarken.logger import CheckpointConfig, WandbLogger
+from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
 from amarken.utils import prepare_run
 
 
@@ -25,13 +25,14 @@ class TrainingConfig:
     device: str = "cpu"
     precision: str = "float32"
     run_name: str = "training"
-    wandb_enabled: bool = False
-    wandb_mode: str = "offline"
+    wandb: WandbConfig = field(default_factory=WandbConfig)
     checkpoints: CheckpointConfig = field(
         default_factory=lambda: CheckpointConfig(backend="local")
     )
 
     def __post_init__(self):
+        if isinstance(self.wandb, dict):
+            self.wandb = WandbConfig(**self.wandb)
         if isinstance(self.checkpoints, dict):
             self.checkpoints = CheckpointConfig(**self.checkpoints)
         if self.epochs < 1 or self.batch_size < 1 or self.learning_rate <= 0:
@@ -40,8 +41,8 @@ class TrainingConfig:
             raise ValueError("precision must be float32, float16 or bfloat16")
         if self.precision == "float16" and torch.device(self.device).type != "cuda":
             raise ValueError("float16 training requires CUDA")
-        if self.checkpoints.backend == "wandb" and not self.wandb_enabled:
-            raise ValueError("W&B checkpoint storage requires wandb_enabled")
+        if self.checkpoints.backend == "wandb" and not self.wandb.enabled:
+            raise ValueError("W&B checkpoint storage requires wandb.enabled=true")
         if (
             not self.run_name
             or Path(self.run_name).name != self.run_name
@@ -208,8 +209,8 @@ class Trainer:
         prepare_run(self)
         if self.logger is None:
             with WandbLogger(
-                enabled=self.config.wandb_enabled,
-                mode=self.config.wandb_mode,
+                enabled=self.config.wandb.enabled,
+                mode=self.config.wandb.mode,
                 name=self.run_label or self.run_id,
                 config=asdict(self.config),
                 checkpoints=self.config.checkpoints,

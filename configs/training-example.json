@@ -7,8 +7,6 @@
   "device": "cpu",
   "precision": "float32",
   "run_name": "synthetic-example",
-  "wandb_enabled": false,
-  "wandb_mode": "online",
   "checkpoints": {
     "backend": "local",
     "policy": "default",
@@ -16,6 +14,10 @@
     "max_pending": 2,
     "monitor": "val/loss",
     "mode": "min",
-    "overwrite": true
+    "overwrite": false
+  },
+  "wandb": {
+    "enabled": true,
+    "mode": "online"
   }
 }

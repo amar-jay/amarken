@@ -63,6 +63,10 @@ class TrainerTests(unittest.TestCase):
                 )
 
     def test_checkpoint_policies(self):
+        nested = TrainingConfig(wandb={"enabled": True, "mode": "online"})
+        self.assertTrue(nested.wandb.enabled)
+        self.assertEqual(nested.wandb.mode, "online")
+        self.assertFalse(TrainingConfig().wandb.enabled)
         self.assertEqual(TrainingConfig().checkpoints.policy, "default")
         self.assertTrue(CheckpointConfig().overwrite)
         with self.assertRaises(ValueError):
