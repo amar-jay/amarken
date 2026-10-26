@@ -12,6 +12,7 @@ import torch
 
 from amarken.constants import BASES
 from amarken.logger import CheckpointConfig, WandbLogger
+from amarken.utils import prepare_run
 
 
 @dataclass
@@ -75,6 +76,7 @@ class Trainer:
         optimizer=None,
         scheduler=None,
         logger=None,
+        run_label: str | None = None,
     ):
         if int(os.environ.get("WORLD_SIZE", "1")) > 1:
             raise ValueError(
@@ -96,6 +98,15 @@ class Trainer:
         self.scaler = torch.amp.GradScaler(
             "cuda", enabled=config.precision == "float16"
         )
+        if run_label is not None and (
+            not run_label
+            or Path(run_label).name != run_label
+            or run_label in {".", ".."}
+        ):
+            raise ValueError("Run name must be a single directory name")
+        self.run_label = run_label
+        self._resumed = False
+        self._directory_prepared = False
         self.run_id = uuid4().hex
         self.best_metric = None
         self.epoch = 0
@@ -112,6 +123,7 @@ class Trainer:
         return {
             "format_version": 1,
             "run_id": self.run_id,
+            "run_label": self.run_label,
             "best_metric": self.best_metric,
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
@@ -146,7 +158,18 @@ class Trainer:
             self.best_metric = state.get("best_metric")
         else:
             self.best_metric = None
+        run_label = state.get("run_label")
+        if run_label is not None and (
+            not run_label
+            or Path(run_label).name != run_label
+            or run_label in {".", ".."}
+        ):
+            raise ValueError("Invalid checkpoint run name")
+        self.run_label = run_label
         self.run_id = state.get("run_id", self.run_id)
+        if Path(self.run_id).name != self.run_id or self.run_id in {".", "..", ""}:
+            raise ValueError("Invalid checkpoint run ID")
+        self._resumed = True
         self.model.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         if self.scheduler is not None:
@@ -182,10 +205,12 @@ class Trainer:
         return total / batches
 
     def fit(self):
+        prepare_run(self)
         if self.logger is None:
             with WandbLogger(
                 enabled=self.config.wandb_enabled,
                 mode=self.config.wandb_mode,
+                name=self.run_label or self.run_id,
                 config=asdict(self.config),
                 checkpoints=self.config.checkpoints,
             ) as logger:
@@ -211,46 +236,35 @@ class Trainer:
 
     @property
     def checkpoint_prefix(self):
-        """Fresh training runs have separate namespaces, including in buckets."""
-        return f"{self.config.run_name}/{self.run_id}"
+        """Use stable paths or one named/UUID directory per run."""
+        if self.config.checkpoints.overwrite:
+            return self.config.run_name
+        return f"{self.config.run_name}/{self.run_label or self.run_id}"
 
     def _save_checkpoints(self, metrics):
         settings = self.config.checkpoints
         filenames = []
-        if settings.policy == "all":
-            if (
-                self.epoch % settings.every_n_epochs == 0
-                or self.epoch == self.config.epochs
-            ):
-                filenames.append(
-                    (
-                        f"epoch-{self.epoch:04d}.pt",
-                        (f"epoch-{self.epoch:04d}", "latest"),
-                    )
-                )
-        else:
-            if settings.monitor not in metrics:
-                raise ValueError(
-                    f"Checkpoint monitor {settings.monitor!r} is unavailable"
-                )
-            value = float(metrics[settings.monitor])
-            improved = self.best_metric is None or (
-                value < self.best_metric
-                if settings.mode == "min"
-                else value > self.best_metric
-            )
-            if improved:
-                self.best_metric = value
-                filenames.append(("best.pt", ("best",)))
-            if settings.policy == "default":
-                filenames.append(("latest.pt", ("latest",)))
+        if settings.monitor not in metrics:
+            raise ValueError(f"Checkpoint monitor {settings.monitor!r} is unavailable")
+        value = float(metrics[settings.monitor])
+        improved = self.best_metric is None or (
+            value < self.best_metric
+            if settings.mode == "min"
+            else value > self.best_metric
+        )
+        if improved:
+            self.best_metric = value
+            filenames.append(("best.pt", ("best",)))
+        if settings.policy == "default":
+            filenames.append(("latest.pt", ("latest",)))
         for filename, aliases in filenames:
             artifact = self.logger.save_checkpoint(
                 self.state_dict(),
                 f"{self.checkpoint_prefix}/{filename}",
                 name=f"model-{self.run_id}",
                 aliases=aliases,
-                overwrite=settings.policy != "all",
+                # Update best/latest within the selected run directory.
+                overwrite=True,
             )
             if (
                 not settings.async_save
@@ -264,7 +278,7 @@ class Trainer:
         available = {"train/loss", "epoch"}
         if self.validation_loader is not None:
             available.add("val/loss")
-        if settings.policy != "all" and settings.monitor not in available:
+        if settings.monitor not in available:
             raise ValueError(f"Checkpoint monitor {settings.monitor!r} is unavailable")
         history = []
         self.logger.define_metric("train/*", step_metric="global_step")

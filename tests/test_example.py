@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from amarken.logger import CheckpointConfig, WandbLogger
 from amarken.main import loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
+from amarken.utils import prompt_run_name
 
 
 class TrainerTests(unittest.TestCase):
@@ -63,38 +64,129 @@ class TrainerTests(unittest.TestCase):
 
     def test_checkpoint_policies(self):
         self.assertEqual(TrainingConfig().checkpoints.policy, "default")
-        for policy, filenames in (
-            ("best", {"best.pt"}),
-            ("default", {"best.pt", "latest.pt"}),
-            ("all", {"epoch-0002.pt", "epoch-0003.pt"}),
+        self.assertTrue(CheckpointConfig().overwrite)
+        with self.assertRaises(ValueError):
+            CheckpointConfig(policy="all")
+        with self.assertRaises(ValueError):
+            CheckpointConfig(overwrite="false")
+        config = TrainingConfig(checkpoints={"backend": "local", "overwrite": False})
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("amarken.utils.questionary.text") as prompt,
         ):
+            prompt.return_value.ask.return_value = "my-run"
+            self.assertEqual(prompt_run_name(config), "my-run")
+            validator = prompt.call_args.kwargs["validate"]
+            self.assertIs(validator("my-run"), True)
+            self.assertIsInstance(validator("../escape"), str)
+            prompt.return_value.ask.return_value = "  "
+            self.assertIsNone(prompt_run_name(config))
+            prompt.return_value.ask.return_value = None
+            with self.assertRaises(SystemExit) as cancelled:
+                prompt_run_name(config)
+            self.assertEqual(cancelled.exception.code, 130)
+            prompt.reset_mock()
+            self.assertIsNone(prompt_run_name(config, resume=True))
+            self.assertIsNone(prompt_run_name(TrainingConfig()))
+            with patch("sys.stdin.isatty", return_value=False):
+                self.assertIsNone(prompt_run_name(config))
+            prompt.assert_not_called()
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+        ):
+            trainer = self.make_trainer(1)
+            trainer.config.checkpoints = CheckpointConfig(
+                backend="local", overwrite=False
+            )
             with (
-                self.subTest(policy=policy),
-                tempfile.TemporaryDirectory() as directory,
-                patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+                patch(
+                    "amarken.utils.prompt_run_name", return_value="fit-run"
+                ) as prompt,
+                patch.object(trainer, "_fit", return_value=[]) as training,
             ):
-                trainer = self.make_trainer(3)
-                trainer.scheduler = None
-                trainer.config.checkpoints = type(trainer.config.checkpoints)(
-                    backend="local", policy=policy, every_n_epochs=2, async_save=True
-                )
-                values = iter([3.0, 3.0, 2.0, 1.0, 1.0, 2.0])
-                with patch.object(
-                    trainer,
-                    "_epoch_loss",
-                    side_effect=values,
+                prompt.assert_not_called()
+                self.assertFalse((Path(directory) / "test/fit-run").exists())
+                trainer.fit()
+                prompt.assert_called_once_with(trainer.config, resume=False)
+                self.assertEqual(trainer.run_label, "fit-run")
+                self.assertTrue((Path(directory) / "test/fit-run").is_dir())
+                trainer.fit()
+                self.assertEqual(prompt.call_count, 1)
+                self.assertEqual(training.call_count, 2)
+
+        for policy in ("best", "default"):
+            for overwrite in (True, False):
+                with (
+                    self.subTest(policy=policy, overwrite=overwrite),
+                    tempfile.TemporaryDirectory() as directory,
+                    patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
                 ):
-                    trainer.fit()
-                root = Path(directory) / trainer.checkpoint_prefix
-                self.assertEqual({p.name for p in root.iterdir()}, filenames)
-                if policy != "all":
+                    filenames = (
+                        {"best.pt"} if policy == "best" else {"best.pt", "latest.pt"}
+                    )
+                    trainer = self.make_trainer(3)
+                    trainer.scheduler = None
+                    trainer.run_label = "named-run" if not overwrite else None
+                    trainer.config.checkpoints = CheckpointConfig(
+                        backend="local",
+                        policy=policy,
+                        overwrite=overwrite,
+                        async_save=True,
+                    )
+                    with patch.object(
+                        trainer,
+                        "_epoch_loss",
+                        side_effect=[3.0, 3.0, 2.0, 1.0, 1.0, 2.0],
+                    ):
+                        trainer.fit()
+                    root = Path(directory) / trainer.checkpoint_prefix
+                    self.assertEqual({p.name for p in root.iterdir()}, filenames)
                     self.assertEqual(
                         torch.load(root / "best.pt", weights_only=True)["epoch"], 2
                     )
-                if policy == "default":
-                    self.assertEqual(
-                        torch.load(root / "latest.pt", weights_only=True)["epoch"], 3
-                    )
+                    if policy == "default":
+                        self.assertEqual(
+                            torch.load(root / "latest.pt", weights_only=True)["epoch"],
+                            3,
+                        )
+                    repeated = self.make_trainer(1)
+                    repeated.scheduler = None
+                    repeated.config.checkpoints = trainer.config.checkpoints
+                    if overwrite:
+                        self.assertEqual(
+                            repeated.checkpoint_prefix, trainer.checkpoint_prefix
+                        )
+                        with patch.object(
+                            repeated, "_epoch_loss", side_effect=[4.0, 4.0]
+                        ):
+                            repeated.fit()
+                        self.assertEqual(
+                            {
+                                p.relative_to(Path(directory)).as_posix()
+                                for p in Path(directory).rglob("*.pt")
+                            },
+                            {f"test/{name}" for name in filenames},
+                        )
+                    else:
+                        self.assertEqual(trainer.checkpoint_prefix, "test/named-run")
+                        self.assertEqual(
+                            repeated.checkpoint_prefix, f"test/{repeated.run_id}"
+                        )
+                        repeated.run_label = trainer.run_label
+                        with self.assertRaises(FileExistsError):
+                            repeated.fit()
+                        repeated.resume(root / "best.pt")
+                        self.assertEqual(repeated.run_label, "named-run")
+                        self.assertEqual(
+                            repeated.checkpoint_prefix, trainer.checkpoint_prefix
+                        )
+                        repeated.config.epochs = 3
+                        with patch.object(
+                            repeated, "_epoch_loss", side_effect=[4.0, 4.0]
+                        ):
+                            repeated.fit()
 
         # A held writer proves snapshot isolation while training state mutates.
         with (

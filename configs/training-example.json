@@ -14,8 +14,8 @@
     "policy": "default",
     "async_save": true,
     "max_pending": 2,
-    "every_n_epochs": 1,
     "monitor": "val/loss",
-    "mode": "min"
+    "mode": "min",
+    "overwrite": true
   }
 }

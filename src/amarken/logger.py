@@ -48,7 +48,7 @@ class CheckpointConfig:
     async_save: bool = False
     max_pending: int = 2
     policy: str = "default"
-    every_n_epochs: int = 1
+    overwrite: bool = True
     monitor: str = "val/loss"
     mode: str = "min"
     backend: str = "wandb"
@@ -62,10 +62,10 @@ class CheckpointConfig:
             raise ValueError("async_save must be a boolean")
         if type(self.max_pending) is not int or self.max_pending < 1:
             raise ValueError("max_pending must be a positive integer")
-        if self.policy not in {"best", "default", "all"}:
-            raise ValueError("Checkpoint policy must be best, default, or all")
-        if type(self.every_n_epochs) is not int or self.every_n_epochs < 1:
-            raise ValueError("every_n_epochs must be a positive integer")
+        if type(self.overwrite) is not bool:
+            raise ValueError("overwrite must be a boolean")
+        if self.policy not in {"best", "default"}:
+            raise ValueError("Checkpoint policy must be best or default")
         if self.mode not in {"min", "max"}:
             raise ValueError("Checkpoint mode must be min or max")
         if not self.monitor:

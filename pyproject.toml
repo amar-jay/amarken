@@ -18,6 +18,7 @@ dependencies = [
   "wandb>=0.22",
   "transformers>=4.56",
   "trl>=1.16.0",
+  "questionary>=2.1.1",
 ]
 
 [project.scripts]

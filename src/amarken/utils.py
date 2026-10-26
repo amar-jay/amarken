@@ -1,0 +1,44 @@
+"""Shared training setup and interactive helpers."""
+
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import questionary
+
+from amarken import logger as logger_module
+
+if TYPE_CHECKING:
+    from amarken.trainer import Trainer, TrainingConfig
+
+
+def prompt_run_name(config: "TrainingConfig", *, resume: bool = False) -> str | None:
+    """Ask only for fresh isolated runs; blank/noninteractive uses UUID."""
+    if config.checkpoints.overwrite or resume or not sys.stdin.isatty():
+        return None
+
+    def validate(value):
+        name = value.strip()
+        if name and (Path(name).name != name or name in {".", ".."}):
+            return "Use a single directory name without path separators."
+        return True
+
+    answer = questionary.text(
+        "Run name (leave blank for UUID):", default="", validate=validate
+    ).ask()
+    if answer is None:
+        raise SystemExit(130)
+    return answer.strip() or None
+
+
+def prepare_run(trainer: "Trainer") -> None:
+    """Resolve a name and reserve its directory once, before fit starts work."""
+    if trainer._directory_prepared:
+        return
+    if trainer.run_label is None:
+        trainer.run_label = prompt_run_name(trainer.config, resume=trainer._resumed)
+    if not trainer.config.checkpoints.overwrite:
+        directory = logger_module.CHECKPOINT_DIR / trainer.checkpoint_prefix
+        # Only an explicit resume may reuse an isolated run's directory.
+        directory.mkdir(parents=True, exist_ok=trainer._resumed)
+    trainer._directory_prepared = True

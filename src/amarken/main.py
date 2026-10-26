@@ -36,7 +36,9 @@ def main(argv=None):
     trainer = Trainer(model, train, loss_fn, config, validation_loader=validation)
     if args.resume:
         trainer.resume(args.resume)
-    for metrics in trainer.fit():
+    history = trainer.fit()
+    print(f"Checkpoint directory: checkpoints/{trainer.checkpoint_prefix}")
+    for metrics in history:
         print(json.dumps(metrics))
 
 
