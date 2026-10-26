@@ -1,7 +1,7 @@
 [project]
 name = "amarken"
 version = "0.1.0"
-description = "amarken"
+description = "amarken: a series of finetuned models."
 readme = "README.md"
 authors = [{ name = "amar-jay", email = "abdelmanan.abdelrahman03@gmail.com" }]
 license = "Apache-2.0"
@@ -17,6 +17,7 @@ dependencies = [
   "tqdm>=4.70.1",
   "wandb>=0.22",
   "transformers>=4.56",
+  "trl>=1.16.0",
 ]
 
 [project.scripts]
@@ -32,7 +33,4 @@ requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = [
-    "black>=26.10.1",
-    "ruff>=0.17.2",
-]
+dev = ["black>=26.10.1", "ruff>=0.17.2"]
