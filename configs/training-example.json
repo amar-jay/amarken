@@ -9,5 +9,11 @@
   "run_name": "synthetic-example",
   "wandb_enabled": false,
   "wandb_mode": "offline",
-  "checkpoints": { "backend": "local" }
+  "checkpoints": {
+    "backend": "local",
+    "policy": "default",
+    "every_n_epochs": 1,
+    "monitor": "val/loss",
+    "mode": "min"
+  }
 }

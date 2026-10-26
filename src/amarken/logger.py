@@ -29,6 +29,7 @@ import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 from typing import Any, Self
 
 from amarken.constants import CHECKPOINT_DIR, PROJECT_NAME, PROJECT_VERSION, WANDB_CACHE
@@ -42,6 +43,10 @@ class CheckpointConfig:
     Use a distinct prefix (or filenames) for independent training runs.
     """
 
+    policy: str = "default"
+    every_n_epochs: int = 1
+    monitor: str = "val/loss"
+    mode: str = "min"
     backend: str = "wandb"
     bucket: str | None = None
     prefix: str = "checkpoints"
@@ -49,6 +54,14 @@ class CheckpointConfig:
     region_name: str | None = None
 
     def __post_init__(self):
+        if self.policy not in {"best", "default", "all"}:
+            raise ValueError("Checkpoint policy must be best, default, or all")
+        if type(self.every_n_epochs) is not int or self.every_n_epochs < 1:
+            raise ValueError("every_n_epochs must be a positive integer")
+        if self.mode not in {"min", "max"}:
+            raise ValueError("Checkpoint mode must be min or max")
+        if not self.monitor:
+            raise ValueError("Checkpoint monitor must be nonempty")
         if self.backend not in {"local", "wandb", "s3"}:
             raise ValueError("Checkpoint backend must be local, wandb, or s3")
         if self.backend == "s3" and not self.bucket:
@@ -285,12 +298,14 @@ class WandbLogger:
         name: str | None = None,
         aliases: Sequence[str] = ("latest",),
         metadata: Mapping[str, Any] | None = None,
+        overwrite: bool = True,
     ) -> Any:
         """Save beneath CHECKPOINT_DIR, then replicate to the configured backend.
 
         `path` is relative to the fixed directory; absolute paths and escapes are
         rejected. Nonzero ranks do nothing. Local/S3 saving works with enabled=False
         (W&B tracking disabled). Returns a Path, S3 URI, or W&B artifact handle.
+        Set overwrite=False to reject existing local files.
         Wait on W&B artifact handles before overwriting the same checkpoint.
         Include optimizer/scheduler/RNG state as needed; sharded state must be
         gathered by the caller. Upload failures propagate, retaining the local file.
@@ -324,7 +339,10 @@ class WandbLogger:
             temporary_path = Path(temporary.name)
         try:
             torch.save(dict(state), temporary_path)
-            temporary_path.replace(destination)
+            if overwrite:
+                temporary_path.replace(destination)
+            else:
+                os.link(temporary_path, destination)
         finally:
             temporary_path.unlink(missing_ok=True)
         if self.checkpoints.backend == "s3":
@@ -378,7 +396,12 @@ class WandbLogger:
             raise RuntimeError("Cannot reopen a finished run.")
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool:
         try:
             self.finish(exit_code=0 if exc_type is None else 1)
         except Exception as finish_error:

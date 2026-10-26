@@ -5,6 +5,7 @@ import random
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from uuid import uuid4
 
 import torch
 
@@ -94,6 +95,8 @@ class Trainer:
         self.scaler = torch.amp.GradScaler(
             "cuda", enabled=config.precision == "float16"
         )
+        self.run_id = uuid4().hex
+        self.best_metric = None
         self.epoch = 0
         self.global_step = 0
 
@@ -107,6 +110,8 @@ class Trainer:
     def state_dict(self):
         return {
             "format_version": 1,
+            "run_id": self.run_id,
+            "best_metric": self.best_metric,
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "scheduler": (
@@ -131,6 +136,16 @@ class Trainer:
             raise ValueError("Resume requires the same scheduler configuration")
         if state["config"]["precision"] != self.config.precision:
             raise ValueError("Resume requires the same precision")
+        previous = state["config"]["checkpoints"]
+        current = self.config.checkpoints
+        if (previous.get("monitor", "val/loss"), previous.get("mode", "min")) == (
+            current.monitor,
+            current.mode,
+        ):
+            self.best_metric = state.get("best_metric")
+        else:
+            self.best_metric = None
+        self.run_id = state.get("run_id", self.run_id)
         self.model.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         if self.scheduler is not None:
@@ -178,7 +193,59 @@ class Trainer:
                     self.logger = None
         return self._fit()
 
+    @property
+    def checkpoint_prefix(self):
+        """Fresh training runs have separate namespaces, including in buckets."""
+        return f"{self.config.run_name}/{self.run_id}"
+
+    def _save_checkpoints(self, metrics):
+        settings = self.config.checkpoints
+        filenames = []
+        if settings.policy == "all":
+            if (
+                self.epoch % settings.every_n_epochs == 0
+                or self.epoch == self.config.epochs
+            ):
+                filenames.append(
+                    (
+                        f"epoch-{self.epoch:04d}.pt",
+                        (f"epoch-{self.epoch:04d}", "latest"),
+                    )
+                )
+        else:
+            if settings.monitor not in metrics:
+                raise ValueError(
+                    f"Checkpoint monitor {settings.monitor!r} is unavailable"
+                )
+            value = float(metrics[settings.monitor])
+            improved = self.best_metric is None or (
+                value < self.best_metric
+                if settings.mode == "min"
+                else value > self.best_metric
+            )
+            if improved:
+                self.best_metric = value
+                filenames.append(("best.pt", ("best",)))
+            if settings.policy == "default":
+                filenames.append(("latest.pt", ("latest",)))
+        for filename, aliases in filenames:
+            artifact = self.logger.save_checkpoint(
+                self.state_dict(),
+                f"{self.checkpoint_prefix}/{filename}",
+                name=f"model-{self.run_id}",
+                aliases=aliases,
+                overwrite=settings.policy != "all",
+            )
+            if settings.backend == "wandb" and artifact is not None:
+                artifact.wait()
+
     def _fit(self):
+        settings = self.config.checkpoints
+        available = {"train/loss", "epoch"}
+        if self.validation_loader is not None:
+            available.add("val/loss")
+        if settings.policy != "all" and settings.monitor not in available:
+            raise ValueError(f"Checkpoint monitor {settings.monitor!r} is unavailable")
         history = []
         self.logger.define_metric("train/*", step_metric="global_step")
         self.logger.define_metric("val/*", step_metric="global_step")
@@ -193,10 +260,6 @@ class Trainer:
             self.epoch += 1
             metrics["epoch"] = self.epoch
             self.logger.log(metrics, global_step=self.global_step)
-            artifact = self.logger.save_checkpoint(
-                self.state_dict(), f"{self.config.run_name}/epoch-{self.epoch:04d}.pt"
-            )
-            if self.config.checkpoints.backend == "wandb" and artifact is not None:
-                artifact.wait()
+            self._save_checkpoints(metrics)
             history.append(metrics)
         return history

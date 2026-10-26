@@ -41,5 +41,8 @@ dev = [
 
 [tool.poe.tasks]
 test = "python -m unittest discover -s tests -v"
-lint = "ruff check ."
-format = "ruff format ."
+lint = [
+    { cmd = "ruff check ." },
+    { cmd = "ruff format ." },
+    { cmd = "black --check ." },
+]

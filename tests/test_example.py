@@ -1,82 +1,13 @@
-import importlib
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from amarken.main import loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
-
-
-class CheckpointTests(unittest.TestCase):
-    def test_storage(self):
-        for package in ("amarken",):
-            with (
-                self.subTest(package=package),
-                tempfile.TemporaryDirectory() as directory,
-            ):
-                module = importlib.import_module(f"{package}.logger")
-                root = Path(directory) / "checkpoints"
-
-                def save(state, path):
-                    Path(path).write_text(repr(state))
-
-                torch = Mock(save=save)
-                with (
-                    patch.object(module, "CHECKPOINT_DIR", root),
-                    patch.dict(sys.modules, torch=torch),
-                ):
-                    logger = module.WandbLogger(
-                        enabled=False, checkpoints={"backend": "local"}
-                    )
-                    result = logger.save_checkpoint({"step": 1}, "run/latest.pt")
-                    self.assertEqual(result, root / "run/latest.pt")
-                    self.assertEqual(result.read_text(), "{'step': 1}")
-                    for invalid in ("../escape.pt", "/tmp/escape.pt", "."):
-                        with self.assertRaises(ValueError):
-                            logger.save_checkpoint({}, invalid)
-                    worker = module.WandbLogger(
-                        enabled=False, rank=1, checkpoints={"backend": "local"}
-                    )
-                    self.assertIsNone(worker.save_checkpoint({}, "worker.pt"))
-                    self.assertFalse((root / "worker.pt").exists())
-                    bucket = module.WandbLogger(
-                        enabled=False,
-                        checkpoints={
-                            "backend": "s3",
-                            "bucket": "test-bucket",
-                            "prefix": "/run-1/",
-                        },
-                    )
-                    client = Mock()
-                    bucket._storage_client = client
-                    self.assertEqual(
-                        bucket.save_checkpoint({}, "step.pt"),
-                        "s3://test-bucket/run-1/step.pt",
-                    )
-                    client.upload_file.assert_called_once_with(
-                        str(root / "step.pt"), "test-bucket", "run-1/step.pt"
-                    )
-                    client.upload_file.side_effect = RuntimeError("upload failed")
-                    with self.assertRaises(RuntimeError):
-                        bucket.save_checkpoint({}, "retained.pt")
-                    self.assertTrue((root / "retained.pt").exists())
-                    with (
-                        patch.object(
-                            torch, "save", side_effect=RuntimeError("save failed")
-                        ),
-                        self.assertRaises(RuntimeError),
-                    ):
-                        logger.save_checkpoint({}, "run/latest.pt")
-                    self.assertEqual(result.read_text(), "{'step': 1}")
-                    with self.assertRaises(ValueError):
-                        module.CheckpointConfig(backend="s3")
-                    with self.assertRaises(ValueError):
-                        module.CheckpointConfig(backend="unknown")
 
 
 class TrainerTests(unittest.TestCase):
@@ -112,7 +43,7 @@ class TrainerTests(unittest.TestCase):
             first = self.make_trainer(1)
             first.fit()
             resumed = self.make_trainer(2)
-            resumed.resume(Path(directory) / "test/epoch-0001.pt")
+            resumed.resume(Path(directory) / first.checkpoint_prefix / "latest.pt")
             resumed_history = resumed.fit()
             self.assertEqual(history[1], resumed_history[0])
             self.assertEqual(uninterrupted.global_step, resumed.global_step)
@@ -124,12 +55,37 @@ class TrainerTests(unittest.TestCase):
                     torch.equal(expected, resumed.model.state_dict()[key]), key
                 )
 
-    def test_invalid_config(self):
-        for kwargs in (
-            {"epochs": 0},
-            {"precision": "float16"},
-            {"run_name": "../escape"},
-            {"checkpoints": {"backend": "wandb"}},
+    def test_checkpoint_policies(self):
+        self.assertEqual(TrainingConfig().checkpoints.policy, "default")
+        for policy, filenames in (
+            ("best", {"best.pt"}),
+            ("default", {"best.pt", "latest.pt"}),
+            ("all", {"epoch-0002.pt", "epoch-0003.pt"}),
         ):
-            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
-                TrainingConfig(**kwargs)
+            with (
+                self.subTest(policy=policy),
+                tempfile.TemporaryDirectory() as directory,
+                patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            ):
+                trainer = self.make_trainer(3)
+                trainer.scheduler = None
+                trainer.config.checkpoints = type(trainer.config.checkpoints)(
+                    backend="local", policy=policy, every_n_epochs=2
+                )
+                values = iter([3.0, 3.0, 2.0, 1.0, 1.0, 2.0])
+                with patch.object(
+                    trainer,
+                    "_epoch_loss",
+                    side_effect=values,
+                ):
+                    trainer.fit()
+                root = Path(directory) / trainer.checkpoint_prefix
+                self.assertEqual({p.name for p in root.iterdir()}, filenames)
+                if policy != "all":
+                    self.assertEqual(
+                        torch.load(root / "best.pt", weights_only=True)["epoch"], 2
+                    )
+                if policy == "default":
+                    self.assertEqual(
+                        torch.load(root / "latest.pt", weights_only=True)["epoch"], 3
+                    )

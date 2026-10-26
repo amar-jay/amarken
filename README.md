@@ -22,6 +22,10 @@ into `TrainingConfig`; the trainer passes its checkpoint settings to the logger.
   "wandb_mode": "offline",
   "checkpoints": {
     "backend": "local",
+    "policy": "default",
+    "every_n_epochs": 1,
+    "monitor": "val/loss",
+    "mode": "min",
     "bucket": null,
     "prefix": "checkpoints",
     "endpoint_url": null,
@@ -55,12 +59,31 @@ Run the small CPU classification task (no downloads or W&B account needed):
 ```bash
 uv run amarken example --config configs/training-example.json
 uv run amarken example --config configs/training-example.json \
-  --resume checkpoints/synthetic-example/epoch-0001.pt
+  --resume "checkpoints/synthetic-example/<run-id>/latest.pt"
 ```
 
-`epochs` is the total target epoch count, including completed epochs. Each epoch
-writes a separate checkpoint beneath `checkpoints/<run_name>/`. Choose a new
-`run_name` for independent experiments; repeated names overwrite matching files.
+`epochs` is the total target epoch count, including completed epochs. Fresh runs
+save beneath `checkpoints/<run_name>/<run-id>/` with a generated unique run ID,
+so repeated experiments do not overwrite each other. Resume preserves that ID. Numbered checkpoints are never replaced locally;
+resuming an older epoch into an existing numbered file raises an error.
+Use a fresh run for a separate training branch.
+Replace `<run-id>` in the resume command with the directory created by your run.
+
+Checkpoint policy is configured in the same `checkpoints` section:
+
+| Policy | Saved files |
+| --- | --- |
+| `best` | `best.pt`, updated only on strict metric improvement; ties keep the earlier best. |
+| `default` | `best.pt` plus `latest.pt`, updated every completed epoch. |
+| `all` | Separate `epoch-XXXX.pt` files every `every_n_epochs`, plus the final epoch. |
+
+`monitor` selects `val/loss` or `train/loss`; `mode` is `min` or `max`.
+Validation loss requires a validation loader. `every_n_epochs` applies only to
+`all`; best policies evaluate every epoch. The default policy is `default` in both code and the example config. Resume restores the best metric
+when monitor and mode match; changing either starts a new best comparison.
+The same selected files are uploaded for bucket and W&B storage. W&B aliases
+identify `best`, `latest` or the saved epoch. W&B retains artifact version history;
+these policies control saves and local files, without deleting remote versions.
 The synthetic example constructs an MLP; `model_id` records the task's model name.
 The generic trainer accepts an already constructed model, rather than loading it.
 
