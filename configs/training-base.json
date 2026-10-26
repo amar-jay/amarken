@@ -4,7 +4,7 @@
   "learning_rate": 0.01,
   "batch_size": 16,
   "epochs": 3,
-  "device": "cpu",
+  "device": "cuda",
   "precision": "float32",
   "run_name": "qwen-backbone",
   "checkpoints": {

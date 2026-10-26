@@ -1,0 +1,23 @@
+{
+  "model_id": "Qwen/Qwen3.5-0.8B",
+  "seed": 42,
+  "learning_rate": 0.01,
+  "batch_size": 1,
+  "epochs": 3,
+  "device": "cuda",
+  "precision": "bfloat16",
+  "run_name": "qwen-backbone",
+  "checkpoints": {
+    "backend": "local",
+    "policy": "default",
+    "async_save": true,
+    "max_pending": 2,
+    "monitor": "val/loss",
+    "mode": "min",
+    "overwrite": true
+  },
+  "wandb": {
+    "enabled": false,
+    "mode": "online"
+  }
+}

@@ -242,6 +242,59 @@ class TrainerTests(unittest.TestCase):
                         run_inference(pending.result(), ["hello"]), expected
                     )
 
+                # A task-specific derivative uses the same interface and its own loss.
+                from amarken.modules import classification
+
+                classifier = classification.build_model(device="cpu")
+                self.assertTrue(classifier.head.training)
+                self.assertFalse(classifier.backbone.training)
+                self.assertTrue(
+                    all(not p.requires_grad for p in classifier.backbone.parameters())
+                )
+                head_before = classifier.head.weight.detach().clone()
+                backbone_before = {
+                    name: p.detach().clone()
+                    for name, p in classifier.backbone.named_parameters()
+                }
+                tokenized = classifier.tokenize(["hello"])
+                classification_batch = (tokenized, torch.tensor([1]))
+                training_config = TrainingConfig(
+                    epochs=1,
+                    run_name="classification-test",
+                    checkpoints={"backend": "local", "async_save": True},
+                )
+                classification_trainer = Trainer(
+                    classifier,
+                    [classification_batch],
+                    classification.loss_fn,
+                    training_config,
+                    validation_loader=[classification_batch],
+                )
+                history = classification_trainer.fit()
+                self.assertTrue(torch.isfinite(torch.tensor(history[0]["train/loss"])))
+                self.assertFalse(torch.equal(head_before, classifier.head.weight))
+                for name, parameter in classifier.backbone.named_parameters():
+                    self.assertTrue(torch.equal(backbone_before[name], parameter))
+                expected_classes = classification.predict(classifier, "hello")
+                classifier_checkpoint = (
+                    Path(directory) / "classification-test/latest.pt"
+                )
+                restored_classifier = classification.load_model(classifier_checkpoint)
+                actual_classes = classification.predict(restored_classifier, ["hello"])
+                self.assertEqual(
+                    actual_classes["predictions"], expected_classes["predictions"]
+                )
+                self.assertEqual(actual_classes["labels"], expected_classes["labels"])
+                torch.testing.assert_close(
+                    torch.tensor(actual_classes["probabilities"]),
+                    torch.tensor(expected_classes["probabilities"]),
+                )
+                self.assertEqual(pretrained.call_count, 2)
+                with self.assertRaisesRegex(TypeError, "tokenized dictionary"):
+                    classification.loss_fn(
+                        classifier, (torch.ones(1, 8), torch.tensor([1])), "cpu"
+                    )
+
     def test_checkpoint_policies(self):
         nested = TrainingConfig(wandb={"enabled": True, "mode": "online"})
         self.assertTrue(nested.wandb.enabled)

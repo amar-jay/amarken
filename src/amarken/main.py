@@ -1,28 +1,21 @@
 from pathlib import Path
 
-import torch
-from torch.utils.data import DataLoader, TensorDataset
-
+from amarken.dataset import build_dataloaders, build_dataset
 from amarken.model import build_model, loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 
 
 def train_example(config: TrainingConfig, *, resume: Path | None = None):
-    """Train the synthetic task without parsing command-line arguments."""
+    """Train the selected model and dataset without parsing command-line arguments."""
     seed_everything(config.seed)
-    # Dedicated generator keeps dataset generation independent of training RNG.
-    generator = torch.Generator().manual_seed(config.seed)
-    inputs = torch.randn(160, 8, generator=generator)
-    labels = (inputs[:, 0] + inputs[:, 1] > 0).long()
-    train = DataLoader(
-        TensorDataset(inputs[:128], labels[:128]),
-        batch_size=config.batch_size,
-        shuffle=True,
-    )
-    validation = DataLoader(
-        TensorDataset(inputs[128:], labels[128:]), batch_size=config.batch_size
-    )
     model = build_model(device=config.device)
+    train_data, validation_data = build_dataset(seed=config.seed)
+    train, validation = build_dataloaders(
+        train_data,
+        validation_data,
+        batch_size=config.batch_size,
+        tokenize=getattr(model, "tokenize", None),
+    )
     trainer = Trainer(model, train, loss_fn, config, validation_loader=validation)
     if resume is not None:
         trainer.resume(resume)

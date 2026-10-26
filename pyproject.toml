@@ -20,6 +20,7 @@ dependencies = [
   "trl>=1.16.0",
   "tqdm>=4.70.1",
   "wandb>=0.22",
+  "flash-linear-attention>=0.6.0",
 ]
 
 [project.scripts]

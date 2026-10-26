@@ -223,3 +223,34 @@ The base implementation is an explicit task-loss placeholder: pooled features
 do not define a classification or language-modeling objective. Implement that
 function when your task/targets are defined. Dataset preparation is unchanged;
 the numeric training data still cannot be passed directly to the text backbone.
+
+## Optional text classification
+
+`modules/classification.py` derives from `base` and adds a linear classification
+head with a cross-entropy objective. It exposes the same `build_model`,
+`load_model`, `predict`, and `loss_fn` functions. To select it, change the import
+in `src/amarken/model.py` to:
+
+```python
+from amarken.modules.classification import build_model, load_model, loss_fn, predict
+```
+
+`CLASSIFICATION_LABELS` in `constants.py` defaults to `("negative", "positive")`.
+Targets are integer class indices in that order. `CLASSIFICATION_FREEZE_BACKBONE`
+defaults to `True`: only the head trains, and the frozen backbone stays in eval
+mode. Set it to `False` to fine-tune the backbone too. Prediction returns class
+indices, label names and probabilities. Restore loads both backbone and head;
+keep labels and backbone settings consistent with the saved checkpoint.
+
+```python
+model = build_model(device="cpu")
+inputs = model.tokenize(["I loved this", "I disliked this"])
+targets = torch.tensor([1, 0])
+loss = loss_fn(model, (inputs, targets), "cpu")
+loss.backward()
+```
+
+The dataset and numeric training demo are unchanged. This module defines an
+objective and batch contract; plug in tokenized text batches when adding your
+dataset. Existing feature-backbone checkpoints do not include the new head;
+train and save a classifier checkpoint before loading it with this module.

@@ -45,3 +45,7 @@ BASE_LOCAL_FILES_ONLY = False
 EXAMPLE_INPUT_SIZE = 8
 EXAMPLE_HIDDEN_SIZE = 16
 EXAMPLE_NUM_CLASSES = 2
+
+# Optional classification module: class order must match training checkpoints.
+CLASSIFICATION_LABELS = ("negative", "positive")
+CLASSIFICATION_FREEZE_BACKBONE = True
