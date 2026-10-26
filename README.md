@@ -265,7 +265,7 @@ from amarken.datasets.huggingface import build_dataset, build_dataloaders
 Both expose the same interface:
 
 ```python
-train_data, validation_data = build_dataset(seed=42)
+train_data, validation_data = build_dataset(seed=42, train_size=128, val_size=32)
 train_loader, validation_loader = build_dataloaders(
     train_data,
     validation_data,
@@ -280,14 +280,14 @@ train_loader, validation_loader = build_dataloaders(
 | `datasets.huggingface` | `modules.classification` | Tokenized text dictionaries and integer labels. |
 
 The random module preserves the original 128/32 numeric demo, generating data
-with a private seeded generator. Sizes are `RANDOM_TRAIN_SIZE` and
-`RANDOM_VALIDATION_SIZE` in `constants.py`.
+with a private seeded generator. Set `train_size` and `val_size` in the training
+JSON config; both must be positive integers. Defaults are 128 and 32.
 
 The Hugging Face module defaults to pinned `stanfordnlp/sst2` train/validation
 splits, with 0=negative and 1=positive, matching the classifier label order.
-Dataset ID, revision, split names, column names and sample limits live in
-`constants.py`. It selects 128 training and 32 validation examples by default;
-set the corresponding limits to `None` to use complete splits. Sampling limits
+Dataset ID, revision, split names and column names live in `constants.py`.
+The same JSON `train_size` and `val_size` settings control sample counts, capped
+at the available split sizes. Sampling limits
 reduce training work, but the initial dataset download may include full splits.
 
 Text is tokenized per batch through the selected model's `tokenize()`, preserving

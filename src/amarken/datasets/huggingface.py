@@ -15,12 +15,12 @@ from amarken.constants import (
     HF_DATASET_TEXT_COLUMN,
     HF_DATASET_TRAIN_SPLIT,
     HF_DATASET_VALIDATION_SPLIT,
-    HF_TRAIN_SIZE,
-    HF_VALIDATION_SIZE,
 )
 
 
-def build_dataset(*, seed: int = 42) -> tuple[Dataset, Dataset]:
+def build_dataset(
+    *, seed: int = 42, train_size: int = 128, val_size: int = 32
+) -> tuple[Dataset, Dataset]:
     train, validation = load_dataset(
         HF_DATASET_ID,
         name=HF_DATASET_CONFIG,
@@ -43,7 +43,7 @@ def build_dataset(*, seed: int = 42) -> tuple[Dataset, Dataset]:
             dataset = dataset.shuffle(seed=seed).select(range(min(size, len(dataset))))
         return dataset
 
-    return sample(train, HF_TRAIN_SIZE), sample(validation, HF_VALIDATION_SIZE)
+    return sample(train, train_size), sample(validation, val_size)
 
 
 def build_dataloaders(

@@ -5,24 +5,24 @@ from collections.abc import Callable
 import torch
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
-from amarken.constants import (
-    EXAMPLE_INPUT_SIZE,
-    RANDOM_TRAIN_SIZE,
-    RANDOM_VALIDATION_SIZE,
-)
+from amarken.constants import EXAMPLE_INPUT_SIZE
 
 
-def build_dataset(*, seed: int = 42) -> tuple[Dataset, Dataset]:
+def build_dataset(
+    *, seed: int = 42, train_size: int = 128, val_size: int = 32
+) -> tuple[Dataset, Dataset]:
+    if any(type(size) is not int or size < 1 for size in (train_size, val_size)):
+        raise ValueError("Dataset sizes must be positive integers")
     generator = torch.Generator().manual_seed(seed)
     inputs = torch.randn(
-        RANDOM_TRAIN_SIZE + RANDOM_VALIDATION_SIZE,
+        train_size + val_size,
         EXAMPLE_INPUT_SIZE,
         generator=generator,
     )
     targets = (inputs[:, 0] + inputs[:, 1] > 0).long()
     return (
-        TensorDataset(inputs[:RANDOM_TRAIN_SIZE], targets[:RANDOM_TRAIN_SIZE]),
-        TensorDataset(inputs[RANDOM_TRAIN_SIZE:], targets[RANDOM_TRAIN_SIZE:]),
+        TensorDataset(inputs[:train_size], targets[:train_size]),
+        TensorDataset(inputs[train_size:], targets[train_size:]),
     )
 
 

@@ -9,7 +9,9 @@ def train_example(config: TrainingConfig, *, resume: Path | None = None):
     """Train the selected model and dataset without parsing command-line arguments."""
     seed_everything(config.seed)
     model = build_model(device=config.device, precision=config.precision)
-    train_data, validation_data = build_dataset(seed=config.seed)
+    train_data, validation_data = build_dataset(
+        seed=config.seed, train_size=config.train_size, val_size=config.val_size
+    )
     train, validation = build_dataloaders(
         train_data,
         validation_data,

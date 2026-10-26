@@ -318,8 +318,13 @@ class TrainerTests(unittest.TestCase):
                 from amarken.datasets import huggingface as hub_data
                 from amarken.main import train_example
 
-                random_train, random_validation = random_data.build_dataset(seed=42)
-                repeated_train, _ = random_data.build_dataset(seed=42)
+                random_train, random_validation = random_data.build_dataset(
+                    seed=42, train_size=12, val_size=4
+                )
+                self.assertEqual((len(random_train), len(random_validation)), (12, 4))
+                repeated_train, _ = random_data.build_dataset(
+                    seed=42, train_size=12, val_size=4
+                )
                 torch.testing.assert_close(
                     random_train.tensors[0], repeated_train.tensors[0]
                 )
@@ -346,10 +351,10 @@ class TrainerTests(unittest.TestCase):
                         "amarken.datasets.huggingface.load_dataset",
                         return_value=[text_rows, text_rows],
                     ) as hub_load,
-                    patch("amarken.datasets.huggingface.HF_TRAIN_SIZE", 3),
-                    patch("amarken.datasets.huggingface.HF_VALIDATION_SIZE", 2),
                 ):
-                    text_train, text_validation = hub_data.build_dataset(seed=42)
+                    text_train, text_validation = hub_data.build_dataset(
+                        seed=42, train_size=3, val_size=2
+                    )
                     self.assertEqual((len(text_train), len(text_validation)), (3, 2))
                     self.assertEqual(
                         hub_load.call_args.kwargs["split"], ["train", "validation"]

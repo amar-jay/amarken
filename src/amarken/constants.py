@@ -47,9 +47,6 @@ EXAMPLE_NUM_CLASSES = 2
 CLASSIFICATION_LABELS = ("negative", "positive")
 CLASSIFICATION_FREEZE_BACKBONE = True
 
-# Random numeric dataset example.
-RANDOM_TRAIN_SIZE = 128
-RANDOM_VALIDATION_SIZE = 32
 
 # Hugging Face dataset example. SST-2 labels: 0=negative, 1=positive.
 HF_DATASET_ID = "stanfordnlp/sst2"
@@ -59,5 +56,3 @@ HF_DATASET_TRAIN_SPLIT = "train"
 HF_DATASET_VALIDATION_SPLIT = "validation"
 HF_DATASET_TEXT_COLUMN = "sentence"
 HF_DATASET_LABEL_COLUMN = "label"
-HF_TRAIN_SIZE = 128
-HF_VALIDATION_SIZE = 32

@@ -2,6 +2,8 @@
   "model_id": "Qwen/Qwen3.5-0.8B",
   "seed": 42,
   "learning_rate": 0.01,
+  "train_size": 128,
+  "val_size": 32,
   "batch_size": 16,
   "epochs": 3,
   "device": "cuda",
