@@ -41,17 +41,19 @@ class TextClassifier(nn.Module):
         return self.head(self.backbone(inputs))
 
 
-def build_model(*, device: str = "cpu") -> TextClassifier:
-    return TextClassifier(build_backbone(device=device))
+def build_model(*, device: str = "cpu", precision: str = "float32") -> TextClassifier:
+    return TextClassifier(build_backbone(device=device, precision=precision))
 
 
-def load_model(checkpoint: str | Path, *, device: str = "cpu") -> TextClassifier:
+def load_model(
+    checkpoint: str | Path, *, device: str = "cpu", precision: str = "float32"
+) -> TextClassifier:
     weights = load_checkpoint_weights(checkpoint)
     if "head.weight" not in weights:
         raise ValueError(
             "Expected a classification checkpoint with trained head weights"
         )
-    backbone = BaseModel.load(BaseConfig(), pretrained=False)
+    backbone = BaseModel.load(BaseConfig(dtype=precision), pretrained=False)
     model = TextClassifier(backbone)
     model.load_state_dict(weights, strict=True)
     return model.to(device).eval()

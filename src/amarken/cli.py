@@ -63,7 +63,10 @@ def main(argv=None):
                 else args.input
             )
             result = run_inference(
-                args.checkpoint, json.loads(raw), device=config.device
+                args.checkpoint,
+                json.loads(raw),
+                device=config.device,
+                precision=config.precision,
             )
             print(json.dumps(result, allow_nan=False))
     except (OSError, ValueError, TypeError, RuntimeError) as error:

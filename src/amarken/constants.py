@@ -30,15 +30,12 @@ HUB_CACHE = ".cache/huggingface/hub"
 DATA_CACHE = ".cache/huggingface/datasets"
 WANDB_CACHE = ".cache/wandb"
 
-WANDB_MODES = ("disabled", "offline", "online")
-
 # Stable across working directories; keep training state outside SDK caches.
 CHECKPOINT_DIR = Path(__file__).resolve().parents[2] / "checkpoints"
 
 # Optional Hugging Face backbone settings. Keep these consistent with checkpoints.
 BASE_MODEL_ID = BASES[0]
 BASE_MAX_LENGTH = 2048
-BASE_DTYPE = "float32"
 BASE_LOCAL_FILES_ONLY = False
 
 # Numeric example architecture.
@@ -49,3 +46,18 @@ EXAMPLE_NUM_CLASSES = 2
 # Optional classification module: class order must match training checkpoints.
 CLASSIFICATION_LABELS = ("negative", "positive")
 CLASSIFICATION_FREEZE_BACKBONE = True
+
+# Random numeric dataset example.
+RANDOM_TRAIN_SIZE = 128
+RANDOM_VALIDATION_SIZE = 32
+
+# Hugging Face dataset example. SST-2 labels: 0=negative, 1=positive.
+HF_DATASET_ID = "stanfordnlp/sst2"
+HF_DATASET_CONFIG = None
+HF_DATASET_REVISION = "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+HF_DATASET_TRAIN_SPLIT = "train"
+HF_DATASET_VALIDATION_SPLIT = "validation"
+HF_DATASET_TEXT_COLUMN = "sentence"
+HF_DATASET_LABEL_COLUMN = "label"
+HF_TRAIN_SIZE = 128
+HF_VALIDATION_SIZE = 32

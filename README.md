@@ -169,16 +169,15 @@ if needed. For text inference, pass JSON such as `--input '["hello", "world"]'`.
 Inputs and outputs remain specific to each implementation, behind matching calls.
 
 Hugging Face settings live in `constants.py`: `BASE_MODEL_ID`, `REVISIONS`,
-`BASE_MAX_LENGTH`, `BASE_DTYPE`, `BASE_LOCAL_FILES_ONLY`, and `HUB_CACHE`.
+`BASE_MAX_LENGTH`, `BASE_LOCAL_FILES_ONLY`, and `HUB_CACHE`.
 The example dimensions are defined there too. Keep architecture settings the
 same when restoring trained checkpoints. Backbone restore loads the pinned
 config and tokenizer from the Hub/cache, constructs the architecture, then
 loads checkpoint weights without reloading the original pretrained weights.
 Set `BASE_LOCAL_FILES_ONLY=True` to require cached config/tokenizer assets.
 
-Dataset preparation and loss handling stay task-specific in `main.py` and
-the selected module's `loss_fn`. The supplied training command still uses synthetic numeric
-data; selecting the text backbone does not turn that data into a text dataset.
+Dataset selection lives in `dataset.py`; loss handling lives in the selected
+model module. Choose a compatible model/dataset pair as described below.
 Either implementation module can be deleted once the other is selected and
 its unused imports are removed. The synthetic defaults require no Hub downloads.
 
@@ -221,8 +220,8 @@ The backbone unpacks that dictionary internally. Each implementation owns its
 `model.py`. The numeric example keeps its existing cross-entropy behavior.
 The base implementation is an explicit task-loss placeholder: pooled features
 do not define a classification or language-modeling objective. Implement that
-function when your task/targets are defined. Dataset preparation is unchanged;
-the numeric training data still cannot be passed directly to the text backbone.
+function when your task/targets are defined. Choose the matching dataset module; numeric data cannot be passed directly
+to the text backbone.
 
 ## Optional text classification
 
@@ -250,7 +249,72 @@ loss = loss_fn(model, (inputs, targets), "cpu")
 loss.backward()
 ```
 
-The dataset and numeric training demo are unchanged. This module defines an
-objective and batch contract; plug in tokenized text batches when adding your
-dataset. Existing feature-backbone checkpoints do not include the new head;
+Use the Hugging Face dataset module below for tokenized classification batches. Existing feature-backbone checkpoints do not include the new head;
 train and save a classifier checkpoint before loading it with this module.
+
+## Dataset modules
+
+Datasets follow the same import-selection pattern as models:
+
+```python
+# src/amarken/dataset.py — choose one implementation:
+from amarken.datasets.huggingface import build_dataset, build_dataloaders
+# from amarken.datasets.example import build_dataset, build_dataloaders
+```
+
+Both expose the same interface:
+
+```python
+train_data, validation_data = build_dataset(seed=42)
+train_loader, validation_loader = build_dataloaders(
+    train_data,
+    validation_data,
+    batch_size=16,
+    tokenize=getattr(model, "tokenize", None),
+)
+```
+
+| Dataset module | Model module | Batches |
+| --- | --- | --- |
+| `datasets.example` | `modules.example` | Random feature tensors and integer labels. |
+| `datasets.huggingface` | `modules.classification` | Tokenized text dictionaries and integer labels. |
+
+The random module preserves the original 128/32 numeric demo, generating data
+with a private seeded generator. Sizes are `RANDOM_TRAIN_SIZE` and
+`RANDOM_VALIDATION_SIZE` in `constants.py`.
+
+The Hugging Face module defaults to pinned `stanfordnlp/sst2` train/validation
+splits, with 0=negative and 1=positive, matching the classifier label order.
+Dataset ID, revision, split names, column names and sample limits live in
+`constants.py`. It selects 128 training and 32 validation examples by default;
+set the corresponding limits to `None` to use complete splits. Sampling limits
+reduce training work, but the initial dataset download may include full splits.
+
+Text is tokenized per batch through the selected model's `tokenize()`, preserving
+its padding/context-length handling. The first run downloads/cache dataset files;
+subsequent runs reuse the cache. Both loaders use zero workers and global
+PyTorch RNG shuffling, consistent with the trainer's epoch-boundary resume.
+
+`dataset.py` currently selects Hugging Face data to match the selected
+classification model. `main.py` no longer contains hardcoded numeric data.
+Select the random dataset and numeric model together for a download-free run.
+To train and infer with the current text setup:
+
+```bash
+uv run amarken example --config configs/training-base.json
+uv run amarken infer --config configs/training-base.json \
+  --checkpoint checkpoints/qwen-backbone/best.pt \
+  --input-file samples/input-base.json
+```
+
+The tests exercise both datasets and loaders, and train the text classifier
+with a tiny local Qwen model and in-memory HF data. Hub downloads are mocked.
+
+### Precision
+
+JSON `precision` is the single setting for model weight storage and training
+autocast. Training and inference pass it to the selected module's `build_model`
+and `load_model`, with the same signatures across all implementations.
+For bfloat16 weights and execution, set `"precision": "bfloat16"` in your config.
+No separate dtype constant is needed. Direct Python calls can pass
+`precision="bfloat16"` to either function; their default is `float32`.

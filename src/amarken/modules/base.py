@@ -9,7 +9,6 @@ from torch import Tensor, nn
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 from amarken.constants import (
-    BASE_DTYPE,
     BASE_LOCAL_FILES_ONLY,
     BASE_MAX_LENGTH,
     BASE_MODEL_ID,
@@ -25,7 +24,7 @@ class BaseConfig:
     revision: str | None = None
     max_length: int = BASE_MAX_LENGTH
     device: str = "cpu"
-    dtype: str = BASE_DTYPE
+    dtype: str = "float32"
     cache_dir: str = HUB_CACHE
 
     def __post_init__(self):
@@ -148,19 +147,21 @@ class BaseModel(nn.Module):
         return pool_last_token(result.last_hidden_state, attention_mask)
 
 
-def build_model(*, device: str = "cpu") -> BaseModel:
+def build_model(*, device: str = "cpu", precision: str = "float32") -> BaseModel:
     """Start from the pretrained backbone configured in constants.py."""
-    return BaseModel.load(BaseConfig(device=device))
+    return BaseModel.load(BaseConfig(device=device, dtype=precision))
 
 
-def load_model(checkpoint: str | Path, *, device: str = "cpu") -> BaseModel:
+def load_model(
+    checkpoint: str | Path, *, device: str = "cpu", precision: str = "float32"
+) -> BaseModel:
     """Restore trained weights using the pinned architecture and tokenizer.
 
     Only config/tokenizer files use the Hub/cache; pretrained weights are not
     loaded again. Keep constants consistent with the training architecture.
     """
     weights = load_checkpoint_weights(checkpoint)
-    model = BaseModel.load(BaseConfig(), pretrained=False)
+    model = BaseModel.load(BaseConfig(dtype=precision), pretrained=False)
     model.load_state_dict(weights, strict=True)
     return model.to(device).eval()
 

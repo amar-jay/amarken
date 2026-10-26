@@ -144,7 +144,9 @@ class TrainerTests(unittest.TestCase):
                 )
             self.assertEqual(invalid.exception.code, 2)
             config_file = Path(directory) / "config.json"
-            config_file.write_text(json.dumps({"device": "cpu:0"}))
+            config_file.write_text(
+                json.dumps({"device": "cpu:0", "precision": "bfloat16"})
+            )
             with (
                 patch(
                     "amarken.cli.run_inference", return_value={"predictions": [1]}
@@ -163,6 +165,7 @@ class TrainerTests(unittest.TestCase):
                     ]
                 )
             self.assertEqual(predict.call_args.kwargs["device"], "cpu:0")
+            self.assertEqual(predict.call_args.kwargs["precision"], "bfloat16")
 
             # Both implementations expose the same build/load/predict calls.
             self.assertEqual(predict_numeric(model, features), result)
@@ -180,7 +183,9 @@ class TrainerTests(unittest.TestCase):
                 head_dim=8,
                 max_position_embeddings=4096,
             )
-            tiny = AutoModel.from_config(architecture)
+            tiny = AutoModel.from_config(
+                architecture, dtype=getattr(torch, base.BaseConfig().dtype)
+            )
             tokenizer = Mock(
                 pad_token_id=0,
                 eos_token="<eos>",
@@ -290,10 +295,110 @@ class TrainerTests(unittest.TestCase):
                     torch.tensor(expected_classes["probabilities"]),
                 )
                 self.assertEqual(pretrained.call_count, 2)
+                restored_bf16 = classification.load_model(
+                    classifier_checkpoint, precision="bfloat16"
+                )
+                self.assertTrue(
+                    all(p.dtype == torch.bfloat16 for p in restored_bf16.parameters())
+                )
+                numeric_bf16 = build_model(precision="bfloat16")
+                self.assertTrue(
+                    all(p.dtype == torch.bfloat16 for p in numeric_bf16.parameters())
+                )
+
                 with self.assertRaisesRegex(TypeError, "tokenized dictionary"):
                     classification.loss_fn(
                         classifier, (torch.ones(1, 8), torch.tensor([1])), "cpu"
                     )
+
+                # Parallel dataset implementations: random tensors and HF text rows.
+                from datasets import Dataset as HubDataset
+
+                from amarken.datasets import example as random_data
+                from amarken.datasets import huggingface as hub_data
+                from amarken.main import train_example
+
+                random_train, random_validation = random_data.build_dataset(seed=42)
+                repeated_train, _ = random_data.build_dataset(seed=42)
+                torch.testing.assert_close(
+                    random_train.tensors[0], repeated_train.tensors[0]
+                )
+                random_loaders = random_data.build_dataloaders(
+                    random_train, random_validation, batch_size=8
+                )
+                random_inputs, random_targets = next(iter(random_loaders[0]))
+                self.assertEqual(tuple(random_inputs.shape), (8, 8))
+                self.assertEqual(random_targets.dtype, torch.long)
+                self.assertTrue(
+                    torch.isfinite(
+                        loss_fn(build_model(), (random_inputs, random_targets), "cpu")
+                    )
+                )
+
+                text_rows = HubDataset.from_dict(
+                    {
+                        "sentence": ["good", "bad", "great", "awful"],
+                        "label": [1, 0, 1, 0],
+                    }
+                )
+                with (
+                    patch(
+                        "amarken.datasets.huggingface.load_dataset",
+                        return_value=[text_rows, text_rows],
+                    ) as hub_load,
+                    patch("amarken.datasets.huggingface.HF_TRAIN_SIZE", 3),
+                    patch("amarken.datasets.huggingface.HF_VALIDATION_SIZE", 2),
+                ):
+                    text_train, text_validation = hub_data.build_dataset(seed=42)
+                    self.assertEqual((len(text_train), len(text_validation)), (3, 2))
+                    self.assertEqual(
+                        hub_load.call_args.kwargs["split"], ["train", "validation"]
+                    )
+                tokenizer.side_effect = lambda texts, **kwargs: {
+                    "input_ids": torch.tensor([[1, 2, 3]] * len(texts)),
+                    "attention_mask": torch.ones(len(texts), 3, dtype=torch.long),
+                }
+                text_loaders = hub_data.build_dataloaders(
+                    text_train,
+                    text_validation,
+                    batch_size=2,
+                    tokenize=restored_classifier.tokenize,
+                )
+                text_inputs, text_targets = next(iter(text_loaders[0]))
+                self.assertEqual(tuple(text_inputs["input_ids"].shape), (2, 3))
+                self.assertEqual(text_targets.dtype, torch.long)
+                self.assertTrue(
+                    torch.isfinite(
+                        classification.loss_fn(
+                            restored_classifier, (text_inputs, text_targets), "cpu"
+                        )
+                    )
+                )
+                with self.assertRaisesRegex(TypeError, "tokenize"):
+                    hub_data.build_dataloaders(
+                        text_train, text_validation, batch_size=2
+                    )
+                dataset_config = TrainingConfig(
+                    epochs=1,
+                    batch_size=2,
+                    run_name="hf-dataset-test",
+                    checkpoints={"backend": "local", "async_save": True},
+                )
+                with (
+                    patch("amarken.main.build_model", return_value=restored_classifier),
+                    patch(
+                        "amarken.main.build_dataset",
+                        return_value=(text_train, text_validation),
+                    ),
+                    patch("amarken.main.build_dataloaders", hub_data.build_dataloaders),
+                    patch("amarken.main.loss_fn", classification.loss_fn),
+                ):
+                    prefix, dataset_history = train_example(dataset_config)
+                self.assertEqual(prefix, "hf-dataset-test")
+                self.assertTrue(
+                    torch.isfinite(torch.tensor(dataset_history[0]["val/loss"]))
+                )
+                self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
         nested = TrainingConfig(wandb={"enabled": True, "mode": "online"})
