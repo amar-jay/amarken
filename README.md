@@ -206,3 +206,18 @@ Training and storage implementations live in `src/amarken`.
 dispatch and terminal output. `amarken/main.py` contains the training function;
 `amarken/inference.py` contains model loading and prediction functions. Neither
 workflow parses arguments or depends on argparse.
+
+Both implementations are called as `model(inputs)`. For the numeric example,
+`inputs` is a feature tensor. For the Hugging Face backbone, it is a tokenized
+dictionary, including `input_ids` and `attention_mask`:
+
+```python
+inputs = model.tokenize(["hello", "another text"])
+features = model(inputs)
+```
+
+The backbone unpacks that dictionary internally. The example loss moves either
+a tensor or dictionary of tensors to the configured device, then calls
+`model(inputs)`. Tokenization, targets, and a task-specific loss/head are still
+your task's responsibility; the existing numeric training data cannot be
+passed directly to the text backbone.

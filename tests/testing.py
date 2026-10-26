@@ -11,10 +11,10 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from amarken.cli import main as cli_main
-from amarken.inference import load_model, run_inference
+from amarken.inference import run_inference
 from amarken.logger import CheckpointConfig, WandbLogger
 from amarken.main import loss_fn
-from amarken.modules.example import build_model
+from amarken.modules.example import build_model, load_model
 from amarken.modules.example import predict as predict_numeric
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 from amarken.utils import prompt_run_name
@@ -49,7 +49,17 @@ class TrainerTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as directory,
             patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.inference.load_model", load_model),
+            patch("amarken.inference.predict", predict_numeric),
         ):
+            inference_config = Path(directory) / "inference-config.json"
+            inference_config.write_text("{}")
+
+            def infer_cli(arguments):
+                if "--config" not in arguments:
+                    arguments = [*arguments, "--config", str(inference_config)]
+                cli_main(arguments)
+
             seed_everything(42)
             uninterrupted = self.make_trainer(2)
             history = uninterrupted.fit()
@@ -99,7 +109,7 @@ class TrainerTests(unittest.TestCase):
             )
             features = [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             with redirect_stdout(io.StringIO()) as output:
-                cli_main(
+                infer_cli(
                     [
                         "infer",
                         "--checkpoint",
@@ -116,7 +126,7 @@ class TrainerTests(unittest.TestCase):
             input_file = Path(directory) / "inputs.json"
             input_file.write_text(json.dumps([features, features]))
             with redirect_stdout(io.StringIO()) as output:
-                cli_main(
+                infer_cli(
                     [
                         "infer",
                         "--checkpoint",
@@ -130,7 +140,7 @@ class TrainerTests(unittest.TestCase):
                 redirect_stderr(io.StringIO()),
                 self.assertRaises(SystemExit) as invalid,
             ):
-                cli_main(
+                infer_cli(
                     ["infer", "--checkpoint", str(checkpoint), "--input", "[1, 2]"]
                 )
             self.assertEqual(invalid.exception.code, 2)
@@ -142,7 +152,7 @@ class TrainerTests(unittest.TestCase):
                 ) as predict,
                 redirect_stdout(io.StringIO()),
             ):
-                cli_main(
+                infer_cli(
                     [
                         "infer",
                         "--config",
@@ -197,7 +207,11 @@ class TrainerTests(unittest.TestCase):
                 backbone.train()
                 batch = backbone.tokenize(["hello"])
                 optimizer = torch.optim.SGD(backbone.parameters(), lr=0.01)
-                backbone(**batch).sum().backward()
+                loss_fn(backbone, (batch, torch.tensor([0])), "cpu").backward()
+                with self.assertRaisesRegex(ValueError, "attention_mask"):
+                    backbone({"input_ids": batch["input_ids"]})
+                with self.assertRaisesRegex(TypeError, "tokenized dictionary"):
+                    backbone(batch["input_ids"])
                 optimizer.step()
                 expected = base.predict(backbone, "hello")
                 trainer = Trainer(

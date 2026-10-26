@@ -12,9 +12,16 @@ from amarken.trainer import TrainingConfig
 def parser():
     root = argparse.ArgumentParser(description="amarken training boilerplate")
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument(
-        "--config", type=Path, default=Path("configs/training-example.json")
-    )
+    if len(list(Path("configs").glob("*.json"))) == 1:
+        common.add_argument(
+            "--config",
+            type=Path,
+            default=next(Path("configs").glob("*.json")),
+        )
+    else:
+        common.add_argument(
+            "--config", type=Path, required=True, help="JSON config file"
+        )
     commands = root.add_subparsers(dest="command", required=True)
     example = commands.add_parser(
         "example", parents=[common], help="Train the synthetic classification example"

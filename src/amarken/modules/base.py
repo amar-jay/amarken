@@ -1,6 +1,6 @@
 """Pinned Qwen feature backbone; no generation or decision head."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -120,7 +120,17 @@ class BaseModel(nn.Module):
         device = next(self.model.parameters()).device
         return {key: value.to(device) for key, value in batch.items()}
 
-    def forward(self, input_ids: Tensor, attention_mask: Tensor) -> Tensor:
+    def forward(self, inputs: Mapping[str, Tensor]) -> Tensor:
+        """Accept one tokenized input dictionary, matching model(inputs) calls."""
+        if not isinstance(inputs, Mapping):
+            raise TypeError(
+                "BaseModel expects a tokenized dictionary with input_ids and attention_mask"
+            )
+        if "input_ids" not in inputs or "attention_mask" not in inputs:
+            raise ValueError("Inputs must include input_ids and attention_mask")
+        input_ids, attention_mask = inputs["input_ids"], inputs["attention_mask"]
+        if not isinstance(input_ids, Tensor) or not isinstance(attention_mask, Tensor):
+            raise TypeError("input_ids and attention_mask must be tensors")
         # No inference/no_grad decorator: callers can fine-tune these features.
         if input_ids.ndim != 2 or attention_mask.shape != input_ids.shape:
             raise ValueError("Expected matching [batch, tokens] inputs and mask")
@@ -131,8 +141,7 @@ class BaseModel(nn.Module):
         ) or not torch.all(attention_mask.any(dim=1)):
             raise ValueError("Invalid or empty attention mask")
         result = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+            **inputs,
             use_cache=False,
             return_dict=True,
         )
@@ -165,5 +174,5 @@ def predict(model: BaseModel, inputs: str | Sequence[str]) -> dict:
     batch = model.tokenize(texts)
     model.eval()
     with torch.inference_mode():
-        features = model(**batch)
+        features = model(batch)
     return {"features": features.float().cpu().tolist()}
