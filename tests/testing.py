@@ -686,13 +686,22 @@ class TrainerTests(unittest.TestCase):
         config = TrainingConfig(checkpoints={"backend": "local", "overwrite": False})
         with (
             patch("sys.stdin.isatty", return_value=True),
-            patch("amarken.utils.questionary.text") as prompt,
+            patch("questionary.text") as prompt,
         ):
             prompt.return_value.ask.return_value = "my-run"
             self.assertEqual(prompt_run_name(config), "my-run")
             validator = prompt.call_args.kwargs["validate"]
             self.assertIs(validator("my-run"), True)
             self.assertIsInstance(validator("../escape"), str)
+            with (
+                tempfile.TemporaryDirectory() as existing_root,
+                patch("amarken.logger.CHECKPOINT_DIR", Path(existing_root)),
+            ):
+                existing = Path(existing_root) / config.run_name / "my-run"
+                existing.mkdir(parents=True)
+                self.assertIn("already exists", validator("my-run"))
+                self.assertIs(validator("another-run"), True)
+
             prompt.return_value.ask.return_value = "  "
             self.assertIsNone(prompt_run_name(config))
             prompt.return_value.ask.return_value = None
@@ -729,6 +738,31 @@ class TrainerTests(unittest.TestCase):
                 trainer.fit()
                 self.assertEqual(prompt.call_count, 1)
                 self.assertEqual(training.call_count, 2)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("sys.stdin.isatty", return_value=True),
+            patch(
+                "amarken.utils.prompt_run_name", side_effect=["taken", "available"]
+            ) as prompt,
+            redirect_stderr(io.StringIO()) as feedback,
+        ):
+            existing = Path(directory) / "test/taken"
+            existing.mkdir(parents=True)
+            marker = existing / "keep.txt"
+            marker.write_text("previous run")
+            trainer = self.make_trainer(1)
+            trainer.config.checkpoints = CheckpointConfig(
+                backend="local", overwrite=False
+            )
+            with patch.object(trainer, "_fit", return_value=[]):
+                trainer.fit()
+            self.assertEqual(prompt.call_count, 2)
+            self.assertEqual(trainer.run_label, "available")
+            self.assertTrue((Path(directory) / "test/available").is_dir())
+            self.assertEqual(marker.read_text(), "previous run")
+            self.assertIn("already exists", feedback.getvalue())
 
         for policy in ("best", "default"):
             for overwrite in (True, False):

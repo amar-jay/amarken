@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from amarken import logger as logger_module
 
@@ -21,6 +22,10 @@ def prompt_run_name(config: "TrainingConfig", *, resume: bool = False) -> str | 
         name = value.strip()
         if name and (Path(name).name != name or name in {".", ".."}):
             return "Use a single directory name without path separators."
+        if name:
+            directory = logger_module.CHECKPOINT_DIR / config.run_name / name
+            if directory.exists() or directory.is_symlink():
+                return f"Run '{name}' already exists. Choose another name, or use --resume to continue it."
         return True
 
     answer = questionary.text(
@@ -38,9 +43,31 @@ def prepare_run(trainer: "Trainer") -> None:
     if trainer.run_label is None:
         trainer.run_label = prompt_run_name(trainer.config, resume=trainer._resumed)
     if not trainer.config.checkpoints.overwrite:
-        directory = logger_module.CHECKPOINT_DIR / trainer.checkpoint_prefix
-        # Only an explicit resume may reuse an isolated run's directory.
-        directory.mkdir(parents=True, exist_ok=trainer._resumed)
+        while True:
+            directory = logger_module.CHECKPOINT_DIR / trainer.checkpoint_prefix
+            directory.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                # Atomic reservation also catches collisions after prompt validation.
+                directory.mkdir(exist_ok=trainer._resumed)
+                break
+            except FileExistsError:
+                if trainer._resumed or not (
+                    directory.exists() or directory.is_symlink()
+                ):
+                    raise
+                message = (
+                    f"Run '{trainer.run_label or trainer.run_id}' already exists. "
+                    "Choose another name, or use --resume with its checkpoint to continue it."
+                )
+                if sys.stdin.isatty():
+                    print(message, file=sys.stderr)
+                    trainer.run_label = prompt_run_name(trainer.config)
+                    if trainer.run_label is None:
+                        trainer.run_id = uuid4().hex
+                elif trainer.run_label is None:
+                    trainer.run_id = uuid4().hex
+                else:
+                    raise FileExistsError(message) from None
     trainer._directory_prepared = True
 
 

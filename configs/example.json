@@ -18,7 +18,7 @@
     "max_pending": 2,
     "monitor": "val/loss",
     "mode": "min",
-    "overwrite": true
+    "overwrite": false
   },
   "wandb": {
     "enabled": false,
