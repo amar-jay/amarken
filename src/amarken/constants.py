@@ -39,6 +39,10 @@ DATASET_REVISIONS = {
 BASE_MAX_LENGTH = 2048
 BASE_LOCAL_FILES_ONLY = False
 
+# Causal language modeling: reject overlong training text rather than silently truncate.
+CAUSAL_MAX_LENGTH = 256
+CAUSAL_MAX_NEW_TOKENS = 64
+
 # Numeric example architecture.
 EXAMPLE_INPUT_SIZE = 8
 EXAMPLE_HIDDEN_SIZE = 16

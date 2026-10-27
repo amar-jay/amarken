@@ -16,11 +16,15 @@ def run_validation(
     if split not in {"val", "test"}:
         raise ValueError("Evaluation split must be val or test")
     seed_everything(config.seed)
+    options = (
+        {"fine_tuning": config.fine_tuning} if config.fine_tuning is not None else {}
+    )
     model = load_model(
         checkpoint,
         model_id=config.model_id,
         device=config.device,
         precision=config.precision,
+        **options,
     )
     model.eval()
     if split == "test":

@@ -299,7 +299,7 @@ from amarken.datasets.huggingface import (
 Both expose the same interface:
 
 ```python
-from amarken.datasets.config import DatasetConfig
+from amarken.config import DatasetConfig
 
 settings = DatasetConfig(id="stanfordnlp/sst2", train_size=128, val_size=32)
 train_data, validation_data = build_dataset(settings, seed=42)
@@ -342,7 +342,7 @@ Dataset settings are grouped in the same training JSON:
 be strictly between 0 and 1. Revisions are looked up by ID in `DATASET_REVISIONS`
 in `constants.py`; unlisted IDs use the Hub default revision. Split and column names have optional defaults in `DatasetConfig`. The same nested settings are used by training,
 validation and testing and saved in checkpoint metadata. Python callers can use a
-dictionary or `DatasetConfig` from `amarken.datasets.config`.
+dictionary or `DatasetConfig` from `amarken.config`.
 
 Size limits are capped at available Hugging Face split sizes. They reduce training
 work, but the initial dataset download may include full splits. Numeric data uses
@@ -671,3 +671,55 @@ Training orchestration stays in `trainer.py`. Model placement, precision setup,
 and DDP/FSDP wrapping live in `utils/distributed.py`; checkpoint state, resume
 validation, and RNG capture/restoration live in `utils/checkpoint.py`.
 `Trainer.state_dict()` and `Trainer.resume()` delegate to those checkpoint helpers.
+
+## Causal language model fine-tuning
+
+`modules/causal.py` follows the same build/load, `model(inputs)`, loss, metrics,
+prediction and FSDP hooks as the other modules. It supports the pinned Qwen2.5
+and Qwen3 text models; `configs/causal.json` starts with Qwen2.5-0.5B and LoRA.
+Select `amarken.modules.causal` in `src/amarken/model.py` and
+`amarken.datasets.causal` in `src/amarken/dataset.py`, keeping the existing
+imported function names. Then run:
+
+```bash
+uv run amarken train --config configs/causal.json
+uv run amarken validate --config configs/causal.json --checkpoint checkpoints/qwen-causal/best.pt
+uv run amarken infer --config configs/causal.json --checkpoint checkpoints/qwen-causal/best.pt --input-file samples/input-causal.json
+```
+
+The optional `fine_tuning` section chooses the training mode:
+
+```json
+"fine_tuning": {
+  "mode": "lora",
+  "r": 8,
+  "alpha": 16,
+  "dropout": 0.05,
+  "target_modules": ["q_proj", "v_proj"]
+}
+```
+
+Use `{"mode": "full"}` or omit the section for full fine-tuning. LoRA uses
+PEFT, already included in the dependencies. Keep the same fine-tuning settings
+for resume, validation and inference. Other model modules do not use this
+optional section; leave it out of their configs.
+
+The starter dataset uses SST-2 sentences as plain training text and ignores
+sentiment labels. It demonstrates next-token training, rather than an instruction
+fine-tuning corpus. The dataset owns label construction and masks padding by
+attention mask, preserving real EOS targets even when PAD equals EOS. An SFT
+dataset can additionally mask prompt positions with `-100`. Each sample must
+retain at least one next-token target. Context length and default generation
+length live in `constants.py`; overlong training text raises an error.
+
+The loss averages valid next-token losses within each sample, then across the
+batch, matching Trainer's sample weighting. Standalone evaluation also reports
+token-weighted NLL, perplexity and token accuracy through module-owned
+TorchMetrics. Inference returns generated continuations in `texts` and uses
+greedy decoding with left-padded prompts.
+
+Checkpoints retain the existing full amarken format, including base weights,
+LoRA adapters and optimizer state, so LoRA checkpoints are still large. This
+addition does not introduce adapter-only exports or quantized training. The
+sample uses CUDA BF16; use CPU/float32 where appropriate. Multi-GPU hooks are
+provided, but this module has only been exercised on a tiny CPU model so far.

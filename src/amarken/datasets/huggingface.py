@@ -11,7 +11,7 @@ from amarken.constants import (
     DATA_CACHE,
     DATASET_REVISIONS,
 )
-from amarken.datasets.config import DatasetConfig
+from amarken.config import DatasetConfig
 from amarken.utils.distributed import train_sampler
 
 

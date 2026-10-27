@@ -11,7 +11,7 @@ from huggingface_hub import hf_hub_download, list_repo_files
 from torch.utils.data import DataLoader
 
 from amarken.constants import DATASET_REVISIONS, HUB_CACHE
-from amarken.datasets.config import DatasetConfig
+from amarken.config import DatasetConfig
 from amarken.utils.distributed import primary, train_sampler
 
 

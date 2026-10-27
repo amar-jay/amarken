@@ -37,58 +37,6 @@ from typing import Any, Self
 from amarken.constants import CHECKPOINT_DIR, PROJECT_NAME, PROJECT_VERSION, WANDB_CACHE
 from amarken.utils.distributed import rank as process_rank
 
-
-@dataclass(frozen=True)
-class WandbConfig:
-    enabled: bool = False
-    mode: str = "offline"
-
-    def __post_init__(self):
-        if type(self.enabled) is not bool:
-            raise ValueError("wandb.enabled must be a boolean")
-        if self.mode not in {"online", "offline", "disabled"}:
-            raise ValueError("wandb.mode must be online, offline, or disabled")
-
-
-@dataclass(frozen=True)
-class CheckpointConfig:
-    """Local checkpoints with optional W&B or S3-compatible replication.
-
-    S3 credentials use boto3's normal environment/profile/IAM credential chain.
-    Use a distinct prefix (or filenames) for independent training runs.
-    """
-
-    async_save: bool = False
-    max_pending: int = 2
-    policy: str = "default"
-    overwrite: bool = True
-    monitor: str = "val/loss"
-    mode: str = "min"
-    backend: str = "local"
-    bucket: str | None = None
-    prefix: str = "checkpoints"
-    endpoint_url: str | None = None
-    region_name: str | None = None
-
-    def __post_init__(self):
-        if type(self.async_save) is not bool:
-            raise ValueError("async_save must be a boolean")
-        if type(self.max_pending) is not int or self.max_pending < 1:
-            raise ValueError("max_pending must be a positive integer")
-        if type(self.overwrite) is not bool:
-            raise ValueError("overwrite must be a boolean")
-        if self.policy not in {"best", "default"}:
-            raise ValueError("Checkpoint policy must be best or default")
-        if self.mode not in {"min", "max"}:
-            raise ValueError("Checkpoint mode must be min or max")
-        if not self.monitor:
-            raise ValueError("Checkpoint monitor must be nonempty")
-        if self.backend not in {"local", "wandb", "s3"}:
-            raise ValueError("Checkpoint backend must be local, wandb, or s3")
-        if self.backend == "s3" and not self.bucket:
-            raise ValueError("An S3 bucket is required for checkpoint storage")
-
-
 class WandbLogger:
     """Own one run; preserve native W&B data and logging semantics.
 

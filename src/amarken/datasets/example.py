@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from amarken.constants import EXAMPLE_INPUT_SIZE
-from amarken.datasets.config import DatasetConfig
+from amarken.config import DatasetConfig
 from amarken.utils.distributed import train_sampler
 
 

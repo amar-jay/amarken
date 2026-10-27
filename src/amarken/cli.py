@@ -108,6 +108,11 @@ def main(argv=None):
                 model_id=config.model_id,
                 device=config.device,
                 precision=config.precision,
+                **(
+                    {"fine_tuning": config.fine_tuning}
+                    if config.fine_tuning is not None
+                    else {}
+                ),
             )
             print(json.dumps(result, allow_nan=False))
     except (OSError, ValueError, TypeError, RuntimeError, NotImplementedError) as error:

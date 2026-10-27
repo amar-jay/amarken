@@ -1,0 +1,4 @@
+{
+  "texts": ["The best thing about learning something new is"],
+  "max_new_tokens": 32
+}

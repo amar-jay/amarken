@@ -6,9 +6,119 @@ from pathlib import Path
 
 import torch
 
-from amarken.datasets.config import DatasetConfig
-from amarken.utils.logger import CheckpointConfig, WandbConfig
+@dataclass(frozen=True)
+class WandbConfig:
+    enabled: bool = False
+    mode: str = "offline"
 
+    def __post_init__(self):
+        if type(self.enabled) is not bool:
+            raise ValueError("wandb.enabled must be a boolean")
+        if self.mode not in {"online", "offline", "disabled"}:
+            raise ValueError("wandb.mode must be online, offline, or disabled")
+
+@dataclass(frozen=True)
+class CheckpointConfig:
+    """Local checkpoints with optional W&B or S3-compatible replication.
+
+    S3 credentials use boto3's normal environment/profile/IAM credential chain.
+    Use a distinct prefix (or filenames) for independent training runs.
+    """
+
+    async_save: bool = False
+    max_pending: int = 2
+    policy: str = "default"
+    overwrite: bool = True
+    monitor: str = "val/loss"
+    mode: str = "min"
+    backend: str = "local"
+    bucket: str | None = None
+    prefix: str = "checkpoints"
+    endpoint_url: str | None = None
+    region_name: str | None = None
+
+    def __post_init__(self):
+        if type(self.async_save) is not bool:
+            raise ValueError("async_save must be a boolean")
+        if type(self.max_pending) is not int or self.max_pending < 1:
+            raise ValueError("max_pending must be a positive integer")
+        if type(self.overwrite) is not bool:
+            raise ValueError("overwrite must be a boolean")
+        if self.policy not in {"best", "default"}:
+            raise ValueError("Checkpoint policy must be best or default")
+        if self.mode not in {"min", "max"}:
+            raise ValueError("Checkpoint mode must be min or max")
+        if not self.monitor:
+            raise ValueError("Checkpoint monitor must be nonempty")
+        if self.backend not in {"local", "wandb", "s3"}:
+            raise ValueError("Checkpoint backend must be local, wandb, or s3")
+        if self.backend == "s3" and not self.bucket:
+            raise ValueError("An S3 bucket is required for checkpoint storage")
+
+@dataclass
+class DatasetConfig:
+    id: str
+    train_size: int = 128
+    val_size: int = 32
+    test_size: int = 32
+    config: str | None = None
+    test_fraction: float = 0.5
+    train_split: str = "train"
+    validation_split: str = "validation"
+    text_column: str = "sentence"
+    label_column: str = "label"
+
+    def __post_init__(self):
+        if not isinstance(self.id, str) or not self.id.strip():
+            raise ValueError("dataset.id must be a nonempty string")
+        if self.config is not None and (
+            not isinstance(self.config, str) or not self.config.strip()
+        ):
+            raise ValueError("dataset.config must be a nonempty string or null")
+        for name in ("train_split", "validation_split", "text_column", "label_column"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"dataset.{name} must be a nonempty string")
+        for name in ("train_size", "val_size", "test_size"):
+            size = getattr(self, name)
+            if type(size) is not int or size < 1:
+                raise ValueError(f"dataset.{name} must be a positive integer")
+        if (
+            type(self.test_fraction) not in {int, float}
+            or not 0 < self.test_fraction < 1
+        ):
+            raise ValueError(
+                "dataset.test_fraction must be between 0 and 1 (exclusive)"
+            )
+
+@dataclass
+class FineTuningConfig:
+    """Optional causal LM settings; omit the section for full fine-tuning."""
+
+    mode: str = "full"
+    r: int = 8
+    alpha: int = 16
+    dropout: float = 0.05
+    target_modules: tuple[str, ...] = ("q_proj", "v_proj")
+
+    def __post_init__(self):
+        if self.mode not in {"full", "lora"}:
+            raise ValueError("fine_tuning.mode must be full or lora")
+        if type(self.r) is not int or self.r < 1 or self.alpha <= 0:
+            raise ValueError("LoRA r and alpha must be positive")
+        if not 0 <= self.dropout < 1:
+            raise ValueError("LoRA dropout must be in [0, 1)")
+        if (
+            not isinstance(self.target_modules, (list, tuple))
+            or not self.target_modules
+        ):
+            raise ValueError("LoRA target_modules must be a nonempty list")
+        if any(
+            not isinstance(name, str) or not name.strip()
+            for name in self.target_modules
+        ):
+            raise ValueError("LoRA target_modules must contain nonempty names")
+        self.target_modules = tuple(self.target_modules)
 
 @dataclass
 class Config:
@@ -22,12 +132,19 @@ class Config:
     strategy: str = "auto"
     precision: str = "float32"
     run_name: str = "training"
+    fine_tuning: FineTuningConfig | None = None
     wandb: WandbConfig = field(default_factory=WandbConfig)
     checkpoints: CheckpointConfig = field(
         default_factory=lambda: CheckpointConfig(backend="local")
     )
 
     def __post_init__(self):
+        if isinstance(self.fine_tuning, dict):
+            self.fine_tuning = FineTuningConfig(**self.fine_tuning)
+        if self.fine_tuning is not None and not isinstance(
+            self.fine_tuning, FineTuningConfig
+        ):
+            raise TypeError("fine_tuning must be a FineTuningConfig or dictionary")
         if isinstance(self.wandb, dict):
             self.wandb = WandbConfig(**self.wandb)
         if isinstance(self.checkpoints, dict):

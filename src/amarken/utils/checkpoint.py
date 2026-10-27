@@ -78,6 +78,10 @@ def restore_state(trainer, path: str | Path):
         raise ValueError("Resume requires the same scheduler configuration")
     if state["config"]["precision"] != trainer.config.precision:
         raise ValueError("Resume requires the same precision")
+    previous_tuning = state["config"].get("fine_tuning")
+    current_tuning = asdict(trainer.config).get("fine_tuning")
+    if previous_tuning != current_tuning:
+        raise ValueError("Resume requires the same fine_tuning settings")
     previous = state["config"]["checkpoints"]
     current = trainer.config.checkpoints
     if (previous.get("monitor", "val/loss"), previous.get("mode", "min")) == (

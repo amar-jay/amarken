@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from amarken.cli import main as cli_main
 from amarken.config import Config
-from amarken.datasets.config import DatasetConfig
+from amarken.config import DatasetConfig
 from amarken.inference import run_inference
 from amarken.modules.example import build_model, load_model, loss_fn
 from amarken.modules.example import predict as predict_numeric
@@ -30,6 +30,176 @@ def make_config(*, dataset=None, **options):
         dataset={"id": "stanfordnlp/sst2"} if dataset is None else dataset,
         **options,
     )
+
+
+def check_causal_contract(case):
+    """Real tiny Qwen + PEFT, offline: gradients, padding, metrics and reload."""
+    from dataclasses import asdict
+
+    from datasets import Dataset
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+    from transformers import PreTrainedTokenizerFast, Qwen2Config, Qwen2ForCausalLM
+
+    from amarken.config import FineTuningConfig
+    from amarken.datasets import causal as data
+    from amarken.modules import causal
+
+    backend = Tokenizer(
+        WordLevel({"<unk>": 0, "<eos>": 1, "hello": 2, "world": 3}, unk_token="<unk>")
+    )
+    backend.pre_tokenizer = Whitespace()
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        unk_token="<unk>",
+        eos_token="<eos>",
+        pad_token="<eos>",
+    )
+    architecture = Qwen2Config(
+        vocab_size=4,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        max_position_embeddings=512,
+        eos_token_id=1,
+        pad_token_id=1,
+    )
+    rows = Dataset.from_list([{"sentence": "hello world"}, {"sentence": "hello"}])
+    for mode in ("full", "lora"):
+        settings = FineTuningConfig(mode=mode, dropout=0)
+        config = make_config(fine_tuning=asdict(settings))
+        case.assertEqual(config.fine_tuning, settings)
+        with (
+            patch.object(
+                causal.AutoConfig, "from_pretrained", return_value=architecture
+            ),
+            patch.object(
+                causal.AutoTokenizer, "from_pretrained", return_value=tokenizer
+            ),
+            patch.object(
+                causal.AutoModelForCausalLM,
+                "from_pretrained",
+                side_effect=lambda *a, **k: Qwen2ForCausalLM(architecture),
+            ),
+        ):
+            model = causal.build_model(
+                model_id="Qwen/Qwen2.5-0.5B", fine_tuning=settings
+            )
+            _, loader = data.build_dataloaders(
+                config.dataset, rows, rows, batch_size=2, tokenize=model.tokenize
+            )
+            batch = next(iter(loader))
+            case.assertEqual(batch[1][1, -1].item(), -100)
+            case.assertEqual(batch[1][1, 1].item(), tokenizer.eos_token_id)
+            optimizer = torch.optim.AdamW(
+                [p for p in model.parameters() if p.requires_grad], lr=0.01
+            )
+            loss = causal.loss_fn(model, batch, "cpu")
+            loss.backward()
+            trainable = [
+                (name, parameter)
+                for name, parameter in model.named_parameters()
+                if parameter.requires_grad
+            ]
+            case.assertTrue(
+                all(parameter.grad is not None for _, parameter in trainable)
+            )
+            if mode == "lora":
+                case.assertTrue(all("lora_" in name for name, _ in trainable))
+                case.assertTrue(
+                    any(parameter.grad.abs().sum() > 0 for _, parameter in trainable)
+                )
+                case.assertTrue(
+                    all(
+                        parameter.grad is None
+                        for parameter in model.parameters()
+                        if not parameter.requires_grad
+                    )
+                )
+            else:
+                case.assertTrue(
+                    all(parameter.requires_grad for parameter in model.parameters())
+                )
+            optimizer.step()
+            model.eval()
+            metrics = causal.build_metrics()
+            with torch.no_grad():
+                causal.validation_step(model, batch, "cpu", metrics)
+                expected = model(batch[0])
+                single = model.tokenize(["hello"])
+                case.assertTrue(
+                    torch.allclose(expected[1, :2], model(single)[0], atol=1e-5)
+                )
+            results = metrics.compute()
+            case.assertEqual(metrics.tokens.item(), 3)
+            case.assertAlmostEqual(
+                results["perplexity"].item(), results["token_nll"].exp().item()
+            )
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "checkpoint.pt"
+                torch.save({"format_version": 1, "model": model.state_dict()}, path)
+                restored = causal.load_model(
+                    path, model_id="Qwen/Qwen2.5-0.5B", fine_tuning=settings
+                )
+                with torch.no_grad():
+                    case.assertTrue(torch.equal(expected, restored(batch[0])))
+                generated = causal.predict(
+                    restored, {"texts": ["hello", "hello world"], "max_new_tokens": 2}
+                )
+                case.assertEqual(len(generated["texts"]), 2)
+                case.assertEqual(tokenizer.padding_side, "right")
+                from dataclasses import replace
+
+                from amarken.main import run_train
+                from amarken.validation import run_validation
+
+                training_config = replace(
+                    config, model_id="Qwen/Qwen2.5-0.5B", epochs=1, batch_size=2
+                )
+                with (
+                    patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
+                    patch("amarken.main.build_model", causal.build_model),
+                    patch("amarken.main.build_dataset", return_value=(rows, rows)),
+                    patch("amarken.main.build_dataloaders", data.build_dataloaders),
+                    patch("amarken.main.loss_fn", causal.loss_fn),
+                ):
+                    prefix, history = run_train(training_config)
+                    case.assertEqual(len(history), 1)
+                    saved = Path(directory) / prefix / "latest.pt"
+                    _, resumed = run_train(
+                        replace(training_config, epochs=2), resume=saved
+                    )
+                    case.assertEqual(resumed[0]["epoch"], 2)
+                    with case.assertRaisesRegex(ValueError, "fine_tuning"):
+                        run_train(
+                            replace(
+                                training_config,
+                                fine_tuning=FineTuningConfig(mode=mode, r=4),
+                            ),
+                            resume=saved,
+                        )
+                with (
+                    patch("amarken.validation.load_model", causal.load_model),
+                    patch(
+                        "amarken.validation.build_dataset", return_value=(rows, rows)
+                    ),
+                    patch(
+                        "amarken.validation.build_dataloaders", data.build_dataloaders
+                    ),
+                    patch("amarken.validation.build_metrics", causal.build_metrics),
+                    patch("amarken.validation.validation_step", causal.validation_step),
+                ):
+                    result = run_validation(saved, training_config)
+                    case.assertEqual(result["samples"], 2)
+                    case.assertGreater(result["val/perplexity"], 0)
+            with case.assertRaisesRegex(ValueError, "unmasked"):
+                causal._token_losses(expected, torch.full_like(batch[1], -100))
+    for options in ({"mode": "bad"}, {"r": 0}, {"dropout": 1}, {"target_modules": []}):
+        with case.assertRaises(ValueError):
+            FineTuningConfig(**options)
 
 
 def check_tts_contract(case):
@@ -1126,6 +1296,7 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
+        check_causal_contract(self)
         check_tts_contract(self)
         defaults = DatasetConfig(id="stanfordnlp/sst2")
         self.assertEqual(

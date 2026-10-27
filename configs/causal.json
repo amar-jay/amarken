@@ -1,0 +1,24 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B",
+  "dataset": {
+    "id": "stanfordnlp/sst2",
+    "train_size": 128,
+    "val_size": 32,
+    "test_size": 32
+  },
+  "fine_tuning": {
+    "mode": "lora",
+    "r": 8,
+    "alpha": 16,
+    "dropout": 0.05,
+    "target_modules": ["q_proj", "v_proj"]
+  },
+  "learning_rate": 0.0002,
+  "batch_size": 1,
+  "epochs": 3,
+  "device": "cuda",
+  "precision": "bfloat16",
+  "run_name": "qwen-causal",
+  "checkpoints": {"backend": "local", "policy": "default", "overwrite": true},
+  "wandb": {"enabled": false, "mode": "offline"}
+}
