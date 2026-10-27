@@ -505,6 +505,15 @@ def check_tts_contract(case):
 
 class TrainerTests(unittest.TestCase):
     def setUp(self):
+        # Keep tests noninteractive even when unittest runs from a real terminal.
+        # Prompt-specific cases override these guards with their own mocks.
+        self.enterContext(patch("sys.stdin.isatty", return_value=False))
+        self.enterContext(
+            patch(
+                "questionary.text",
+                side_effect=AssertionError("Unexpected interactive prompt in test"),
+            )
+        )
         # Regression fixtures stay numeric regardless of the selected application module.
         from amarken.datasets import example as numeric_data
         from amarken.modules import example as numeric_model

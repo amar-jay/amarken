@@ -122,6 +122,37 @@ def seed_everything(seed: int) -> None:
         torch.cuda.manual_seed(seed)
 
 
+def _table_cell(value):
+    import json
+
+    if isinstance(value, float):
+        return f"{value:.6g}"
+    if isinstance(value, list):
+        return "[" + ", ".join(_table_cell(item) for item in value) + "]"
+    if isinstance(value, (dict, bool)) or value is None:
+        return json.dumps(value, ensure_ascii=True)
+    return str(value).replace("\n", " ").replace("\r", " ")
+
+
+def _format_table(headers, rows):
+    rows = [headers, *rows]
+    widths = [max(len(row[index]) for row in rows) for index in range(len(headers))]
+    border = "+-" + "-+-".join("-" * width for width in widths) + "-+"
+    lines = [border]
+    for index, row in enumerate(rows):
+        lines.append(
+            "| "
+            + " | ".join(
+                value.ljust(width) for value, width in zip(row, widths, strict=True)
+            )
+            + " |"
+        )
+        if index == 0:
+            lines.append(border)
+    lines.append(border)
+    return "\n".join(lines)
+
+
 def format_validation_table(result) -> str:
     """Format an evaluation result dictionary or JSON object for the console."""
     import json
@@ -131,33 +162,6 @@ def format_validation_table(result) -> str:
         result = json.loads(result)
     if not isinstance(result, Mapping):
         raise TypeError("Evaluation results must be a dictionary or JSON object")
-
-    def cell(value):
-        if isinstance(value, float):
-            return f"{value:.6g}"
-        if isinstance(value, list):
-            return "[" + ", ".join(cell(item) for item in value) + "]"
-        if isinstance(value, (dict, bool)) or value is None:
-            return json.dumps(value, ensure_ascii=True)
-        return str(value).replace("\n", " ").replace("\r", " ")
-
-    def table(headers, rows):
-        rows = [headers, *rows]
-        widths = [max(len(row[index]) for row in rows) for index in range(len(headers))]
-        border = "+-" + "-+-".join("-" * width for width in widths) + "-+"
-        lines = [border]
-        for index, row in enumerate(rows):
-            lines.append(
-                "| "
-                + " | ".join(
-                    value.ljust(width) for value, width in zip(row, widths, strict=True)
-                )
-                + " |"
-            )
-            if index == 0:
-                lines.append(border)
-        lines.append(border)
-        return "\n".join(lines)
 
     rows, matrices = [], []
     for name, value in result.items():
@@ -170,12 +174,27 @@ def format_validation_table(result) -> str:
         ):
             headers = ["Row / Col", *map(str, range(len(value[0])))]
             matrix_rows = [
-                [str(index), *map(cell, row)] for index, row in enumerate(value)
+                [str(index), *map(_table_cell, row)] for index, row in enumerate(value)
             ]
-            matrices.append(cell(name) + "\n" + table(headers, matrix_rows))
+            matrices.append(
+                _table_cell(name) + "\n" + _format_table(headers, matrix_rows)
+            )
         else:
-            rows.append([cell(name), cell(value)])
-    return "\n\n".join([table(["Metric", "Value"], rows), *matrices])
+            rows.append([_table_cell(name), _table_cell(value)])
+    return "\n\n".join([_format_table(["Metric", "Value"], rows), *matrices])
+
+
+def format_training_table(history) -> str:
+    """One row per epoch; include every metric reported by the selected task."""
+    columns = list(
+        dict.fromkeys(key for row in history for key in row if key != "epoch")
+    )
+    headers = ["epoch", *columns]
+    rows = [
+        [_table_cell(row[key]) if key in row else "" for key in headers]
+        for row in history
+    ]
+    return _format_table(headers, rows)
 
 
 def batch_size(batch) -> int:

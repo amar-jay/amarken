@@ -8,7 +8,7 @@ from amarken.config import Config
 from amarken.inference import run_inference
 from amarken.main import run_train
 from amarken.utils import distributed
-from amarken.utils.helpers import format_validation_table
+from amarken.utils.helpers import format_training_table, format_validation_table
 from amarken.validation import run_validation
 
 
@@ -63,7 +63,7 @@ def parser():
         help="Evaluate a checkpoint on the held-out test split",
     )
     test.add_argument("--checkpoint", type=Path, required=True)
-    for evaluator in (validate, test):
+    for evaluator in (train, validate, test):
         evaluator.add_argument(
             "--format",
             choices=("table", "json"),
@@ -86,8 +86,11 @@ def main(argv=None):
             checkpoint_prefix, history = run_train(config, resume=args.resume)
             if distributed.primary():
                 print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
-                for metrics in history:
-                    print(json.dumps(metrics))
+                if args.format == "json":
+                    for metrics in history:
+                        print(json.dumps(metrics))
+                else:
+                    print(format_training_table(history))
         elif args.command in {"test", "validate"}:
             options = {"split": "test"} if args.command == "test" else {}
             result = run_validation(args.checkpoint, config, **options)
