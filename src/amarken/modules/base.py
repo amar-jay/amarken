@@ -193,7 +193,13 @@ def loss_fn(model, batch, device):
     )
 
 
-def validation_step(model, batch, device) -> dict:
+def build_metrics():
+    raise NotImplementedError(
+        "Define task-specific metrics in modules/base.py:build_metrics"
+    )
+
+
+def validation_step(model, batch, device, metrics) -> dict:
     """Define metrics alongside your task objective when using the backbone."""
     raise NotImplementedError(
         "Define task-specific validation metrics in modules/base.py"

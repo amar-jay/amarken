@@ -151,12 +151,13 @@ expose the same model functions and a module-specific loss:
 # Change only this module path to switch implementations.
 from amarken.modules.example import (
     build_model,
+    build_metrics,
     load_model,
     loss_fn,
     predict,
     validation_step,
 )
-# from amarken.modules.base import build_model, load_model, loss_fn, predict, validation_step, fsdp_modules
+# from amarken.modules.base import build_model, load_model, loss_fn, predict, validation_step, fsdp_modules, build_metrics
 
 model = build_model(device="cpu")  # New model / pretrained backbone
 model = load_model("checkpoints/my-task/best.pt", device="cpu")
@@ -239,6 +240,7 @@ in `src/amarken/model.py` to:
 ```python
 from amarken.modules.classification import (
     build_model,
+    build_metrics,
     load_model,
     loss_fn,
     predict,
@@ -350,29 +352,43 @@ Evaluate a saved checkpoint on the configured validation split:
 
 ```bash
 uv run amarken validate \
-  --config configs/training-classification.json \
+  --config configs/classification.json \
   --checkpoint checkpoints/qwen-backbone/best.pt
 ```
 
-The command prints JSON with `samples`, `val/loss`, and `val/accuracy` (a fraction
-from 0 to 1). It uses the config's `val_size`, seed, batch size, device and precision.
+The command prints JSON with `samples`, sample-weighted `val/loss`, and
+TorchMetrics scores accumulated over the complete split: `accuracy`,
+`precision_macro`, `recall_macro`, `f1_macro`, `f1_weighted`, per-class precision,
+recall and F1 arrays, `confusion_matrix`, and `calibration_error` (all prefixed
+with `val/`). Scalar scores are fractions from 0 to 1. Macro scores give classes
+equal weight; weighted F1 weights them by their true sample counts. Confusion
+matrix rows are true classes and columns are predicted classes. Per-class arrays
+and matrix indices follow `CLASSIFICATION_LABELS` (numeric examples use class IDs).
+Calibration error uses 15 confidence bins and measures the gap between predicted
+confidence and accuracy; lower is better. Undefined precision/recall/F1 divisions
+use zero. These metrics are computed once from full-split state, not averaged
+from batch-level scores. Evaluation uses the config's `val_size`, seed, batch size,
+device and precision.
 This evaluates the validation data used during training, not an independent test set.
 It does not train or start a W&B run. Both classification and numeric model modules
-provide `validation_step(model, batch, device)` alongside `loss_fn`; replace the
-metrics there for another objective. The feature-only base module leaves this hook
-for your task, just like its loss function. Include `validation_step` when switching
-the imports in `model.py`.
+provide `build_metrics()` for a fresh TorchMetrics collection and
+`validation_step(model, batch, device, metrics)` to update it and return batch-mean
+loss from one forward pass. Replace these hooks alongside `loss_fn` for another
+objective. The feature-only base module leaves these hooks for your task, just
+like its loss function. Include `build_metrics` and
+`validation_step` when switching the imports in `model.py`.
 
 ### Held-out test evaluation
 
 ```bash
 uv run amarken test \
-  --config configs/training-classification.json \
+  --config configs/classification.json \
   --checkpoint checkpoints/qwen-backbone/best.pt
 ```
 
 Set `test_size` in JSON (default 32). Output contains `samples`, `test/loss` and
-`test/accuracy`. This command loads a checkpoint without training or selecting it.
+`test/accuracy`, plus the same TorchMetrics scores under the `test/` prefix.
+This command loads a checkpoint without training or selecting it.
 For Hugging Face data, the labeled validation source is shuffled with a fixed
 partition seed and divided in half: one half for validation and checkpoint
 selection, the other exclusively for testing. With SST-2 this allows up to 436
@@ -392,7 +408,7 @@ Use one process per GPU, with `"device": "cuda"` in JSON:
 
 ```bash
 uv run torchrun --standalone --nproc-per-node=2 --no-python \
-  amarken train --config configs/training-classification.json
+  amarken train --config configs/classification.json
 ```
 
 DDP replicates the complete model on each GPU; it does not combine GPU memory.
@@ -416,7 +432,7 @@ Resume with the same number of processes and the same training settings:
 
 ```bash
 uv run torchrun --standalone --nproc-per-node=2 --no-python \
-  amarken train --config configs/training-classification.json \
+  amarken train --config configs/classification.json \
   --resume checkpoints/qwen-backbone/latest.pt
 ```
 

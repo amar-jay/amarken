@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 
 from amarken.dataset import build_dataloaders, build_dataset, build_test_dataset
-from amarken.model import load_model, validation_step
+from amarken.model import build_metrics, load_model, validation_step
 from amarken.trainer import TrainingConfig, seed_everything
 
 
@@ -33,6 +33,7 @@ def run_validation(
     totals = {}
     samples = 0
     device = torch.device(config.device)
+    task_metrics = build_metrics().to(device)
     with torch.inference_mode():
         for batch in loader:
             count = len(batch[1])
@@ -41,7 +42,7 @@ def run_validation(
                 dtype=getattr(torch, config.precision),
                 enabled=config.precision != "float32",
             ):
-                metrics = validation_step(model, batch, device)
+                metrics = validation_step(model, batch, device, task_metrics)
             for name, value in metrics.items():
                 value = float(value)
                 if not torch.isfinite(torch.tensor(value)).item():
@@ -50,7 +51,12 @@ def run_validation(
             samples += count
     if not samples:
         raise ValueError("Validation split must contain at least one sample")
-    return {
+    result = {
         "samples": samples,
         **{f"{split}/{k}": v / samples for k, v in totals.items()},
     }
+    for name, value in task_metrics.compute().items():
+        if not torch.isfinite(value).all().item():
+            raise ValueError(f"Validation metric {name} must be finite")
+        result[f"{split}/{name}"] = value.detach().cpu().tolist()
+    return result

@@ -5,6 +5,7 @@ exports build/load, prediction, loss, validation and fsdp_modules hooks.
 """
 
 from amarken.modules.example import (
+    build_metrics,
     build_model,
     fsdp_modules,
     load_model,
@@ -14,6 +15,7 @@ from amarken.modules.example import (
 )
 
 __all__ = [
+    "build_metrics",
     "build_model",
     "fsdp_modules",
     "load_model",

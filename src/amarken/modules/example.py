@@ -66,16 +66,21 @@ def loss_fn(model, batch, device):
     return torch.nn.functional.cross_entropy(model(inputs), targets)
 
 
-def validation_step(model, batch, device) -> dict:
-    """Return batch-mean metrics; validation aggregates them by sample count."""
+def build_metrics():
+    """Fresh dataset-level metrics; replace these for another training objective."""
+    from amarken.metrics import classification_metrics
+
+    return classification_metrics(EXAMPLE_NUM_CLASSES)
+
+
+def validation_step(model, batch, device, metrics) -> dict:
+    """Update task metrics and return a batch-mean loss from one forward pass."""
     inputs, targets = batch
     inputs = inputs.to(device)
     targets = targets.to(device)
     logits = model(inputs).float()
-    return {
-        "loss": torch.nn.functional.cross_entropy(logits, targets).item(),
-        "accuracy": (logits.argmax(-1) == targets).float().mean().item(),
-    }
+    metrics.update(logits.softmax(dim=-1), targets)
+    return {"loss": torch.nn.functional.cross_entropy(logits, targets).item()}
 
 
 def fsdp_modules(model):

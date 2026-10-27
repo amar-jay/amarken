@@ -385,6 +385,65 @@ class TrainerTests(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue()), test_metrics)
             self.assertEqual(evaluate.call_args.kwargs["split"], "test")
 
+            # Compute non-linear metrics over the split, independent of batch size.
+            from amarken.modules.example import build_metrics
+
+            metric_inputs = torch.tensor(
+                [[4.0, 0.0], [0.0, 4.0], [0.0, 4.0], [0.0, 4.0], [4.0, 0.0]]
+            )
+            metric_targets = torch.tensor([0, 0, 1, 1, 1])
+            metric_rows = TensorDataset(metric_inputs, metric_targets)
+            results = []
+            for batch_size in (2, 5):
+                with (
+                    patch(
+                        "amarken.validation.load_model",
+                        return_value=torch.nn.Identity(),
+                    ),
+                    patch(
+                        "amarken.validation.build_metrics", side_effect=build_metrics
+                    ),
+                    patch(
+                        "amarken.validation.build_dataset",
+                        return_value=(metric_rows, metric_rows),
+                    ),
+                    patch(
+                        "amarken.validation.build_dataloaders",
+                        return_value=(
+                            None,
+                            DataLoader(metric_rows, batch_size=batch_size),
+                        ),
+                    ),
+                ):
+                    results.append(run_validation(checkpoint, TrainingConfig()))
+            for output_metrics in results:
+                self.assertEqual(
+                    output_metrics["val/confusion_matrix"], [[1, 1], [1, 2]]
+                )
+                self.assertAlmostEqual(output_metrics["val/accuracy"], 0.6)
+                self.assertAlmostEqual(output_metrics["val/f1_macro"], 7 / 12)
+                self.assertAlmostEqual(output_metrics["val/f1_weighted"], 0.6)
+                self.assertAlmostEqual(output_metrics["val/precision_macro"], 7 / 12)
+                self.assertAlmostEqual(output_metrics["val/recall_macro"], 7 / 12)
+                self.assertAlmostEqual(output_metrics["val/f1_per_class"][0], 0.5)
+                self.assertAlmostEqual(output_metrics["val/f1_per_class"][1], 2 / 3)
+                self.assertAlmostEqual(
+                    output_metrics["val/calibration_error"],
+                    metric_inputs.softmax(-1)[0].max().item() - 0.6,
+                    places=6,
+                )
+                json.dumps(output_metrics, allow_nan=False)
+            for key in results[0]:
+                if key == "val/loss":
+                    self.assertAlmostEqual(results[0][key], results[1][key], places=6)
+                else:
+                    self.assertEqual(results[0][key], results[1][key])
+            single = build_metrics()
+            single.update(torch.tensor([[1.0, 0.0]]), torch.tensor([0]))
+            self.assertTrue(
+                all(torch.isfinite(value).all() for value in single.compute().values())
+            )
+
             # Both implementations expose the same build/load/predict calls.
             self.assertEqual(predict_numeric(model, features), result)
             from transformers import AutoModel, Qwen3Config
