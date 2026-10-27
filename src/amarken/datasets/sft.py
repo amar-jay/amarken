@@ -1,7 +1,7 @@
 """Single-turn instruction/response SFT using the selected model's chat template.
 
 text_column maps the instruction, label_column the response, and optional
-input_column adds user context. Labels supervise only the response and EOS.
+input_column adds user context. Labels supervise the response and turn ending.
 """
 
 import hashlib
@@ -102,7 +102,8 @@ def encode_sample(tokenizer, row, config):
     Fast-tokenizer offsets avoid assuming separately tokenized prompt IDs are a
     prefix of full IDs. Tokens crossing the boundary are ignored conservatively.
     Native assistant masks, when available, are intersected with the verified
-    response span. EOS is supervised even if the native mask excludes it.
+    response span. The turn ending is supervised even if the native mask excludes
+    it; it need not equal tokenizer.eos_token (e.g. base Qwen2.5).
     """
     response = row.get(config.label_column)
     if not isinstance(response, str) or not response.strip():
@@ -126,15 +127,19 @@ def encode_sample(tokenizer, row, config):
         enable_thinking=False,
     )
     start, end = len(prefix), len(prefix) + len(response)
-    eos = tokenizer.eos_token
-    if (
-        not eos
-        or not rendered.startswith(prefix + response + eos)
-        or rendered[end + len(eos) :].strip()
-    ):
+    if not rendered.startswith(prefix + response):
         raise ValueError(
-            "SFT chat template must preserve the prompt prefix and end the response with EOS"
+            "SFT chat template must preserve the prompt prefix and response"
         )
+    suffix = rendered[end:]
+    ending_text = suffix.strip()
+    if ending_text not in tokenizer.all_special_tokens:
+        raise ValueError(
+            "SFT chat template must end the response with one special turn-ending token"
+        )
+    ending_id = tokenizer.convert_tokens_to_ids(ending_text)
+    ending_start = end + len(suffix) - len(suffix.lstrip())
+    ending_end = ending_start + len(ending_text)
     if not tokenizer.is_fast:
         raise ValueError("SFT response masking requires a fast tokenizer with offsets")
     native = bool(re.search(r"{%[-+]?\s*generation\b", tokenizer.get_chat_template()))
@@ -161,14 +166,12 @@ def encode_sample(tokenizer, row, config):
         content = start <= left < right <= end
         if native:
             content = content and bool(encoded["assistant_masks"][index])
-        ending = (
-            end <= left < right <= end + len(eos) and token == tokenizer.eos_token_id
-        )
+        ending = ending_start <= left < right <= ending_end and token == ending_id
         labels.append(token if content or ending else -100)
         content_targets += content and index > 0
-    if not content_targets or tokenizer.eos_token_id not in labels:
+    if not content_targets or ending_id not in labels:
         raise ValueError(
-            "SFT sample must retain response tokens and the ending EOS target"
+            "SFT sample must retain response tokens and the turn-ending target"
         )
     return ids, labels
 

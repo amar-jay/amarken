@@ -114,6 +114,17 @@ def check_sft_contract(case):
             sft.encode_sample(tokenizer, rows[0], config)
         with case.assertRaisesRegex(TypeError, "model.tokenize"):
             sft.build_dataloaders(config, rows, rows, batch_size=2)
+    # Base Qwen2.5 uses a chat ending distinct from tokenizer.eos_token.
+    tokenizer.add_special_tokens({"additional_special_tokens": ["<end_turn>"]})
+    tokenizer.chat_template = tokenizer.chat_template.replace(
+        "{{ eos_token }}", "<end_turn>"
+    )
+    _, targets = sft.encode_sample(tokenizer, rows[0], config)
+    case.assertEqual(
+        [token for token in targets if token != -100],
+        [2, tokenizer.convert_tokens_to_ids("<end_turn>")],
+    )
+    case.assertNotIn(tokenizer.eos_token_id, targets)
     tokenizer.chat_template = tokenizer.chat_template.replace(
         "{% if add_generation_prompt %}assistant\n",
         "{% if add_generation_prompt %}different\n",
@@ -1163,8 +1174,8 @@ class TrainerTests(unittest.TestCase):
                 # Parallel dataset implementations: random tensors and HF text rows.
                 from datasets import Dataset as HubDataset
 
-                from amarken.datasets import example as random_data
                 from amarken.datasets import classification as hub_data
+                from amarken.datasets import example as random_data
                 from amarken.main import run_train
 
                 random_train, random_validation = random_data.build_dataset(
@@ -1200,7 +1211,7 @@ class TrainerTests(unittest.TestCase):
                 )
                 with (
                     patch(
-                        "amarken.datasets.huggingface.load_dataset",
+                        "amarken.datasets.classification.load_dataset",
                         return_value=[text_rows, text_rows],
                     ) as hub_load,
                 ):

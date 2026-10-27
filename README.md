@@ -759,7 +759,9 @@ instruction as part of the user message. Set the optional fixed system message
 in `SFT_SYSTEM_PROMPT` in `constants.py`. Thinking is disabled for this
 single-turn task.
 
-Only response tokens and the final EOS receive labels. System/user messages,
+Only response tokens and the chat template's final turn-ending token receive labels.
+That token can differ from tokenizer EOS: base Qwen2.5 uses `<|im_end|>` to
+end chat turns and `<|endoftext|>` as EOS. Generation stops on either token. System/user messages,
 the assistant prefix (including Qwen's empty thinking block), and padding get
 `-100`. Padding is masked by position, so PAD sharing EOS's ID does not discard
 real ending targets. The tokenizer is obtained from the bound `model.tokenize`

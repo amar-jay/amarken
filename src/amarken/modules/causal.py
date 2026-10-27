@@ -237,6 +237,10 @@ def predict(model: CausalLM, inputs: str | Sequence[str] | dict) -> dict:
     device = next(model.parameters()).device
     batch = {key: value.to(device) for key, value in batch.items()}
     model.eval()
+    # Base Qwen2.5 has a different EOS from its chat-template end-of-turn token.
+    stop_ids = [tokenizer.eos_token_id]
+    if "<|im_end|>" in tokenizer.all_special_tokens:
+        stop_ids.append(tokenizer.convert_tokens_to_ids("<|im_end|>"))
     with torch.inference_mode():
         generated = model.model.generate(
             **batch,
@@ -244,7 +248,7 @@ def predict(model: CausalLM, inputs: str | Sequence[str] | dict) -> dict:
             do_sample=False,
             use_cache=True,
             pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            eos_token_id=list(dict.fromkeys(stop_ids)),
         )
     continuations = generated[:, batch["input_ids"].shape[1] :]
     return {"texts": tokenizer.batch_decode(continuations, skip_special_tokens=True)}
