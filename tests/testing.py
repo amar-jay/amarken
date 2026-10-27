@@ -282,6 +282,9 @@ def check_rl_contract(case):
             patch("amarken.main.build_model", return_value=make_model()),
             patch("amarken.main.build_dataset", return_value=(rows, rows)),
             patch("amarken.main.build_dataloaders", return_value=loaders),
+            patch("amarken.model.module", task),
+            patch("amarken.main.build_metrics", task.build_metrics),
+            patch("amarken.main.validation_step", task.validation_step),
         ):
             # Also exercise actual TRL sampling, rather than controlled completions.
             _, routed_history = run_train(config)
@@ -319,6 +322,7 @@ def check_rl_contract(case):
             patch("amarken.main.build_model", return_value=supervised_model),
             patch("amarken.main.build_dataset", return_value=(rows, rows)),
             patch("amarken.main.build_dataloaders", return_value=sft_loaders),
+            patch("amarken.main.loss_fn", task.loss_fn),
         ):
             _, supervised_history = run_train(sft_config)
         case.assertEqual(len(supervised_history), 2)
@@ -339,6 +343,9 @@ def check_rl_contract(case):
             patch("amarken.main.load_model", return_value=warm_model) as initial_loader,
             patch("amarken.main.build_dataset", return_value=(rows, rows)),
             patch("amarken.main.build_dataloaders", return_value=loaders),
+            patch("amarken.model.module", task),
+            patch("amarken.main.build_metrics", task.build_metrics),
+            patch("amarken.main.validation_step", task.validation_step),
             patch(
                 "peft.peft_model.PeftModelForCausalLM.generate", side_effect=generate
             ),

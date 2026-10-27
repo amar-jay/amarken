@@ -1,14 +1,14 @@
 """Select your implementation here; training, inference and validation share this import.
 
-Arithmetic modeling is selected below for RL fine-tuning. Other implementations include;
+Causal modeling is selected below for supervised fine-tuning. Other implementations include;
 Use modules.example for numeric,
-use modules.casual for supervised fine-tuning,
+use modules.arithmetic for the optional arithmetic SFT/RL demo,
 use modules.classification for classification, or
 use modules.ming for TTS.
 Each module exports build/load, prediction, loss, validation and fsdp_modules hooks.
 """
 
-import amarken.modules.arithmetic as module
+import amarken.modules.example as module
 
 build_metrics = module.build_metrics
 build_model = module.build_model
@@ -27,9 +27,7 @@ def get_rl_hooks():
         )
 
     names = ("prepare_prompts", "reward_fn")
-    missing = [
-        name for name in names if not callable(getattr(module, name, None))
-    ]
+    missing = [name for name in names if not callable(getattr(module, name, None))]
     if missing:
         raise ValueError(
             f"Selected model module {module.__name__} does not support RL: "

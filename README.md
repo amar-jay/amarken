@@ -1,10 +1,12 @@
 # amarken
 
+See the [configuration guide](configs/README.md) for each preset’s objective, model/dataset imports, and differences.
+
 Reusable model-training boilerplate.
 
 ## Configuration
 
-Use one file, `configs/training-example.json`, for the entire run: model,
+Use one file, `configs/example.json`, for the entire run: model,
 training settings, W&B tracking and checkpoint storage. The CLI loads it once
 into `Config`; the trainer passes its checkpoint settings to the logger.
 
@@ -96,8 +98,8 @@ containers, including model/optimizer state dictionaries.
 Run the small CPU classification task (no downloads or W&B account needed):
 
 ```bash
-uv run amarken train --config configs/training-example.json
-uv run amarken train --config configs/training-example.json \
+uv run amarken train --config configs/example.json
+uv run amarken train --config configs/example.json \
   --resume "checkpoints/synthetic-example/latest.pt"
 ```
 
@@ -145,7 +147,7 @@ Supply one sample with 8 numeric features or a batch shaped `[N, 8]`.
 For a JSON data file, use `--input-file inputs.json` instead of `--input`.
 The command prints JSON with `predictions` (class indices) and `probabilities`
 (one probability per class). The device comes from `device` in the same config
-file used for training. Pass `--config configs/training-example.json` to choose
+file used for training. Pass `--config configs/example.json` to choose
 that file; the example config is the default for both commands.
 For isolated runs, include the entered run name/UUID in the checkpoint path.
 
@@ -288,7 +290,7 @@ Datasets follow the same import-selection pattern as models:
 
 ```python
 # src/amarken/dataset.py — choose one implementation:
-from amarken.datasets.huggingface import (
+from amarken.datasets.classification import (
     build_dataset,
     build_dataloaders,
     build_test_dataset,
@@ -316,7 +318,7 @@ train_loader, validation_loader = build_dataloaders(
 | Dataset module | Model module | Batches |
 | --- | --- | --- |
 | `datasets.example` | `modules.example` | Random feature tensors and integer labels. |
-| `datasets.huggingface` | `modules.classification` | Tokenized text dictionaries and integer labels. |
+| `datasets.classification` | `modules.classification` | Tokenized text dictionaries and integer labels. |
 
 The random module preserves the original 128/32 numeric demo, generating data
 with a private seeded generator. Set `dataset.train_size` and `dataset.val_size`
@@ -371,16 +373,16 @@ its padding/context-length handling. The first run downloads/cache dataset files
 subsequent runs reuse the cache. Both loaders use zero workers and global
 PyTorch RNG shuffling, consistent with the trainer's epoch-boundary resume.
 
-`dataset.py` currently selects Hugging Face data to match the selected
-classification model. `main.py` no longer contains hardcoded numeric data.
-Select the random dataset and numeric model together for a download-free run.
-To train and infer with the current text setup:
+For classification, select `modules.classification` in `model.py` and
+`datasets.classification` in `dataset.py`. The default imports select causal/SFT,
+so change both before using this preset. Select the random dataset and numeric
+model together for a download-free run. To train and infer sentiment labels:
 
 ```bash
-uv run amarken train --config configs/training-base.json
-uv run amarken infer --config configs/training-base.json \
-  --checkpoint checkpoints/qwen-backbone/best.pt \
-  --input-file samples/input-base.json
+uv run amarken train --config configs/classification.json
+uv run amarken infer --config configs/classification.json \
+  --checkpoint checkpoints/qwen-classifier/best.pt \
+  --input-file samples/input-classification.json
 ```
 
 The tests exercise both datasets and loaders, and train the text classifier
@@ -793,8 +795,10 @@ for ordinary plain-text next-token training.
 
 ## Arithmetic SFT warm-up
 
-The selected arithmetic model/dataset support both supervised learning and RL;
-no import changes are required between stages. Start by teaching integer-only
+Select the arithmetic model/dataset imports and enable the commented arithmetic
+`dataset` and `run_name` alternatives in `configs/sft.json`, replacing the active
+Alpaca values. No import changes are required between arithmetic SFT and RL.
+Start by teaching integer-only
 answers and the pretrained EOS token:
 
 ```bash
@@ -826,8 +830,9 @@ changing inference settings alone does not repair their stopping.
 
 ## Arithmetic RL with TRL
 
-`modules/arithmetic.py` and `datasets/arithmetic.py` are selected in `model.py`
-and `dataset.py`. Supervised loss, rewards, prompt formatting and greedy evaluation stay in the
+The default imports select `modules/causal.py` and `datasets/sft.py` for
+`configs/sft.json`. To run the arithmetic demo, select `modules/arithmetic.py`
+in `model.py` and `datasets/arithmetic.py` in `dataset.py`. Supervised loss, rewards, prompt formatting and greedy evaluation stay in the
 task module. Only RL-capable model modules define `prepare_prompts` and `reward_fn`;
 `model.py` validates these optional hooks when RL is requested. Ordinary modules
 need no RL exports. Stop tokens are owned by the model implementation, not the

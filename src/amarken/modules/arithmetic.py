@@ -24,6 +24,7 @@ __all__ = [
 
 SUPPORTS_RL = True
 
+
 def prepare_prompts(tokenizer, prompts):
     return [
         tokenizer.apply_chat_template(

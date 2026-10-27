@@ -1,3 +1,7 @@
+/*
+ * Small MLP on synthetic numeric features; no downloads.
+ * Model: modules.example; dataset: datasets.example.
+ */
 {
   "model_id": "synthetic-mlp",
   "dataset": {
@@ -13,7 +17,7 @@
   "batch_size": 16,
   "epochs": 3,
   "device": "cpu",
-  "strategy": "fsdp2",
+  "strategy": "fsdp2", // Just meant for testing.
   "precision": "float32",
   "run_name": "synthetic-example",
   "checkpoints": {

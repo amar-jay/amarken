@@ -1,3 +1,7 @@
+/*
+ * SST-2 sentiment classification; trains a head on a frozen Qwen backbone.
+ * Model: modules.classification; dataset: datasets.classification.
+ */
 {
   "model_id": "Qwen/Qwen3.5-0.8B",
   "dataset": {
@@ -6,7 +10,11 @@
     "val_size": 320,
     "test_size": 320,
     "config": null,
-    "test_fraction": 0.5
+    "test_fraction": 0.5,
+    "train_split": "train",
+    "validation_split": "validation",
+    "text_column": "sentence",
+    "label_column": "label"
   },
   "seed": 42,
   "learning_rate": 0.01,

@@ -1,3 +1,9 @@
+/*
+ * Ming adaptation on LJSpeech text/audio pairs; trains conditioning/stop layers.
+ * Model: modules.ming; dataset: datasets.tts.
+ * Use uv run --extra tts; requires the pinned Ming runtime.
+ * Unlike default checkpoint policy, best saves only best.pt.
+ */
 {
   "model_id": "inclusionAI/Ming-3.0-tts-0.5B",
   "dataset": {
@@ -10,7 +16,7 @@
     "text_column": "normalized_text",
     "label_column": "audio"
   },
-  "learning_rate": 0.00001,
+  "learning_rate": 1e-05,
   "batch_size": 1,
   "epochs": 3,
   "device": "cuda",
@@ -22,5 +28,8 @@
     "async_save": false,
     "overwrite": true
   },
-  "wandb": { "enabled": false, "mode": "online" }
+  "wandb": {
+    "enabled": false,
+    "mode": "online"
+  }
 }

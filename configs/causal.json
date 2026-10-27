@@ -1,19 +1,23 @@
+/*
+ * Full fine-tuning on plain SST-2 sentences; sentiment labels are ignored.
+ * Every next token and EOS are targets, unlike response-only SFT.
+ * Model: modules.causal; dataset: datasets.causal.
+ */
 {
   "model_id": "Qwen/Qwen3.5-0.8B",
   "dataset": {
     "id": "stanfordnlp/sst2",
     "train_size": 128,
     "val_size": 32,
-    "test_size": 32
+    "test_size": 32,
+    "train_split": "train",
+    "validation_split": "validation",
+    "text_column": "sentence"
   },
   "fine_tuning": {
-    "mode": "lora",
-    "r": 8,
-    "alpha": 16,
-    "dropout": 0.05,
-    "target_modules": ["q_proj", "v_proj"]
+    "mode": "full"
   },
-  "learning_rate": 0.0002,
+  "learning_rate": 5e-05,
   "batch_size": 1,
   "epochs": 3,
   "device": "cuda",
