@@ -30,6 +30,7 @@ REVISIONS = {
 }
 
 DATASET_REVISIONS = {
+    "tatsu-lab/alpaca": "dce01c9b08f87459cf36a430d809084718273017",
     "stanfordnlp/sst2": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb",
     "bookbot/ljspeech_phonemes": "5379ba66d6b869d8ba74c8341f3100d645246d5d",
 }
@@ -40,8 +41,11 @@ BASE_MAX_LENGTH = 2048
 BASE_LOCAL_FILES_ONLY = False
 
 # Causal language modeling: reject overlong training text rather than silently truncate.
-CAUSAL_MAX_LENGTH = 256
+CAUSAL_MAX_LENGTH = 512
 CAUSAL_MAX_NEW_TOKENS = 64
+
+# Single-turn SFT: optional fixed system instruction. Qwen thinking stays disabled.
+SFT_SYSTEM_PROMPT = ""
 
 # Numeric example architecture.
 EXAMPLE_INPUT_SIZE = 8

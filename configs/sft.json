@@ -1,0 +1,29 @@
+{
+  "model_id": "Qwen/Qwen3.5-0.8B",
+  "dataset": {
+    "id": "tatsu-lab/alpaca",
+    "train_size": 128,
+    "val_size": 32,
+    "test_size": 32,
+    "train_split": "train",
+    "validation_split": "train",
+    "text_column": "instruction",
+    "label_column": "output",
+    "input_column": "input"
+  },
+  "fine_tuning": {
+    "mode": "lora",
+    "r": 8,
+    "alpha": 16,
+    "dropout": 0.05,
+    "target_modules": ["q_proj", "v_proj"]
+  },
+  "learning_rate": 0.0002,
+  "batch_size": 1,
+  "epochs": 3,
+  "device": "cuda",
+  "precision": "bfloat16",
+  "run_name": "qwen-sft",
+  "checkpoints": {"backend": "local", "policy": "default", "overwrite": true},
+  "wandb": {"enabled": false, "mode": "offline"}
+}

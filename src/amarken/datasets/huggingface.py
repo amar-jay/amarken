@@ -7,11 +7,11 @@ import torch
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
 
+from amarken.config import DatasetConfig
 from amarken.constants import (
     DATA_CACHE,
     DATASET_REVISIONS,
 )
-from amarken.config import DatasetConfig
 from amarken.utils.distributed import train_sampler
 
 

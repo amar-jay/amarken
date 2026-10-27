@@ -723,3 +723,66 @@ LoRA adapters and optimizer state, so LoRA checkpoints are still large. This
 addition does not introduce adapter-only exports or quantized training. The
 sample uses CUDA BF16; use CPU/float32 where appropriate. Multi-GPU hooks are
 provided, but this module has only been exercised on a tiny CPU model so far.
+
+## Supervised fine-tuning
+
+`datasets/sft.py` is selected in `dataset.py`, alongside `modules.causal` in
+`model.py`. It trains single-turn instruction/response pairs using the model's
+chat template. Start with Qwen3.5 LoRA and the pinned Alpaca dataset:
+
+```bash
+uv run amarken train --config configs/sft.json
+uv run amarken validate --config configs/sft.json --checkpoint checkpoints/qwen-sft/best.pt
+uv run amarken test --config configs/sft.json --checkpoint checkpoints/qwen-sft/best.pt
+uv run amarken infer --config configs/sft.json --checkpoint checkpoints/qwen-sft/best.pt --input-file samples/input-sft.json
+```
+
+Dataset column mappings stay in the existing config:
+
+```json
+"dataset": {
+  "id": "tatsu-lab/alpaca",
+  "train_split": "train",
+  "validation_split": "train",
+  "text_column": "instruction",
+  "label_column": "output",
+  "input_column": "input",
+  "train_size": 128,
+  "val_size": 32,
+  "test_size": 32
+}
+```
+
+`text_column` supplies the instruction; `label_column` supplies the response.
+`input_column` is optional (null by default); nonempty context is appended to the
+instruction as part of the user message. Set the optional fixed system message
+in `SFT_SYSTEM_PROMPT` in `constants.py`. Thinking is disabled for this
+single-turn task.
+
+Only response tokens and the final EOS receive labels. System/user messages,
+the assistant prefix (including Qwen's empty thinking block), and padding get
+`-100`. Padding is masked by position, so PAD sharing EOS's ID does not discard
+real ending targets. The tokenizer is obtained from the bound `model.tokenize`
+callback; the causal model, Trainer, loss and metrics need no SFT-specific changes.
+
+The collator verifies that the rendered full conversation preserves the
+inference prompt prefix, then uses fast-tokenizer character offsets to locate
+the response. Native assistant masks are used when the template has generation
+blocks; Qwen3.5's template uses the verified offset fallback. Tokens crossing
+the prompt boundary are ignored. Unsupported templates, empty responses,
+missing columns and samples over `CAUSAL_MAX_LENGTH` (512 by default) raise clear errors;
+there is no silent truncation.
+
+When both source split names are the same, prompts are grouped into stable
+80% training and 20% held-out partitions. `test_fraction` divides that held-out
+partition between validation and test. Prompt groups stay together across
+multiple responses, and partition membership is independent of sampling seed
+and requested sizes. With separate sources, overlapping evaluation prompts are
+excluded from training. Requested sizes are capped by available partition rows.
+
+Inference still accepts text prompts. `samples/input-sft.json` contains a prompt
+already formatted with the pinned Qwen3.5 chat template; format new instructions
+with `tokenizer.apply_chat_template(..., tokenize=False,
+add_generation_prompt=True, enable_thinking=False)` before passing them to the
+existing inference command. Switch the dataset import back to `datasets.causal`
+for ordinary plain-text next-token training.

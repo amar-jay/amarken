@@ -29,13 +29,14 @@ import os
 import warnings
 from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
 
+from amarken.config import CheckpointConfig
 from amarken.constants import CHECKPOINT_DIR, PROJECT_NAME, PROJECT_VERSION, WANDB_CACHE
 from amarken.utils.distributed import rank as process_rank
+
 
 class WandbLogger:
     """Own one run; preserve native W&B data and logging semantics.

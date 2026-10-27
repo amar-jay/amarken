@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 
+
 @dataclass(frozen=True)
 class WandbConfig:
     enabled: bool = False
@@ -16,6 +17,7 @@ class WandbConfig:
             raise ValueError("wandb.enabled must be a boolean")
         if self.mode not in {"online", "offline", "disabled"}:
             raise ValueError("wandb.mode must be online, offline, or disabled")
+
 
 @dataclass(frozen=True)
 class CheckpointConfig:
@@ -55,6 +57,7 @@ class CheckpointConfig:
         if self.backend == "s3" and not self.bucket:
             raise ValueError("An S3 bucket is required for checkpoint storage")
 
+
 @dataclass
 class DatasetConfig:
     id: str
@@ -67,8 +70,13 @@ class DatasetConfig:
     validation_split: str = "validation"
     text_column: str = "sentence"
     label_column: str = "label"
+    input_column: str | None = None
 
     def __post_init__(self):
+        if self.input_column is not None and (
+            not isinstance(self.input_column, str) or not self.input_column.strip()
+        ):
+            raise ValueError("dataset.input_column must be a nonempty string or null")
         if not isinstance(self.id, str) or not self.id.strip():
             raise ValueError("dataset.id must be a nonempty string")
         if self.config is not None and (
@@ -90,6 +98,7 @@ class DatasetConfig:
             raise ValueError(
                 "dataset.test_fraction must be between 0 and 1 (exclusive)"
             )
+
 
 @dataclass
 class FineTuningConfig:
@@ -119,6 +128,7 @@ class FineTuningConfig:
         ):
             raise ValueError("LoRA target_modules must contain nonempty names")
         self.target_modules = tuple(self.target_modules)
+
 
 @dataclass
 class Config:

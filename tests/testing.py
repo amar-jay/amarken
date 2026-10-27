@@ -14,14 +14,13 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from amarken.cli import main as cli_main
-from amarken.config import Config
-from amarken.config import DatasetConfig
+from amarken.config import CheckpointConfig, Config, DatasetConfig
 from amarken.inference import run_inference
 from amarken.modules.example import build_model, load_model, loss_fn
 from amarken.modules.example import predict as predict_numeric
 from amarken.trainer import Trainer
 from amarken.utils.helpers import prompt_run_name, seed_everything
-from amarken.utils.logger import CheckpointConfig, WandbLogger
+from amarken.utils.logger import WandbLogger
 
 
 def make_config(*, dataset=None, **options):
@@ -30,6 +29,124 @@ def make_config(*, dataset=None, **options):
         dataset={"id": "stanfordnlp/sst2"} if dataset is None else dataset,
         **options,
     )
+
+
+def check_sft_contract(case):
+    from dataclasses import replace
+
+    from datasets import Dataset
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+    from transformers import PreTrainedTokenizerFast, Qwen2Config, Qwen2ForCausalLM
+
+    from amarken.datasets import sft
+    from amarken.modules import causal
+
+    config = DatasetConfig(
+        id="fixture",
+        text_column="instruction",
+        label_column="output",
+        input_column="input",
+        validation_split="train",
+    )
+    rows = Dataset.from_list(
+        [
+            {"instruction": "hello world", "input": "world", "output": "hello"},
+            {"instruction": "hello", "input": "", "output": "hello world"},
+        ]
+    )
+    backend = Tokenizer(
+        WordLevel({"<unk>": 0, "<eos>": 1, "hello": 2, "world": 3}, unk_token="<unk>")
+    )
+    backend.pre_tokenizer = Whitespace()
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        unk_token="<unk>",
+        eos_token="<eos>",
+        pad_token="<eos>",
+    )
+    for native in (False, True):
+        content = (
+            "{% generation %}{{ message.content }}{% endgeneration %}"
+            if native
+            else "{{ message.content }}"
+        )
+        tokenizer.chat_template = (
+            "{% for message in messages %}{% if message.role == 'assistant' %}assistant\n"
+            + content
+            + "{{ eos_token }}\n{% else %}{{ message.role }}\n{{ message.content }}{{ eos_token }}\n{% endif %}{% endfor %}"
+            "{% if add_generation_prompt %}assistant\n{% endif %}"
+        )
+        tiny = Qwen2Config(
+            vocab_size=4,
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            num_key_value_heads=1,
+        )
+        model = causal.CausalLM(Qwen2ForCausalLM(tiny), tokenizer)
+        with patch.object(sft, "SFT_SYSTEM_PROMPT", "world"):
+            _, loader = sft.build_dataloaders(
+                config, rows, rows, batch_size=2, tokenize=model.tokenize
+            )
+            inputs, labels = next(iter(loader))
+        case.assertEqual(labels[0][labels[0] != -100].tolist(), [2, 1])
+        case.assertEqual(labels[1][labels[1] != -100].tolist(), [2, 3, 1])
+        case.assertTrue((labels[inputs["attention_mask"] == 0] == -100).all())
+        case.assertTrue((inputs["attention_mask"] == 0).any())
+        logits = model(inputs)
+        logits.retain_grad()
+        loss = causal._token_losses(logits, labels)[0]
+        loss.backward()
+        case.assertTrue(torch.isfinite(loss))
+        ignored = labels[:, 1:] == -100
+        case.assertTrue((logits.grad[:, :-1][ignored] == 0).all())
+        case.assertTrue((logits.grad[:, :-1][~ignored].abs().sum(-1) > 0).all())
+        for response in ("", None):
+            with case.assertRaisesRegex(ValueError, "response"):
+                sft.encode_sample(tokenizer, {**rows[0], "output": response}, config)
+        with (
+            patch.object(sft, "CAUSAL_MAX_LENGTH", 2),
+            case.assertRaisesRegex(ValueError, "truncation is disabled"),
+        ):
+            sft.encode_sample(tokenizer, rows[0], config)
+        with case.assertRaisesRegex(TypeError, "model.tokenize"):
+            sft.build_dataloaders(config, rows, rows, batch_size=2)
+    tokenizer.chat_template = tokenizer.chat_template.replace(
+        "{% if add_generation_prompt %}assistant\n",
+        "{% if add_generation_prompt %}different\n",
+    )
+    with case.assertRaisesRegex(ValueError, "prompt prefix"):
+        sft.encode_sample(tokenizer, rows[0], config)
+
+    source = Dataset.from_list(
+        [
+            {"instruction": f"prompt {i // 2}", "input": "", "output": f"answer {i}"}
+            for i in range(600)
+        ]
+    )
+    config = replace(config, train_size=30, val_size=20, test_size=20)
+    with patch.object(sft, "load_dataset", return_value=[source]) as load:
+        train, val = sft.build_dataset(config)
+        test = sft.build_test_dataset(config)
+        _, other_val = sft.build_dataset(replace(config, train_size=60), seed=99)
+        case.assertEqual([len(train), len(val), len(test)], [30, 20, 20])
+        groups = [set(split["instruction"]) for split in (train, val, test)]
+        case.assertFalse(
+            groups[0] & groups[1] or groups[0] & groups[2] or groups[1] & groups[2]
+        )
+        # Membership is fixed before run-specific shuffling and subset sampling.
+        case.assertTrue(
+            all(sft._partition(sft._prompt(row, config)) >= 0.8 for row in other_val)
+        )
+        case.assertEqual(load.call_args.kwargs["split"], ["train"])
+    with (
+        patch.object(sft, "load_dataset", return_value=[source, source]),
+        case.assertRaisesRegex(ValueError, "partition is empty"),
+    ):
+        sft.build_dataset(replace(config, validation_split="validation"))
 
 
 def check_causal_contract(case):
@@ -1296,6 +1413,7 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
+        check_sft_contract(self)
         check_causal_contract(self)
         check_tts_contract(self)
         defaults = DatasetConfig(id="stanfordnlp/sst2")

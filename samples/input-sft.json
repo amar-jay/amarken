@@ -1,0 +1,6 @@
+{
+  "texts": [
+    "<|im_start|>user\nExplain in one sentence why the sky looks blue.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  ],
+  "max_new_tokens": 64
+}
