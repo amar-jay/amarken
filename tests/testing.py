@@ -14,6 +14,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from amarken.cli import main as cli_main
+from amarken.datasets.config import DatasetConfig
 from amarken.inference import run_inference
 from amarken.logger import CheckpointConfig, WandbLogger
 from amarken.modules.example import build_model, load_model, loss_fn
@@ -22,9 +23,11 @@ from amarken.trainer import Trainer, TrainingConfig, seed_everything
 from amarken.utils import prompt_run_name
 
 
-def make_config(**options):
+def make_config(*, dataset=None, **options):
     return TrainingConfig(
-        model_id="synthetic-mlp", dataset_id="stanfordnlp/sst2", **options
+        model_id="synthetic-mlp",
+        dataset={"id": "stanfordnlp/sst2"} if dataset is None else dataset,
+        **options,
     )
 
 
@@ -194,7 +197,7 @@ class TrainerTests(unittest.TestCase):
             inference_config = Path(directory) / "inference-config.json"
             inference_config.write_text(
                 json.dumps(
-                    {"model_id": "synthetic-mlp", "dataset_id": "stanfordnlp/sst2"}
+                    {"model_id": "synthetic-mlp", "dataset": {"id": "stanfordnlp/sst2"}}
                 )
             )
 
@@ -292,7 +295,7 @@ class TrainerTests(unittest.TestCase):
                 json.dumps(
                     {
                         "model_id": "synthetic-mlp",
-                        "dataset_id": "stanfordnlp/sst2",
+                        "dataset": {"id": "stanfordnlp/sst2"},
                         "device": "cpu:0",
                         "precision": "bfloat16",
                     }
@@ -401,14 +404,13 @@ class TrainerTests(unittest.TestCase):
                 ),
             ):
                 test_metrics = run_validation(
-                    checkpoint, make_config(test_size=3), split="test"
+                    checkpoint,
+                    make_config(dataset={"id": "stanfordnlp/sst2", "test_size": 3}),
+                    split="test",
                 )
                 training_data.assert_not_called()
                 test_data.assert_called_once_with(
-                    seed=42,
-                    dataset_id=make_config().dataset_id,
-                    dataset_config=None,
-                    test_size=3,
+                    DatasetConfig(id="stanfordnlp/sst2", test_size=3), seed=42
                 )
                 self.assertAlmostEqual(test_metrics["test/accuracy"], 2 / 3)
                 self.assertNotIn("val/accuracy", test_metrics)
@@ -643,11 +645,11 @@ class TrainerTests(unittest.TestCase):
                 from amarken.main import run_train
 
                 random_train, random_validation = random_data.build_dataset(
-                    seed=42, train_size=12, val_size=4
+                    DatasetConfig(id="synthetic", train_size=12, val_size=4), seed=42
                 )
                 self.assertEqual((len(random_train), len(random_validation)), (12, 4))
                 repeated_train, _ = random_data.build_dataset(
-                    seed=42, train_size=12, val_size=4
+                    DatasetConfig(id="synthetic", train_size=12, val_size=4), seed=42
                 )
                 torch.testing.assert_close(
                     random_train.tensors[0], repeated_train.tensors[0]
@@ -677,24 +679,26 @@ class TrainerTests(unittest.TestCase):
                     ) as hub_load,
                 ):
                     text_train, text_validation = hub_data.build_dataset(
+                        DatasetConfig(
+                            id=make_config().dataset.id, train_size=3, val_size=2
+                        ),
                         seed=42,
-                        dataset_id=make_config().dataset_id,
-                        train_size=3,
-                        val_size=2,
                     )
                     self.assertEqual((len(text_train), len(text_validation)), (3, 2))
                     self.assertEqual(
-                        hub_load.call_args.args[0], make_config().dataset_id
+                        hub_load.call_args.args[0], make_config().dataset.id
                     )
                     with patch.dict(
                         hub_data.DATASET_REVISIONS,
                         {"custom/reviews": "pinned-revision"},
                     ):
                         hub_data.build_dataset(
-                            dataset_id="custom/reviews",
-                            dataset_config="reviews-subset",
-                            train_size=3,
-                            val_size=2,
+                            DatasetConfig(
+                                id="custom/reviews",
+                                config="reviews-subset",
+                                train_size=3,
+                                val_size=2,
+                            )
                         )
                         self.assertEqual(hub_load.call_args.args[0], "custom/reviews")
                         self.assertEqual(
@@ -704,9 +708,11 @@ class TrainerTests(unittest.TestCase):
                             hub_load.call_args.kwargs["revision"], "pinned-revision"
                         )
                         hub_data.build_test_dataset(
-                            dataset_id="custom/reviews",
-                            dataset_config="reviews-subset",
-                            test_size=2,
+                            DatasetConfig(
+                                id="custom/reviews",
+                                config="reviews-subset",
+                                test_size=2,
+                            )
                         )
                         self.assertEqual(hub_load.call_args.args[0], "custom/reviews")
                         self.assertEqual(
@@ -717,7 +723,7 @@ class TrainerTests(unittest.TestCase):
                         )
 
                     held_out = hub_data.build_test_dataset(
-                        seed=42, dataset_id=make_config().dataset_id, test_size=2
+                        DatasetConfig(id=make_config().dataset.id, test_size=2), seed=42
                     )
                     self.assertTrue(
                         set(text_validation["sentence"]).isdisjoint(
@@ -725,13 +731,25 @@ class TrainerTests(unittest.TestCase):
                         )
                     )
                     changed_seed = hub_data.build_test_dataset(
-                        seed=99, dataset_id=make_config().dataset_id, test_size=2
+                        DatasetConfig(id=make_config().dataset.id, test_size=2), seed=99
                     )
                     self.assertEqual(
                         set(held_out["sentence"]), set(changed_seed["sentence"])
                     )
                     self.assertEqual(
                         hub_load.call_args.kwargs["split"], ["train", "validation"]
+                    )
+                    ratio_train, ratio_val = hub_data.build_dataset(
+                        DatasetConfig(id="stanfordnlp/sst2", test_fraction=0.25)
+                    )
+                    ratio_test = hub_data.build_test_dataset(
+                        DatasetConfig(id="stanfordnlp/sst2", test_fraction=0.25)
+                    )
+                    self.assertEqual(
+                        (len(ratio_train), len(ratio_val), len(ratio_test)), (4, 3, 1)
+                    )
+                    self.assertTrue(
+                        set(ratio_val["sentence"]).isdisjoint(ratio_test["sentence"])
                     )
                 tokenizer.side_effect = lambda texts, **kwargs: {
                     "input_ids": torch.tensor([[1, 2, 3]] * len(texts)),
@@ -761,6 +779,14 @@ class TrainerTests(unittest.TestCase):
                     epochs=1,
                     batch_size=2,
                     run_name="hf-dataset-test",
+                    dataset={
+                        "id": "stanfordnlp/sst2",
+                        "config": "reviews-subset",
+                        "train_size": 3,
+                        "val_size": 2,
+                        "test_size": 1,
+                        "test_fraction": 0.25,
+                    },
                     precision="bfloat16",
                     checkpoints={"backend": "local", "async_save": True},
                 )
@@ -771,11 +797,12 @@ class TrainerTests(unittest.TestCase):
                     patch(
                         "amarken.main.build_dataset",
                         return_value=(text_train, text_validation),
-                    ),
+                    ) as dataset_builder,
                     patch("amarken.main.build_dataloaders", hub_data.build_dataloaders),
                     patch("amarken.main.loss_fn", classification.loss_fn),
                 ):
                     prefix, dataset_history = run_train(dataset_config)
+                dataset_builder.assert_called_once_with(dataset_config.dataset, seed=42)
                 model_builder.assert_called_once_with(device="cpu", precision="float32")
                 self.assertTrue(
                     all(
@@ -819,10 +846,28 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
-        self.assertIsNone(make_config().dataset_config)
-        self.assertEqual(make_config(dataset_config="subset").dataset_config, "subset")
-        with self.assertRaisesRegex(ValueError, "dataset_config"):
-            make_config(dataset_config=1)
+        self.assertIsNone(make_config().dataset.config)
+        self.assertEqual(
+            make_config(
+                dataset={"id": "stanfordnlp/sst2", "config": "subset"}
+            ).dataset.config,
+            "subset",
+        )
+        with self.assertRaisesRegex(ValueError, "dataset.config"):
+            make_config(dataset={"id": "stanfordnlp/sst2", "config": 1})
+        for fraction in (0, 1, -0.1, float("nan"), True):
+            with self.assertRaisesRegex(ValueError, "test_fraction"):
+                make_config(
+                    dataset={"id": "stanfordnlp/sst2", "test_fraction": fraction}
+                )
+        from dataclasses import asdict
+
+        round_trip = TrainingConfig(
+            **asdict(
+                make_config(dataset={"id": "stanfordnlp/sst2", "test_fraction": 0.25})
+            )
+        )
+        self.assertEqual(round_trip.dataset.test_fraction, 0.25)
         nested = make_config(wandb={"enabled": True, "mode": "online"})
         self.assertTrue(nested.wandb.enabled)
         self.assertEqual(nested.wandb.mode, "online")
@@ -991,7 +1036,7 @@ class TrainerTests(unittest.TestCase):
             config_file = Path(directory) / "config.json"
             config_file.write_text(
                 json.dumps(
-                    {"model_id": "synthetic-mlp", "dataset_id": "stanfordnlp/sst2"}
+                    {"model_id": "synthetic-mlp", "dataset": {"id": "stanfordnlp/sst2"}}
                 )
             )
             with (
@@ -1175,7 +1220,9 @@ def distributed_worker(directory):
             def create(name, epochs):
                 seed_everything(42)
                 model = build_model()
-                train_data, validation_data = build_dataset(train_size=32, val_size=7)
+                train_data, validation_data = build_dataset(
+                    DatasetConfig(id="synthetic", train_size=32, val_size=7)
+                )
                 train, validation = build_dataloaders(
                     train_data, validation_data, batch_size=3
                 )
@@ -1288,7 +1335,9 @@ def fsdp_worker(directory):
         def create(name, epochs, strategy="fsdp2", precision="float32"):
             seed_everything(42)
             model = build_model(precision=precision)
-            train_rows, val_rows = build_dataset(train_size=32, val_size=7)
+            train_rows, val_rows = build_dataset(
+                DatasetConfig(id="synthetic", train_size=32, val_size=7)
+            )
             train, val = build_dataloaders(train_rows, val_rows, batch_size=3)
             config = make_config(
                 strategy=strategy,

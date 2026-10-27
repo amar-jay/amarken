@@ -18,21 +18,10 @@ def run_validation(
     model = load_model(checkpoint, device=config.device, precision=config.precision)
     model.eval()
     if split == "test":
-        validation = build_test_dataset(
-            seed=config.seed,
-            dataset_id=config.dataset_id,
-            dataset_config=config.dataset_config,
-            test_size=config.test_size,
-        )
+        validation = build_test_dataset(config.dataset, seed=config.seed)
         train = validation  # Only the evaluation loader is iterated.
     else:
-        train, validation = build_dataset(
-            seed=config.seed,
-            dataset_id=config.dataset_id,
-            dataset_config=config.dataset_config,
-            train_size=config.train_size,
-            val_size=config.val_size,
-        )
+        train, validation = build_dataset(config.dataset, seed=config.seed)
     _, loader = build_dataloaders(
         train,
         validation,

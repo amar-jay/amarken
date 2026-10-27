@@ -1,6 +1,7 @@
 """Hugging Face text-classification data for modules.classification."""
 
 from collections.abc import Callable, Mapping
+from math import ceil
 
 import torch
 from datasets import Dataset, load_dataset
@@ -14,24 +15,17 @@ from amarken.constants import (
     HF_DATASET_TRAIN_SPLIT,
     HF_DATASET_VALIDATION_SPLIT,
 )
+from amarken.datasets.config import DatasetConfig
 from amarken.distributed import train_sampler
 
 
 def _build_dataset(
-    *,
-    seed: int = 42,
-    dataset_id: str | None = None,
-    dataset_config: str | None = None,
-    train_size: int = 128,
-    val_size: int = 32,
-    _test: bool = False,
+    config: DatasetConfig, *, seed: int = 42, _test: bool = False
 ) -> tuple[Dataset, Dataset]:
-    if not isinstance(dataset_id, str) or not dataset_id.strip():
-        raise ValueError("Pass dataset_id from the training config")
     train, validation = load_dataset(
-        dataset_id,
-        name=dataset_config,
-        revision=DATASET_REVISIONS.get(dataset_id),
+        config.id,
+        name=config.config,
+        revision=DATASET_REVISIONS.get(config.id),
         split=[HF_DATASET_TRAIN_SPLIT, HF_DATASET_VALIDATION_SPLIT],
         cache_dir=DATA_CACHE,
     )
@@ -41,7 +35,10 @@ def _build_dataset(
     if len(validation) < 2:
         raise ValueError("Need at least two labeled rows for validation and test")
     validation = validation.shuffle(seed=0)
-    boundary = len(validation) // 2
+    test_count = min(
+        len(validation) - 1, max(1, ceil(len(validation) * config.test_fraction))
+    )
+    boundary = len(validation) - test_count
     validation = validation.select(
         range(boundary, len(validation)) if _test else range(boundary)
     )
@@ -52,32 +49,17 @@ def _build_dataset(
             raise ValueError(f"Dataset requires columns {sorted(required)}")
         if len(dataset) == 0:
             raise ValueError("Dataset splits must not be empty")
-        if size is not None:
-            if type(size) is not int or size < 1:
-                raise ValueError(
-                    "Dataset sample limits must be positive integers or None"
-                )
-            dataset = dataset.shuffle(seed=seed).select(range(min(size, len(dataset))))
+        dataset = dataset.shuffle(seed=seed).select(range(min(size, len(dataset))))
         return dataset
 
-    return sample(train, train_size), sample(validation, val_size)
-
-
-def build_dataset(
-    *,
-    seed: int = 42,
-    dataset_id: str | None = None,
-    dataset_config: str | None = None,
-    train_size: int = 128,
-    val_size: int = 32,
-) -> tuple[Dataset, Dataset]:
-    return _build_dataset(
-        seed=seed,
-        dataset_id=dataset_id,
-        dataset_config=dataset_config,
-        train_size=train_size,
-        val_size=val_size,
+    return (
+        sample(train, 1 if _test else config.train_size),
+        sample(validation, config.test_size if _test else config.val_size),
     )
+
+
+def build_dataset(config: DatasetConfig, *, seed: int = 42) -> tuple[Dataset, Dataset]:
+    return _build_dataset(config, seed=seed)
 
 
 def build_dataloaders(
@@ -128,20 +110,7 @@ def build_dataloaders(
     )
 
 
-def build_test_dataset(
-    *,
-    seed: int = 42,
-    dataset_id: str | None = None,
-    dataset_config: str | None = None,
-    test_size: int = 32,
-) -> Dataset:
-    """Load the held-out half of the labeled validation source split."""
-    _, test = _build_dataset(
-        seed=seed,
-        dataset_id=dataset_id,
-        dataset_config=dataset_config,
-        train_size=1,
-        val_size=test_size,
-        _test=True,
-    )
+def build_test_dataset(config: DatasetConfig, *, seed: int = 42) -> Dataset:
+    """Load the held-out fraction of the labeled validation source split."""
+    _, test = _build_dataset(config, seed=seed, _test=True)
     return test

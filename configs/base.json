@@ -1,11 +1,15 @@
 {
   "model_id": "Qwen/Qwen3.5-0.8B",
-  "dataset_id": "stanfordnlp/sst2",
+  "dataset": {
+    "id": "stanfordnlp/sst2",
+    "train_size": 128,
+    "val_size": 32,
+    "test_size": 32,
+    "config": null,
+    "test_fraction": 0.5
+  },
   "seed": 42,
   "learning_rate": 0.01,
-  "train_size": 128,
-  "val_size": 32,
-  "test_size": 32,
   "batch_size": 16,
   "epochs": 3,
   "device": "cuda",

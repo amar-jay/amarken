@@ -11,6 +11,14 @@ into `TrainingConfig`; the trainer passes its checkpoint settings to the logger.
 ```json
 {
   "model_id": "synthetic-mlp",
+  "dataset": {
+    "id": "synthetic",
+    "train_size": 128,
+    "val_size": 32,
+    "test_size": 32,
+    "config": null,
+    "test_fraction": 0.5
+  },
   "seed": 42,
   "learning_rate": 0.01,
   "batch_size": 16,
@@ -283,9 +291,11 @@ from amarken.datasets.huggingface import (
 Both expose the same interface:
 
 ```python
-train_data, validation_data = build_dataset(
-    dataset_id="stanfordnlp/sst2", seed=42, train_size=128, val_size=32
-)
+from amarken.datasets.config import DatasetConfig
+
+settings = DatasetConfig(id="stanfordnlp/sst2", train_size=128, val_size=32)
+train_data, validation_data = build_dataset(settings, seed=42)
+test_data = build_test_dataset(settings, seed=42)
 train_loader, validation_loader = build_dataloaders(
     train_data,
     validation_data,
@@ -300,19 +310,39 @@ train_loader, validation_loader = build_dataloaders(
 | `datasets.huggingface` | `modules.classification` | Tokenized text dictionaries and integer labels. |
 
 The random module preserves the original 128/32 numeric demo, generating data
-with a private seeded generator. Set `train_size` and `val_size` in the training
-JSON config; both must be positive integers. Defaults are 128 and 32.
+with a private seeded generator. Set `dataset.train_size` and `dataset.val_size`
+in the training JSON; both must be positive integers. Defaults are 128 and 32.
 
 The Hugging Face module defaults to pinned `stanfordnlp/sst2` train/validation
 splits, with 0=negative and 1=positive, matching the classifier label order.
-Set `"dataset_id": "stanfordnlp/sst2"` in the training JSON to choose the Hub
-dataset. Optional `"dataset_config": "subset-name"` selects a dataset subset;
-omit it or use `null` for the default. Revisions are looked up by ID in `DATASET_REVISIONS` in `constants.py`;
-unlisted IDs use the Hub default revision. Split names and column mappings stay
-in constants. The numeric dataset accepts the same argument and ignores it.
-The same JSON `train_size` and `val_size` settings control sample counts, capped
-at the available split sizes. Sampling limits
-reduce training work, but the initial dataset download may include full splits.
+Dataset settings are grouped in the same training JSON:
+
+```json
+"dataset": {
+  "id": "stanfordnlp/sst2",
+  "train_size": 1280,
+  "val_size": 320,
+  "test_size": 320,
+  "config": null,
+  "test_fraction": 0.5
+}
+```
+
+`id` is required; `config` optionally selects a Hub subset. Sizes default to
+128/32/32 and must be positive integers. `test_fraction` defaults to 0.5 and must
+be strictly between 0 and 1. Revisions are looked up by ID in `DATASET_REVISIONS`
+in `constants.py`; unlisted IDs use the Hub default revision. Split names and
+column mappings remain in constants. The same nested settings are used by training,
+validation and testing and saved in checkpoint metadata. Python callers can use a
+dictionary or `DatasetConfig` from `amarken.datasets.config`.
+
+Size limits are capped at available Hugging Face split sizes. They reduce training
+work, but the initial dataset download may include full splits. Numeric data uses
+explicit sizes and independent random streams; Hub ID, subset and test fraction
+are accepted for interface compatibility but do not alter its generation.
+
+This replaces top-level `dataset_id`, `dataset_config`, `train_size`, `val_size`,
+and `test_size`; migrate custom JSON files to the nested object as above.
 
 Text is tokenized per batch through the selected model's `tokenize()`, preserving
 its padding/context-length handling. The first run downloads/cache dataset files;
@@ -373,7 +403,7 @@ and matrix indices follow `CLASSIFICATION_LABELS` (numeric examples use class ID
 Calibration error uses 15 confidence bins and measures the gap between predicted
 confidence and accuracy; lower is better. Undefined precision/recall/F1 divisions
 use zero. These metrics are computed once from full-split state, not averaged
-from batch-level scores. Evaluation uses the config's `val_size`, seed, batch size,
+from batch-level scores. Evaluation uses the config's `dataset.val_size`, seed, batch size,
 device and precision.
 This evaluates the validation data used during training, not an independent test set.
 It does not train or start a W&B run. Both classification and numeric model modules
@@ -392,14 +422,17 @@ uv run amarken test \
   --checkpoint checkpoints/qwen-backbone/best.pt
 ```
 
-Set `test_size` in JSON (default 32). Output contains `samples`, `test/loss` and
+Set `dataset.test_size` in JSON (default 32). Output contains `samples`, `test/loss` and
 `test/accuracy`, plus the same TorchMetrics scores under the `test/` prefix.
 This command loads a checkpoint without training or selecting it.
 For Hugging Face data, the labeled validation source is shuffled with a fixed
-partition seed and divided in half: one half for validation and checkpoint
-selection, the other exclusively for testing. With SST-2 this allows up to 436
-examples per half. The run seed samples within these fixed halves; changing sizes
-or run seeds cannot move a row between them. Training still uses the train source.
+partition seed. `dataset.test_fraction` reserves a fraction exclusively for testing;
+the remainder is used for validation and checkpoint selection. Test counts round
+up, keeping at least one row in each partition. The default 0.5 allows up to 436
+SST-2 examples per partition. The run seed samples within these partitions;
+changing size limits or sampling seeds cannot move rows between them. Changing
+the fraction changes membership: retrain before treating that new test partition
+as held out. Training still uses the train source.
 The numeric example uses a separate random stream for its test samples.
 
 **Existing checkpoints:** earlier runs used the entire validation source for
