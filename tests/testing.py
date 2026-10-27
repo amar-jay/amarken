@@ -1164,7 +1164,7 @@ class TrainerTests(unittest.TestCase):
                 from datasets import Dataset as HubDataset
 
                 from amarken.datasets import example as random_data
-                from amarken.datasets import huggingface as hub_data
+                from amarken.datasets import classification as hub_data
                 from amarken.main import run_train
 
                 random_train, random_validation = random_data.build_dataset(

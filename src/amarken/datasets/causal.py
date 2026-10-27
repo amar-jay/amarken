@@ -8,10 +8,10 @@ from dataclasses import replace
 
 from torch.utils.data import DataLoader
 
-from amarken.datasets.huggingface import (
+from amarken.datasets.classification import (
     build_dataset as build_text_dataset,
 )
-from amarken.datasets.huggingface import (
+from amarken.datasets.classification import (
     build_test_dataset as build_text_test_dataset,
 )
 from amarken.utils.distributed import train_sampler
