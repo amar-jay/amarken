@@ -1,5 +1,5 @@
 {
-  "model_id": "Qwen/Qwen2.5-0.5B",
+  "model_id": "Qwen/Qwen3.5-0.8B",
   "dataset": {
     "id": "stanfordnlp/sst2",
     "train_size": 128,

@@ -1,11 +1,12 @@
 """Select datasets independently of the model implementation.
 
 Use datasets.example with modules.example, or datasets.huggingface with
-modules.classification. Ming TTS uses datasets.tts, selected below.
+modules.classification. Causal language modeling uses datasets.causal, selected
+below. Ming TTS uses datasets.tts.
 All expose the same dataset/dataloader functions.
 """
 
-from amarken.datasets.tts import (
+from amarken.datasets.causal import (
     build_dataloaders,
     build_dataset,
     build_test_dataset,

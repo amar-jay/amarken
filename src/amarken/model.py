@@ -1,12 +1,11 @@
 """Select your implementation here; training, inference and validation share this import.
 
-Ming TTS is selected below; use modules.example for the numeric example.
-use modules.classification for the classification example.
-Each module
-exports build/load, prediction, loss, validation and fsdp_modules hooks.
+Causal language modeling is selected below. Use modules.example for numeric
+data, modules.classification for classification, or modules.ming for TTS.
+Each module exports build/load, prediction, loss, validation and fsdp_modules hooks.
 """
 
-from amarken.modules.ming import (
+from amarken.modules.causal import (
     build_metrics,
     build_model,
     fsdp_modules,

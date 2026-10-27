@@ -676,7 +676,7 @@ validation, and RNG capture/restoration live in `utils/checkpoint.py`.
 
 `modules/causal.py` follows the same build/load, `model(inputs)`, loss, metrics,
 prediction and FSDP hooks as the other modules. It supports the pinned Qwen2.5
-and Qwen3 text models; `configs/causal.json` starts with Qwen2.5-0.5B and LoRA.
+and Qwen3/Qwen3.5 text models; `configs/causal.json` starts with Qwen3.5-0.8B and LoRA.
 Select `amarken.modules.causal` in `src/amarken/model.py` and
 `amarken.datasets.causal` in `src/amarken/dataset.py`, keeping the existing
 imported function names. Then run:

@@ -77,9 +77,11 @@ def _build(*, model_id, device, precision, fine_tuning, pretrained):
         "local_files_only": BASE_LOCAL_FILES_ONLY,
     }
     architecture = AutoConfig.from_pretrained(model_id, **common)
-    if architecture.model_type not in {"qwen2", "qwen3"}:
+    # Qwen3.5's Hub config wraps a text_config; load just its causal text model.
+    architecture = getattr(architecture, "text_config", architecture)
+    if architecture.model_type not in {"qwen2", "qwen3", "qwen3_5_text"}:
         raise ValueError(
-            "The causal module currently supports Qwen2/Qwen2.5 and Qwen3 text models"
+            "The causal module supports Qwen2/Qwen2.5, Qwen3 and Qwen3.5 text models"
         )
     if CAUSAL_MAX_LENGTH > architecture.max_position_embeddings:
         raise ValueError("CAUSAL_MAX_LENGTH exceeds the model context window")
