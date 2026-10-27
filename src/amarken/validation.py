@@ -4,14 +4,14 @@ from pathlib import Path
 
 import torch
 
+from amarken.config import Config
 from amarken.dataset import build_dataloaders, build_dataset, build_test_dataset
 from amarken.model import build_metrics, load_model, validation_step
-from amarken.trainer import TrainingConfig, seed_everything
-from amarken.utils.helpers import batch_size
+from amarken.utils.helpers import batch_size, seed_everything
 
 
 def run_validation(
-    checkpoint: str | Path, config: TrainingConfig, *, split: str = "val"
+    checkpoint: str | Path, config: Config, *, split: str = "val"
 ) -> dict:
     if split not in {"val", "test"}:
         raise ValueError("Evaluation split must be val or test")

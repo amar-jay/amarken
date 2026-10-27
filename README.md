@@ -6,7 +6,7 @@ Reusable model-training boilerplate.
 
 Use one file, `configs/training-example.json`, for the entire run: model,
 training settings, W&B tracking and checkpoint storage. The CLI loads it once
-into `TrainingConfig`; the trainer passes its checkpoint settings to the logger.
+into `Config`; the trainer passes its checkpoint settings to the logger.
 
 ```json
 {
@@ -205,8 +205,9 @@ its unused imports are removed. The synthetic defaults require no Hub downloads.
 
 ## Custom training
 
-For your own task, import `TrainingConfig`, `Trainer`, and `seed_everything` from
-`amarken.trainer`. Seed before constructing the model and loaders, and supply
+For your own task, import `Config` from `amarken.config`, `Trainer` from
+`amarken.trainer`, and `seed_everything` from `amarken.utils.helpers`. Seed before
+constructing the model and loaders, and supply
 `loss_fn(model, batch, device)` returning a scalar loss. The callback moves its
 batch to the supplied device. Optionally pass a validation loader, optimizer,
 per-epoch scheduler, or an externally managed logger. The default optimizer is
@@ -665,3 +666,8 @@ validation on the third, and autoregressive WAV inference. The smoke-test WAV wa
 1.36 seconds at 44.1 kHz and generation stopped naturally. This checks integration,
 not speech quality or full fine-tuning. The final spectral projection output is
 promoted to FP32 for the codec's complex-number reconstruction on CPU.
+
+Training orchestration stays in `trainer.py`. Model placement, precision setup,
+and DDP/FSDP wrapping live in `utils/distributed.py`; checkpoint state, resume
+validation, and RNG capture/restoration live in `utils/checkpoint.py`.
+`Trainer.state_dict()` and `Trainer.resume()` delegate to those checkpoint helpers.

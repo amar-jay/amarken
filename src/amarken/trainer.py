@@ -1,75 +1,23 @@
 """Single-device, DDP and FSDP2 training with epoch-boundary checkpoints."""
 
-import os
-import random
 import sys
 import warnings
 from collections.abc import Callable
 from contextlib import ExitStack
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
 from tqdm.auto import tqdm
 
-from amarken.datasets.config import DatasetConfig
-from amarken.utils import distributed
-from amarken.utils.helpers import (
-    batch_size,
-    prepare_run,
-    prepare_training_precision,
-    seed_everything,
-)
-from amarken.utils.logger import CheckpointConfig, WandbConfig, WandbLogger
+from amarken.config import Config
+from amarken.utils import checkpoint, distributed
+from amarken.utils.helpers import batch_size, prepare_run
+from amarken.utils.logger import WandbLogger
 
-
-@dataclass
-class TrainingConfig:
-    model_id: str
-    dataset: DatasetConfig
-    seed: int = 42
-    learning_rate: float = 3e-4
-    batch_size: int = 16
-    epochs: int = 3
-    device: str = "cpu"
-    strategy: str = "auto"
-    precision: str = "float32"
-    run_name: str = "training"
-    wandb: WandbConfig = field(default_factory=WandbConfig)
-    checkpoints: CheckpointConfig = field(
-        default_factory=lambda: CheckpointConfig(backend="local")
-    )
-
-    def __post_init__(self):
-        if isinstance(self.wandb, dict):
-            self.wandb = WandbConfig(**self.wandb)
-        if isinstance(self.checkpoints, dict):
-            self.checkpoints = CheckpointConfig(**self.checkpoints)
-        if isinstance(self.dataset, dict):
-            self.dataset = DatasetConfig(**self.dataset)
-        if not isinstance(self.dataset, DatasetConfig):
-            raise TypeError("dataset must be a DatasetConfig or dictionary")
-        if self.epochs < 1 or self.batch_size < 1 or self.learning_rate <= 0:
-            raise ValueError("epochs, batch_size and learning_rate must be positive")
-        if self.strategy not in {"auto", "ddp", "fsdp2"}:
-            raise ValueError("strategy must be auto, ddp or fsdp2")
-        if self.precision not in {"float32", "float16", "bfloat16"}:
-            raise ValueError("precision must be float32, float16 or bfloat16")
-        if self.precision == "float16" and torch.device(self.device).type != "cuda":
-            raise ValueError("float16 training requires CUDA")
-        if self.checkpoints.backend == "wandb" and not self.wandb.enabled:
-            raise ValueError("W&B checkpoint storage requires wandb.enabled=true")
-        if (
-            not self.run_name
-            or Path(self.run_name).name != self.run_name
-            or self.run_name in {".", ".."}
-        ):
-            raise ValueError("run_name must be a single directory name")
-        if self.strategy == "fsdp2" and self.device == "cpu":
-            os.environ.setdefault("OMP_NUM_THREADS", "1")
+__all__ = ["Trainer"]
 
 
 class Trainer:
@@ -85,7 +33,7 @@ class Trainer:
         model,
         train_loader,
         loss_fn: Callable,
-        config: TrainingConfig,
+        config: Config,
         *,
         validation_loader=None,
         optimizer=None,
@@ -94,37 +42,14 @@ class Trainer:
         run_label: str | None = None,
         fsdp_modules: Callable | None = None,
     ):
-        if distributed.launched() and not distributed.active():
-            raise ValueError(
-                "Initialize distributed.training_process before constructing the trainer"
-            )
         self.config = config
-        self.device = torch.device(config.device)
-        self.strategy = distributed.resolve_strategy(config.strategy, config.precision)
-        prepare_training_precision(model, config.precision)
-        if self.strategy == "fsdp2":
-            if not distributed.active():
-                raise ValueError(
-                    "Initialize training_process before constructing an FSDP2 trainer"
-                )
-            if optimizer is not None or scheduler is not None:
-                raise ValueError(
-                    "FSDP2 constructs its optimizer after sharding; external optimizers/schedulers are unsupported"
-                )
-            if fsdp_modules is None:
-                raise ValueError(
-                    "FSDP2 requires the selected model's fsdp_modules hook"
-                )
-            self.model = distributed.shard_model(
-                model, fsdp_modules, self.device, config.precision
-            )
-        else:
-            self.model = model.to(self.device)
-            if self.strategy == "ddp":
-                device_ids = [self.device.index] if self.device.type == "cuda" else None
-                self.model = DistributedDataParallel(self.model, device_ids=device_ids)
-        if distributed.active():
-            seed_everything(config.seed + distributed.rank())
+        self.model, self.device, self.strategy = distributed.prepare_model(
+            model,
+            config,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            fsdp_modules=fsdp_modules,
+        )
         self.train_loader = train_loader
         self.validation_loader = validation_loader
         self.loss_fn = loss_fn
@@ -160,129 +85,10 @@ class Trainer:
         )
 
     def state_dict(self, *, training_state=None):
-        if self.strategy == "fsdp2" and training_state is None:
-            raise ValueError(
-                "FSDP2 state capture is collective; pass distributed.full_state(model, optimizer)"
-            )
-        if training_state is None:
-            training_state = (
-                distributed.unwrap(self.model).state_dict(),
-                self.optimizer.state_dict(),
-            )
-        model_state, optimizer_state = training_state
-        return {
-            "format_version": 1,
-            "run_id": self.run_id,
-            "run_label": self.run_label,
-            "best_metric": self.best_metric,
-            "model": model_state,
-            "strategy": self.strategy,
-            "world_size": distributed.world_size(),
-            "rank_rng": getattr(self, "_rank_rng", None),
-            "optimizer": optimizer_state,
-            "scheduler": (
-                self.scheduler.state_dict() if self.scheduler is not None else None
-            ),
-            "scaler": self.scaler.state_dict(),
-            "epoch": self.epoch,
-            "global_step": self.global_step,
-            "config": asdict(self.config),
-            "python_rng": random.getstate(),
-            "torch_rng": torch.get_rng_state(),
-            "cuda_rng": (
-                torch.cuda.get_rng_state_all()
-                if self.device.type == "cuda" and not distributed.active()
-                else None
-            ),
-        }
+        return checkpoint.capture_state(self, training_state=training_state)
 
     def resume(self, path: str | Path):
-        restored = {}
-        if self.strategy == "fsdp2":
-
-            def read_checkpoint():
-                restored.update(torch.load(path, map_location="cpu", weights_only=True))
-                return {
-                    key: value
-                    for key, value in restored.items()
-                    if key not in {"model", "optimizer"}
-                }
-
-            state = distributed.primary_call(read_checkpoint)
-        else:
-            state = torch.load(path, map_location="cpu", weights_only=True)
-        if state.get("world_size", 1) != distributed.world_size():
-            raise ValueError("Resume requires the same world size")
-        previous_strategy = state.get(
-            "strategy", "ddp" if state.get("world_size", 1) > 1 else "single"
-        )
-        if previous_strategy != self.strategy:
-            raise ValueError("Resume requires the same strategy")
-        if state["format_version"] != 1:
-            raise ValueError("Unsupported checkpoint format")
-        if (state["scheduler"] is None) != (self.scheduler is None):
-            raise ValueError("Resume requires the same scheduler configuration")
-        if state["config"]["precision"] != self.config.precision:
-            raise ValueError("Resume requires the same precision")
-        previous = state["config"]["checkpoints"]
-        current = self.config.checkpoints
-        if (previous.get("monitor", "val/loss"), previous.get("mode", "min")) == (
-            current.monitor,
-            current.mode,
-        ):
-            self.best_metric = state.get("best_metric")
-        else:
-            self.best_metric = None
-        run_label = state.get("run_label")
-        if run_label is not None and (
-            not run_label
-            or Path(run_label).name != run_label
-            or run_label in {".", ".."}
-        ):
-            raise ValueError("Invalid checkpoint run name")
-        self.run_label = run_label
-        self.run_id = state.get("run_id", self.run_id)
-        if Path(self.run_id).name != self.run_id or self.run_id in {".", "..", ""}:
-            raise ValueError("Invalid checkpoint run ID")
-        self._resumed = True
-        if self.strategy == "fsdp2":
-            distributed.restore_full_state(
-                self.model,
-                self.optimizer,
-                restored.get("model", {}),
-                restored.get("optimizer", {}),
-            )
-        else:
-            distributed.unwrap(self.model).load_state_dict(state["model"])
-            self.optimizer.load_state_dict(state["optimizer"])
-        if self.scheduler is not None:
-            self.scheduler.load_state_dict(state["scheduler"])
-        self.scaler.load_state_dict(state["scaler"])
-        self.epoch, self.global_step = state["epoch"], state["global_step"]
-        rng = state
-        if state.get("rank_rng") is not None:
-            rng = state["rank_rng"][distributed.rank()]
-        random.setstate(rng["python_rng"])
-        torch.set_rng_state(rng["torch_rng"])
-        if rng.get("cuda_local_rng") is not None:
-            torch.cuda.set_rng_state(rng["cuda_local_rng"], self.device)
-        elif rng["cuda_rng"] is not None and torch.cuda.is_available():
-            torch.cuda.set_rng_state_all(rng["cuda_rng"])
-
-    def _gather_rng(self):
-        cuda_rng = None
-        if self.device.type == "cuda":
-            cuda_rng = torch.cuda.get_rng_state(self.device)
-        rng = {
-            "python_rng": random.getstate(),
-            "torch_rng": torch.get_rng_state(),
-            "cuda_rng": None,
-            "cuda_local_rng": cuda_rng,
-        }
-        if distributed.active():
-            states = [None] * distributed.world_size()
-            dist.all_gather_object(states, rng)
-            self._rank_rng = states
+        checkpoint.restore_state(self, path)
 
     def _epoch_loss(self, loader, *, training):
         self.model.train(training)
@@ -468,7 +274,7 @@ class Trainer:
                 self.scheduler.step()
             self.epoch += 1
             metrics["epoch"] = self.epoch
-            self._gather_rng()
+            checkpoint.gather_rng(self)
 
             distributed.primary_call(
                 lambda metrics=metrics: self.logger.log(

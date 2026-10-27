@@ -8,10 +8,11 @@ from uuid import uuid4
 from amarken.utils import logger as logger_module
 
 if TYPE_CHECKING:
-    from amarken.trainer import Trainer, TrainingConfig
+    from amarken.config import Config
+    from amarken.trainer import Trainer
 
 
-def prompt_run_name(config: "TrainingConfig", *, resume: bool = False) -> str | None:
+def prompt_run_name(config: "Config", *, resume: bool = False) -> str | None:
     """Ask only for fresh isolated runs; blank/noninteractive uses UUID."""
     if config.checkpoints.overwrite or resume or not sys.stdin.isatty():
         return None

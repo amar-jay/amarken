@@ -81,6 +81,39 @@ def resolve_strategy(requested: str, precision: str = "float32") -> str:
     return requested
 
 
+def prepare_model(model, config, *, optimizer=None, scheduler=None, fsdp_modules=None):
+    """Place and wrap a model before its optimizer is constructed."""
+    from amarken.utils.helpers import prepare_training_precision, seed_everything
+
+    if launched() and not active():
+        raise ValueError(
+            "Initialize distributed.training_process before constructing the trainer"
+        )
+    device = torch.device(config.device)
+    strategy = resolve_strategy(config.strategy, config.precision)
+    prepare_training_precision(model, config.precision)
+    if strategy == "fsdp2":
+        if not active():
+            raise ValueError(
+                "Initialize training_process before constructing an FSDP2 trainer"
+            )
+        if optimizer is not None or scheduler is not None:
+            raise ValueError(
+                "FSDP2 constructs its optimizer after sharding; external optimizers/schedulers are unsupported"
+            )
+        if fsdp_modules is None:
+            raise ValueError("FSDP2 requires the selected model's fsdp_modules hook")
+        model = shard_model(model, fsdp_modules, device, config.precision)
+    else:
+        model = model.to(device)
+        if strategy == "ddp":
+            device_ids = [device.index] if device.type == "cuda" else None
+            model = DistributedDataParallel(model, device_ids=device_ids)
+    if active():
+        seed_everything(config.seed + rank())
+    return model, device, strategy
+
+
 def shard_model(model, groups, device, precision):
     from torch.distributed.device_mesh import init_device_mesh
     from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard

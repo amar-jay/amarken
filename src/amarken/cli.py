@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
+from amarken.config import Config
 from amarken.inference import run_inference
 from amarken.main import run_train
-from amarken.trainer import TrainingConfig
 from amarken.utils import distributed
 from amarken.utils.helpers import format_validation_table
 from amarken.validation import run_validation
@@ -81,7 +81,7 @@ def main(argv=None):
             raise ValueError(
                 "Only train supports torchrun; run evaluation and inference in one process"
             )
-        config = TrainingConfig(**json.loads(args.config.read_text()))
+        config = Config(**json.loads(args.config.read_text()))
         if args.command == "train":
             checkpoint_prefix, history = run_train(config, resume=args.resume)
             if distributed.primary():

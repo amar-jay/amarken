@@ -14,17 +14,18 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from amarken.cli import main as cli_main
+from amarken.config import Config
 from amarken.datasets.config import DatasetConfig
 from amarken.inference import run_inference
 from amarken.modules.example import build_model, load_model, loss_fn
 from amarken.modules.example import predict as predict_numeric
-from amarken.trainer import Trainer, TrainingConfig, seed_everything
-from amarken.utils.helpers import prompt_run_name
+from amarken.trainer import Trainer
+from amarken.utils.helpers import prompt_run_name, seed_everything
 from amarken.utils.logger import CheckpointConfig, WandbLogger
 
 
 def make_config(*, dataset=None, **options):
-    return TrainingConfig(
+    return Config(
         model_id="synthetic-mlp",
         dataset={"id": "stanfordnlp/sst2"} if dataset is None else dataset,
         **options,
@@ -1155,7 +1156,7 @@ class TrainerTests(unittest.TestCase):
                 )
         from dataclasses import asdict
 
-        round_trip = TrainingConfig(
+        round_trip = Config(
             **asdict(
                 make_config(dataset={"id": "stanfordnlp/sst2", "test_fraction": 0.25})
             )
@@ -1340,7 +1341,7 @@ class TrainerTests(unittest.TestCase):
                 cli_main(
                     ["train", "--config", str(config_file), "--resume", "saved.pt"]
                 )
-            self.assertIsInstance(train.call_args.args[0], TrainingConfig)
+            self.assertIsInstance(train.call_args.args[0], Config)
             self.assertEqual(train.call_args.kwargs["resume"], Path("saved.pt"))
 
         # A held writer proves snapshot isolation while training state mutates.
