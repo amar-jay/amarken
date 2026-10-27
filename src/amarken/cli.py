@@ -105,6 +105,7 @@ def main(argv=None):
             result = run_inference(
                 args.checkpoint,
                 json.loads(raw),
+                model_id=config.model_id,
                 device=config.device,
                 precision=config.precision,
             )

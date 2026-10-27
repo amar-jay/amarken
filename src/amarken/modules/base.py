@@ -11,7 +11,6 @@ from transformers import AutoConfig, AutoModel, AutoTokenizer
 from amarken.constants import (
     BASE_LOCAL_FILES_ONLY,
     BASE_MAX_LENGTH,
-    BASE_MODEL_ID,
     HUB_CACHE,
     REVISIONS,
 )
@@ -20,7 +19,7 @@ from amarken.utils import load_checkpoint_weights
 
 @dataclass(frozen=True)
 class BaseConfig:
-    model_id: str = BASE_MODEL_ID
+    model_id: str
     revision: str | None = None
     max_length: int = BASE_MAX_LENGTH
     device: str = "cpu"
@@ -28,9 +27,13 @@ class BaseConfig:
     cache_dir: str = HUB_CACHE
 
     def __post_init__(self):
-        if self.model_id not in REVISIONS:
-            raise ValueError(f"Supported models: {tuple(REVISIONS)}")
+        if not self.model_id:
+            raise ValueError("Set model_id in the config or pass it explicitly")
         if self.revision is None:
+            if self.model_id not in REVISIONS:
+                raise ValueError(
+                    f"Add a pinned revision for {self.model_id!r} to REVISIONS"
+                )
             object.__setattr__(self, "revision", REVISIONS[self.model_id])
         if self.max_length < 1:
             raise ValueError("max_length must be positive")
@@ -59,28 +62,43 @@ class BaseModel(nn.Module):
     @classmethod
     def load(
         cls,
-        config: BaseConfig | None = None,
+        config: BaseConfig,
         *,
         local_files_only=BASE_LOCAL_FILES_ONLY,
         pretrained=True,
     ):
-        config = config or BaseConfig()
         common = {
             "revision": config.revision,
             "cache_dir": config.cache_dir,
             "trust_remote_code": False,
             "local_files_only": local_files_only,
         }
+        try:
+            architecture = AutoConfig.from_pretrained(config.model_id, **common)
+        except ValueError as error:
+            raise ValueError(
+                f"Cannot load {config.model_id!r} as a Qwen backbone config: {error}"
+            ) from error
+        text_config = getattr(architecture, "text_config", architecture)
+        if text_config.model_type not in ("qwen2", "qwen3", "qwen3_5_text"):
+            raise ValueError(
+                f"Qwen backbone does not support model_type {text_config.model_type!r}; "
+                "select the matching model module instead"
+            )
+        if config.max_length > text_config.max_position_embeddings:
+            raise ValueError("max_length exceeds the model context window")
         tokenizer = AutoTokenizer.from_pretrained(config.model_id, **common)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token = tokenizer.eos_token
         tokenizer.padding_side = "right"
         if pretrained:
             model = AutoModel.from_pretrained(
-                config.model_id, dtype=getattr(torch, config.dtype), **common
+                config.model_id,
+                config=architecture,
+                dtype=getattr(torch, config.dtype),
+                **common,
             )
         else:
-            architecture = AutoConfig.from_pretrained(config.model_id, **common)
             model = AutoModel.from_config(
                 architecture,
                 dtype=getattr(torch, config.dtype),
@@ -92,8 +110,6 @@ class BaseModel(nn.Module):
         text_config = getattr(model.config, "text_config", model.config)
         text_config.use_cache = False
         text_config.pad_token_id = tokenizer.pad_token_id
-        if config.max_length > text_config.max_position_embeddings:
-            raise ValueError("max_length exceeds the model context window")
         return cls(model, tokenizer, config).eval()
 
     @property
@@ -147,13 +163,19 @@ class BaseModel(nn.Module):
         return pool_last_token(result.last_hidden_state, attention_mask)
 
 
-def build_model(*, device: str = "cpu", precision: str = "float32") -> BaseModel:
-    """Start from the pretrained backbone configured in constants.py."""
-    return BaseModel.load(BaseConfig(device=device, dtype=precision))
+def build_model(
+    *, model_id: str | None = None, device: str = "cpu", precision: str = "float32"
+) -> BaseModel:
+    """Start from the configured model ID and its pinned revision."""
+    return BaseModel.load(BaseConfig(model_id=model_id, device=device, dtype=precision))
 
 
 def load_model(
-    checkpoint: str | Path, *, device: str = "cpu", precision: str = "float32"
+    checkpoint: str | Path,
+    *,
+    model_id: str | None = None,
+    device: str = "cpu",
+    precision: str = "float32",
 ) -> BaseModel:
     """Restore trained weights using the pinned architecture and tokenizer.
 
@@ -161,7 +183,10 @@ def load_model(
     loaded again. Keep constants consistent with the training architecture.
     """
     weights = load_checkpoint_weights(checkpoint)
-    model = BaseModel.load(BaseConfig(dtype=precision), pretrained=False)
+    model = BaseModel.load(
+        BaseConfig(model_id=model_id, dtype=precision),
+        pretrained=False,
+    )
     model.load_state_dict(weights, strict=True)
     return model.to(device).eval()
 

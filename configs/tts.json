@@ -1,0 +1,26 @@
+{
+  "model_id": "inclusionAI/Ming-3.0-tts-0.5B",
+  "dataset": {
+    "id": "bookbot/ljspeech_phonemes",
+    "train_size": 1000,
+    "val_size": 100,
+    "test_size": 100,
+    "train_split": "train",
+    "validation_split": "train",
+    "text_column": "normalized_text",
+    "label_column": "audio"
+  },
+  "learning_rate": 0.00001,
+  "batch_size": 1,
+  "epochs": 3,
+  "device": "cuda",
+  "precision": "bfloat16",
+  "run_name": "ming-tts",
+  "checkpoints": {
+    "backend": "local",
+    "policy": "best",
+    "async_save": false,
+    "overwrite": true
+  },
+  "wandb": { "enabled": false, "mode": "online" }
+}

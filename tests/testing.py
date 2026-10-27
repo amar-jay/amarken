@@ -31,7 +31,204 @@ def make_config(*, dataset=None, **options):
     )
 
 
+def check_tts_contract(case):
+    """Exercise speech teacher forcing without downloading optional runtime weights."""
+    from types import SimpleNamespace
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from datasets import Dataset
+
+    from amarken.datasets import tts
+    from amarken.modules.ming import MingTTS, build_metrics, validation_step
+    from amarken.utils import batch_size
+
+    with tempfile.TemporaryDirectory() as folder:
+        file = Path(folder) / "speech.parquet"
+        pq.write_table(
+            pa.Table.from_pylist(
+                [
+                    {
+                        "transcript": str(i),
+                        "recording": {"bytes": b"audio", "path": None},
+                    }
+                    for i in range(80)
+                ]
+            ),
+            file,
+        )
+        config = DatasetConfig(
+            id="speech", text_column="transcript", label_column="recording"
+        )
+        with (
+            patch.object(
+                tts, "list_repo_files", return_value=["data/train-00000.parquet"]
+            ),
+            patch.object(tts, "hf_hub_download", return_value=str(file)),
+        ):
+            rows = Dataset.from_list(list(tts._source(config, "train")))
+        case.assertEqual(len(rows), 80)
+        case.assertEqual(set(rows["text"]), {str(i) for i in range(80)})
+        case.assertEqual(rows[0]["audio"]["bytes"], b"audio")
+
+    class FlowModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.c_embedder = torch.nn.Module()
+            self.c_embedder.cond_embedder = torch.nn.Linear(4, 2)
+
+        def forward(self, x, t, c, latent_history, mask):
+            return self.c_embedder.cond_embedder(c)
+
+    class Flow(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.cfm = torch.nn.Module()
+            self.cfm.model = FlowModel()
+
+        def forward(self, cond, target, history, mask, patch_size):
+            return (
+                (self.cfm.model.c_embedder.cond_embedder(cond) - target).square().mean()
+            )
+
+    class Codec(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.decoder = torch.nn.Module()
+            self.decoder.head = torch.nn.Module()
+            self.decoder.head.out = torch.nn.Linear(4, 4)
+
+        @torch.inference_mode()
+        def encode_latent(self, waveform, lengths):
+            return waveform.reshape(1, -1, 2), torch.tensor([waveform.numel() // 2])
+
+    class Language(torch.nn.Module):
+        def forward(self, *, inputs_embeds, use_cache):
+            self.seen = inputs_embeds.detach().clone()
+            return SimpleNamespace(last_hidden_state=inputs_embeds)
+
+    class Projection(torch.nn.Linear):
+        def forward(self, x):
+            return super().forward(x).mean(dim=1, keepdim=True)
+
+    class Core(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.embedding = torch.nn.Embedding(2, 4)
+            self.audio = Codec()
+            self.flowloss = Flow()
+            self.stop_head = torch.nn.Linear(4, 2)
+            self.linear_proj_audio = Projection(2, 4)
+            self.model = torch.nn.Module()
+            self.model.model = Language()
+            self.patch_size = 1
+
+        def get_input_embeddings(self):
+            return self.embedding
+
+        def prepare_input_embed(self, prompt, text):
+            return None, self.embedding(torch.tensor([[0, 1]]))
+
+    from amarken.modules import ming
+
+    runtime_config, runtime_model = Mock(), Mock()
+    runtime_model.from_pretrained.return_value = Core()
+    with (
+        patch.object(ming, "_runtime", return_value=(runtime_config, runtime_model)),
+        patch.object(ming, "REVISIONS", {"custom/tts": "pinned-revision"}),
+        patch("transformers.Qwen2Tokenizer.from_pretrained") as tokenizer,
+    ):
+        ming.build_model(model_id="custom/tts")
+    for loader in (
+        runtime_config.from_pretrained,
+        runtime_model.from_pretrained,
+        tokenizer,
+    ):
+        case.assertEqual(loader.call_args.args[0], "custom/tts")
+        case.assertEqual(loader.call_args.kwargs["revision"], "pinned-revision")
+
+    model = MingTTS(Core())
+    waveform = torch.arange(6).float()
+    batch = {"utterances": [("hello", waveform)], "batch_size": 1}
+    case.assertEqual(batch_size(batch), 1)
+    result = model(batch)
+    result["loss"].backward()
+    for name, parameter in model.named_parameters():
+        expected = "cond_embedder" in name or "stop_head" in name
+        case.assertEqual(parameter.requires_grad, expected)
+        case.assertEqual(parameter.grad is not None, expected)
+        if expected:
+            case.assertTrue(torch.isfinite(parameter.grad).all())
+    # The final target is never fed back as its own input.
+    seen = model.core.model.model.seen
+    projected = torch.cat(
+        [
+            model.core.linear_proj_audio(waveform.reshape(1, 3, 2)[:, i : i + 1])
+            for i in range(2)
+        ],
+        dim=1,
+    )
+    torch.testing.assert_close(seen[:, 2:], projected)
+    case.assertEqual(seen.shape[1], 4)
+    from amarken.modules.ming import loss_fn as speech_loss
+
+    trainer = Trainer(model, [batch], speech_loss, make_config(epochs=1))
+    case.assertTrue(
+        torch.isfinite(torch.tensor(trainer._epoch_loss([batch], training=True)))
+    )
+    model.eval()
+    metrics = build_metrics()
+    with torch.inference_mode():
+        values = validation_step(model, batch, "cpu", metrics)
+    case.assertTrue(torch.isfinite(torch.tensor(values["loss"])))
+    case.assertEqual(set(metrics.compute()), {"flow_mse", "stop_loss", "stop_accuracy"})
+    config = DatasetConfig(
+        id="speech", train_size=4, val_size=3, test_size=3, validation_split="train"
+    )
+    source = Dataset.from_dict(
+        {"text": [str(i) for i in range(300)], "audio": [None] * 300}
+    )
+    with patch.object(tts, "_source", return_value=source):
+        train, val = tts.build_dataset(config)
+        test = tts.build_test_dataset(config)
+        case.assertFalse(set(train["text"]) & set(val["text"]))
+        case.assertFalse(set(train["text"]) & set(test["text"]))
+        case.assertFalse(set(val["text"]) & set(test["text"]))
+        loader, _ = tts.build_dataloaders(
+            config,
+            train,
+            val,
+            batch_size=2,
+            tokenize=lambda rows: {"batch_size": len(rows)},
+        )
+        case.assertEqual(batch_size(next(iter(loader))), 2)
+
+
 class TrainerTests(unittest.TestCase):
+    def setUp(self):
+        # Regression fixtures stay numeric regardless of the selected application module.
+        from amarken.datasets import example as numeric_data
+        from amarken.modules import example as numeric_model
+
+        self.enterContext(
+            patch.multiple(
+                "amarken.inference",
+                load_model=numeric_model.load_model,
+                predict=numeric_model.predict,
+            )
+        )
+        self.enterContext(
+            patch.multiple(
+                "amarken.validation",
+                load_model=numeric_model.load_model,
+                build_metrics=numeric_model.build_metrics,
+                validation_step=numeric_model.validation_step,
+                build_dataset=numeric_data.build_dataset,
+                build_test_dataset=numeric_data.build_test_dataset,
+                build_dataloaders=numeric_data.build_dataloaders,
+            )
+        )
+
     def make_trainer(self, epochs):
         model = torch.nn.Sequential(
             torch.nn.Linear(2, 4), torch.nn.Dropout(0.2), torch.nn.Linear(4, 2)
@@ -495,9 +692,31 @@ class TrainerTests(unittest.TestCase):
 
             # Both implementations expose the same build/load/predict calls.
             self.assertEqual(predict_numeric(model, features), result)
+            from types import SimpleNamespace
+
             from transformers import AutoModel, Qwen3Config
 
             from amarken.modules import base
+
+            with self.assertRaisesRegex(ValueError, "REVISIONS"):
+                base.BaseConfig(model_id="custom/unpinned")
+            with patch.dict(base.REVISIONS, {"custom/backbone": "revision123"}):
+                self.assertEqual(
+                    base.BaseConfig(model_id="custom/backbone").revision, "revision123"
+                )
+            with (
+                patch.object(
+                    base.AutoConfig,
+                    "from_pretrained",
+                    return_value=SimpleNamespace(model_type="dense"),
+                ),
+                patch.object(base.AutoModel, "from_pretrained") as weights,
+                patch.object(base.AutoTokenizer, "from_pretrained") as tokens,
+            ):
+                with self.assertRaisesRegex(ValueError, "does not support model_type"):
+                    base.build_model(model_id="inclusionAI/Ming-3.0-tts-0.5B")
+                weights.assert_not_called()
+                tokens.assert_not_called()
 
             architecture = Qwen3Config(
                 vocab_size=32,
@@ -510,7 +729,8 @@ class TrainerTests(unittest.TestCase):
                 max_position_embeddings=4096,
             )
             tiny = AutoModel.from_config(
-                architecture, dtype=getattr(torch, base.BaseConfig().dtype)
+                architecture,
+                dtype=getattr(torch, base.BaseConfig(model_id="Qwen/Qwen3-0.6B").dtype),
             )
             tokenizer = Mock(
                 pad_token_id=0,
@@ -535,7 +755,7 @@ class TrainerTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(NotImplementedError, "task.*loss"):
                     base.loss_fn(None, None, "cpu")
-                backbone = base.build_model(device="cpu")
+                backbone = base.build_model(model_id="Qwen/Qwen3-0.6B", device="cpu")
                 backbone.train()
                 batch = backbone.tokenize(["hello"])
                 optimizer = torch.optim.SGD(backbone.parameters(), lr=0.01)
@@ -557,7 +777,9 @@ class TrainerTests(unittest.TestCase):
                         trainer.state_dict(), "backbone.pt"
                     )
                     logger.flush_checkpoints()
-                restored = base.load_model(pending.result(), device="cpu")
+                restored = base.load_model(
+                    pending.result(), model_id="Qwen/Qwen3-0.6B", device="cpu"
+                )
                 self.assertEqual(pretrained.call_count, 1)
                 self.assertFalse(restored.training)
                 torch.testing.assert_close(
@@ -570,13 +792,18 @@ class TrainerTests(unittest.TestCase):
                     patch("amarken.inference.predict", base.predict),
                 ):
                     self.assertEqual(
-                        run_inference(pending.result(), ["hello"]), expected
+                        run_inference(
+                            pending.result(), ["hello"], model_id="Qwen/Qwen3-0.6B"
+                        ),
+                        expected,
                     )
 
                 # A task-specific derivative uses the same interface and its own loss.
                 from amarken.modules import classification
 
-                classifier = classification.build_model(device="cpu")
+                classifier = classification.build_model(
+                    model_id="Qwen/Qwen3-0.6B", device="cpu"
+                )
                 self.assertTrue(classifier.head.training)
                 self.assertFalse(classifier.backbone.training)
                 self.assertTrue(
@@ -610,7 +837,9 @@ class TrainerTests(unittest.TestCase):
                 classifier_checkpoint = (
                     Path(directory) / "classification-test/latest.pt"
                 )
-                restored_classifier = classification.load_model(classifier_checkpoint)
+                restored_classifier = classification.load_model(
+                    classifier_checkpoint, model_id="Qwen/Qwen3-0.6B"
+                )
                 actual_classes = classification.predict(restored_classifier, ["hello"])
                 self.assertEqual(
                     actual_classes["predictions"], expected_classes["predictions"]
@@ -622,7 +851,9 @@ class TrainerTests(unittest.TestCase):
                 )
                 self.assertEqual(pretrained.call_count, 2)
                 restored_bf16 = classification.load_model(
-                    classifier_checkpoint, precision="bfloat16"
+                    classifier_checkpoint,
+                    model_id="Qwen/Qwen3-0.6B",
+                    precision="bfloat16",
                 )
                 self.assertTrue(
                     all(p.dtype == torch.bfloat16 for p in restored_bf16.parameters())
@@ -845,7 +1076,9 @@ class TrainerTests(unittest.TestCase):
                 ):
                     prefix, dataset_history = run_train(dataset_config)
                 dataset_builder.assert_called_once_with(dataset_config.dataset, seed=42)
-                model_builder.assert_called_once_with(device="cpu", precision="float32")
+                model_builder.assert_called_once_with(
+                    model_id=dataset_config.model_id, device="cpu", precision="float32"
+                )
                 self.assertTrue(
                     all(
                         p.dtype == torch.float32
@@ -888,6 +1121,7 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
+        check_tts_contract(self)
         defaults = DatasetConfig(id="stanfordnlp/sst2")
         self.assertEqual(
             (
@@ -1548,7 +1782,11 @@ def fsdp_worker(directory):
             num_key_value_heads=1,
             head_dim=8,
         )
-        backbone = BaseModel(AutoModel.from_config(architecture), Mock(), BaseConfig())
+        backbone = BaseModel(
+            AutoModel.from_config(architecture),
+            Mock(),
+            BaseConfig(model_id="Qwen/Qwen3-0.6B"),
+        )
         classifier = TextClassifier(backbone)
         from amarken.utils import prepare_training_precision
 

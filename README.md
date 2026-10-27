@@ -167,7 +167,9 @@ from amarken.modules.example import (
 )
 # from amarken.modules.base import build_model, load_model, loss_fn, predict, validation_step, fsdp_modules, build_metrics
 
-model = build_model(device="cpu")  # New model / pretrained backbone
+model = build_model(
+    model_id="Qwen/Qwen3-0.6B", device="cpu"
+)  # New model / pretrained backbone
 model = load_model("checkpoints/my-task/best.pt", device="cpu")
 result = predict(model, inputs)  # Reuses the loaded model
 ```
@@ -183,7 +185,12 @@ and returns pooled `features`; add a head and task-specific interpretation there
 if needed. For text inference, pass JSON such as `--input '["hello", "world"]'`.
 Inputs and outputs remain specific to each implementation, behind matching calls.
 
-Hugging Face settings live in `constants.py`: `BASE_MODEL_ID`, `REVISIONS`,
+The CLI passes JSON `model_id` to model building and checkpoint loading.
+Pinned model revisions live in `constants.py` under `REVISIONS`. A pin records
+a version, not compatibility: the backbone module checks the loaded text
+architecture before loading tokenizer or weights.
+Direct Python backbone/classifier calls also require an explicit `model_id`.
+Other settings include
 `BASE_MAX_LENGTH`, `BASE_LOCAL_FILES_ONLY`, and `HUB_CACHE`.
 The example dimensions are defined there too. Keep architecture settings the
 same when restoring trained checkpoints. Backbone restore loads the pinned
@@ -264,7 +271,7 @@ indices, label names and probabilities. Restore loads both backbone and head;
 keep labels and backbone settings consistent with the saved checkpoint.
 
 ```python
-model = build_model(device="cpu")
+model = build_model(model_id="Qwen/Qwen3-0.6B", device="cpu")
 inputs = model.tokenize(["I loved this", "I disliked this"])
 targets = torch.tensor([1, 0])
 loss = loss_fn(model, (inputs, targets), "cpu")
@@ -596,3 +603,65 @@ print(format_validation_table(result))
 ```
 
 Tables show floats with six significant digits; underlying results are unchanged.
+
+### Optional Ming TTS example
+
+The numeric and classification examples remain available. To use
+[inclusionAI/Ming-3.0-tts-0.5B](https://huggingface.co/inclusionAI/Ming-3.0-tts-0.5B),
+change only the imports in `src/amarken/model.py` to `amarken.modules.ming` and
+in `src/amarken/dataset.py` to `amarken.datasets.tts`. Their public hooks match the
+other modules. Install the optional dependencies and pinned upstream runtime:
+
+```bash
+uv sync --extra tts
+mkdir -p .cache
+git clone https://github.com/inclusionAI/Ming-3.0-tts .cache/Ming-3.0-tts
+git -C .cache/Ming-3.0-tts checkout 028c1eace193e7acdb256453da89b6e9207e052b
+uv run --extra tts amarken train --config configs/tts.json
+uv run --extra tts amarken validate --config configs/tts.json \
+  --checkpoint checkpoints/ming-tts/best.pt
+uv run --extra tts amarken infer --config configs/tts.json \
+  --checkpoint checkpoints/ming-tts/best.pt --input-file samples/input-tts.json
+```
+
+Ming reads its model ID from the JSON config and resolves its pin through
+`REVISIONS[model_id]`. Direct Python calls must pass `model_id` to `build_model`
+or `load_model`.
+
+Ming requires its own upstream runtime; `AutoModel` alone cannot load it. Its
+checkpoint includes the audio codec and flow head in addition to the language
+backbone (roughly 3 GB of native BF16 weights). The demo defaults to CPU BF16;
+4 GB GPU training is not guaranteed. Frozen parameters load in their native
+checkpoint dtype to avoid a temporary full FP32 copy. The trainer applies the
+JSON precision policy before training. Checkpoints contain the complete model;
+synchronous best-only saving avoids multiple queued full-size snapshots.
+
+This is a limited adaptation objective: the codec, language backbone and most of
+the flow head are frozen; only the flow conditioning projection and stop head
+train. Whole recordings are encoded into continuous acoustic latents. Teacher
+forcing uses only previous latents to predict each next latent, with flow-matching
+and stop classification losses averaged per utterance. Validation reports a
+midpoint flow residual, stop loss and stop accuracy, not perceptual speech quality.
+The codec's posterior sampling can still introduce validation variation. Inference
+uses autoregressive latent generation and decodes a 44.1 kHz WAV; `stopped: false`
+means the step budget was exhausted. Single-device training is the smoke-test
+path; FSDP2 is explicitly unsupported for this example and TTS DDP needs separate
+multi-GPU verification.
+
+The dataset is a pinned Parquet mirror of
+[LJSpeech](https://huggingface.co/datasets/bookbot/ljspeech_phonemes). The loader caches Parquet shards (about 480 MB each) and reads locally until
+`train_size`, `val_size`, and `test_size` are satisfied exactly. It downloads
+additional shards only when needed and raises an error if a requested partition
+cannot be filled. Stable transcript hashes reserve 80% for training when train
+and evaluation share a source split; the remainder is divided by `test_fraction`.
+Membership stays independent of requested sizes and the run seed. The seed
+controls ordering. `text_column` selects transcripts and `label_column` selects
+audio. Preprocessing belongs to the TTS module; the shared loop reads the
+explicit `batch_size` on its dictionary batches.
+
+Verified on CPU BF16 with the real pinned Ming weights and three LJSpeech
+recordings: one epoch on two recordings, a full checkpoint save/reload, standalone
+validation on the third, and autoregressive WAV inference. The smoke-test WAV was
+1.36 seconds at 44.1 kHz and generation stopped naturally. This checks integration,
+not speech quality or full fine-tuning. The final spectral projection output is
+promoted to FP32 for the codec's complex-number reconstruction on CPU.

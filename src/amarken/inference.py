@@ -10,8 +10,11 @@ def run_inference(
     checkpoint: str | Path,
     inputs: Any,
     *,
+    model_id: str | None = None,
     device: str = "cpu",
     precision: str = "float32",
 ) -> dict:
-    model = load_model(checkpoint, device=device, precision=precision)
+    model = load_model(
+        checkpoint, model_id=model_id, device=device, precision=precision
+    )
     return predict(model, inputs)

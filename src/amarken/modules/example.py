@@ -14,7 +14,9 @@ from amarken.constants import (
 from amarken.utils import load_checkpoint_weights
 
 
-def build_model(*, device: str = "cpu", precision: str = "float32") -> nn.Module:
+def build_model(
+    *, model_id: str | None = None, device: str = "cpu", precision: str = "float32"
+) -> nn.Module:
     return nn.Sequential(
         nn.Linear(EXAMPLE_INPUT_SIZE, EXAMPLE_HIDDEN_SIZE),
         nn.ReLU(),
@@ -23,7 +25,11 @@ def build_model(*, device: str = "cpu", precision: str = "float32") -> nn.Module
 
 
 def load_model(
-    checkpoint: str | Path, *, device: str = "cpu", precision: str = "float32"
+    checkpoint: str | Path,
+    *,
+    model_id: str | None = None,
+    device: str = "cpu",
+    precision: str = "float32",
 ) -> nn.Module:
     model = build_model(precision=precision)
     model.load_state_dict(load_checkpoint_weights(checkpoint), strict=True)

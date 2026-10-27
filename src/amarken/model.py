@@ -1,10 +1,10 @@
 """Select your implementation here; training, inference and validation share this import.
 
-Switch base to example below to use the numeric example. Each module
+Ming TTS is selected below; use modules.example for the numeric example. Each module
 exports build/load, prediction, loss, validation and fsdp_modules hooks.
 """
 
-from amarken.modules.example import (
+from amarken.modules.ming import (
     build_metrics,
     build_model,
     fsdp_modules,

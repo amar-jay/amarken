@@ -16,7 +16,12 @@ def run_validation(
     if split not in {"val", "test"}:
         raise ValueError("Evaluation split must be val or test")
     seed_everything(config.seed)
-    model = load_model(checkpoint, device=config.device, precision=config.precision)
+    model = load_model(
+        checkpoint,
+        model_id=config.model_id,
+        device=config.device,
+        precision=config.precision,
+    )
     model.eval()
     if split == "test":
         validation = build_test_dataset(config.dataset, seed=config.seed)

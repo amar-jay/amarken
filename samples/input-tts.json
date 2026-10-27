@@ -1,0 +1,5 @@
+{
+  "text": "Wassup, dawg! This is amarken, and I am testing the TTS model.",
+  "output_file": "outputs/ming-example.wav",
+  "max_steps": 250
+}

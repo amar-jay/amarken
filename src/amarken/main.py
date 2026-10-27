@@ -18,7 +18,7 @@ def run_train(config: TrainingConfig, *, resume: Path | None = None):
 def _train(config, *, resume):
     seed_everything(config.seed)
     # Preserve FP32 initialization and cast frozen subtrees before GPU placement.
-    model = build_model(device="cpu", precision="float32")
+    model = build_model(model_id=config.model_id, device="cpu", precision="float32")
     train_data, validation_data = build_dataset(config.dataset, seed=config.seed)
     train, validation = build_dataloaders(
         config.dataset,

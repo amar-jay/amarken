@@ -6,7 +6,10 @@ from pathlib import Path
 import torch
 from torch import Tensor, nn
 
-from amarken.constants import CLASSIFICATION_FREEZE_BACKBONE, CLASSIFICATION_LABELS
+from amarken.constants import (
+    CLASSIFICATION_FREEZE_BACKBONE,
+    CLASSIFICATION_LABELS,
+)
 from amarken.modules.base import BaseConfig, BaseModel
 from amarken.modules.base import build_model as build_backbone
 from amarken.modules.base import fsdp_modules as backbone_fsdp_modules
@@ -44,19 +47,30 @@ class TextClassifier(nn.Module):
         return self.head(features.to(dtype=self.head.weight.dtype))
 
 
-def build_model(*, device: str = "cpu", precision: str = "float32") -> TextClassifier:
-    return TextClassifier(build_backbone(device=device, precision=precision))
+def build_model(
+    *, model_id: str | None = None, device: str = "cpu", precision: str = "float32"
+) -> TextClassifier:
+    return TextClassifier(
+        build_backbone(model_id=model_id, device=device, precision=precision)
+    )
 
 
 def load_model(
-    checkpoint: str | Path, *, device: str = "cpu", precision: str = "float32"
+    checkpoint: str | Path,
+    *,
+    model_id: str | None = None,
+    device: str = "cpu",
+    precision: str = "float32",
 ) -> TextClassifier:
     weights = load_checkpoint_weights(checkpoint)
     if "head.weight" not in weights:
         raise ValueError(
             "Expected a classification checkpoint with trained head weights"
         )
-    backbone = BaseModel.load(BaseConfig(dtype=precision), pretrained=False)
+    backbone = BaseModel.load(
+        BaseConfig(model_id=model_id, dtype=precision),
+        pretrained=False,
+    )
     model = TextClassifier(backbone)
     model.load_state_dict(weights, strict=True)
     return model.to(device).eval()
