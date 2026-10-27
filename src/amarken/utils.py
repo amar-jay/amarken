@@ -54,3 +54,29 @@ def load_checkpoint_weights(checkpoint: str | Path) -> dict:
     if not isinstance(state.get("model"), dict):
         raise TypeError("Checkpoint must contain model weights")
     return state["model"]
+
+
+def prepare_training_precision(model, precision: str) -> None:
+    """Keep trainable weights/buffers in FP32; frozen subtrees may use AMP dtype.
+
+    Run before moving to the accelerator, wrapping, or constructing the optimizer.
+    Parameter objects are retained for callers supplying an existing optimizer.
+    """
+    import torch
+
+    if not any(parameter.requires_grad for parameter in model.parameters()):
+        model.to(dtype=getattr(torch, precision))
+        return
+    for parameter in model.parameters(recurse=False):
+        if parameter.is_floating_point():
+            dtype = (
+                torch.float32 if parameter.requires_grad else getattr(torch, precision)
+            )
+            parameter.data = parameter.data.to(dtype=dtype)
+            if parameter.grad is not None:
+                parameter.grad.data = parameter.grad.data.to(dtype=dtype)
+    for name, buffer in model.named_buffers(recurse=False):
+        if buffer.is_floating_point():
+            setattr(model, name, buffer.float())
+    for child in model.children():
+        prepare_training_precision(child, precision)

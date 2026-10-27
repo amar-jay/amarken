@@ -534,7 +534,7 @@ class TrainerTests(unittest.TestCase):
 
                 from amarken.datasets import example as random_data
                 from amarken.datasets import huggingface as hub_data
-                from amarken.main import train_example
+                from amarken.main import run_train
 
                 random_train, random_validation = random_data.build_dataset(
                     seed=42, train_size=12, val_size=4
@@ -615,10 +615,13 @@ class TrainerTests(unittest.TestCase):
                     epochs=1,
                     batch_size=2,
                     run_name="hf-dataset-test",
+                    precision="bfloat16",
                     checkpoints={"backend": "local", "async_save": True},
                 )
                 with (
-                    patch("amarken.main.build_model", return_value=restored_classifier),
+                    patch(
+                        "amarken.main.build_model", return_value=restored_classifier
+                    ) as model_builder,
                     patch(
                         "amarken.main.build_dataset",
                         return_value=(text_train, text_validation),
@@ -626,7 +629,43 @@ class TrainerTests(unittest.TestCase):
                     patch("amarken.main.build_dataloaders", hub_data.build_dataloaders),
                     patch("amarken.main.loss_fn", classification.loss_fn),
                 ):
-                    prefix, dataset_history = train_example(dataset_config)
+                    prefix, dataset_history = run_train(dataset_config)
+                model_builder.assert_called_once_with(device="cpu", precision="float32")
+                self.assertTrue(
+                    all(
+                        p.dtype == torch.float32
+                        for p in restored_classifier.head.parameters()
+                    )
+                )
+                self.assertTrue(
+                    all(
+                        p.dtype == torch.bfloat16
+                        for p in restored_classifier.backbone.parameters()
+                    )
+                )
+                # Mixed storage also supports direct prediction without autocast.
+                self.assertEqual(
+                    len(
+                        classification.predict(restored_classifier, ["good"])[
+                            "predictions"
+                        ]
+                    ),
+                    1,
+                )
+                mixed_checkpoint = torch.load(
+                    Path(directory) / prefix / "latest.pt",
+                    map_location="cpu",
+                    weights_only=True,
+                )
+                self.assertEqual(
+                    mixed_checkpoint["model"]["head.weight"].dtype, torch.float32
+                )
+                self.assertTrue(
+                    all(
+                        state["exp_avg"].dtype == torch.float32
+                        for state in mixed_checkpoint["optimizer"]["state"].values()
+                    )
+                )
                 self.assertEqual(prefix, "hf-dataset-test")
                 self.assertTrue(
                     torch.isfinite(torch.tensor(dataset_history[0]["val/loss"]))
@@ -768,7 +807,7 @@ class TrainerTests(unittest.TestCase):
             config_file = Path(directory) / "config.json"
             config_file.write_text("{}")
             with (
-                patch("amarken.cli.train_example", return_value=("test", [])) as train,
+                patch("amarken.cli.run_train", return_value=("test", [])) as train,
                 redirect_stdout(io.StringIO()),
             ):
                 cli_main(
@@ -1170,7 +1209,30 @@ def fsdp_worker(directory):
         else:
             raise AssertionError("External optimizers must be rejected before sharding")
         # Exercise reduced-precision collectives without downloading a model.
-        create("bf16", 1, precision="bfloat16").fit()
+        bf16 = create("bf16", 1, precision="bfloat16")
+        assert all(p.dtype == torch.float32 for p in bf16.model.parameters())
+        bf16.fit()
+        _, moments = distributed.full_state(bf16.model, bf16.optimizer)
+        if distributed.primary():
+            assert all(
+                state["exp_avg"].dtype == torch.float32
+                for state in moments["state"].values()
+            )
+        if device == "cuda":
+            half = create("fp16", 1, strategy="ddp", precision="float16")
+            assert half.scaler.is_enabled()
+            assert all(p.dtype == torch.float32 for p in half.model.parameters())
+            before_half = next(half.model.parameters()).detach().clone()
+            half.fit()
+            assert not torch.equal(before_half, next(half.model.parameters()))
+            assert all(
+                state["exp_avg"].dtype == torch.float32
+                for state in half.optimizer.state.values()
+            )
+            restored_half = create("fp16", 2, strategy="ddp", precision="float16")
+            restored_half.resume(directory / "checkpoints" / "fp16" / "latest.pt")
+            assert restored_half.scaler.state_dict() == half.scaler.state_dict()
+            restored_half.fit()
 
         from transformers import AutoModel, Qwen3Config
 
@@ -1191,6 +1253,9 @@ def fsdp_worker(directory):
         )
         backbone = BaseModel(AutoModel.from_config(architecture), Mock(), BaseConfig())
         classifier = TextClassifier(backbone)
+        from amarken.utils import prepare_training_precision
+
+        prepare_training_precision(classifier, "bfloat16")
         before = {
             key: value.detach().clone()
             for key, value in classifier.state_dict().items()
@@ -1201,7 +1266,11 @@ def fsdp_worker(directory):
         }
         batch = (inputs, torch.tensor([0, 1]))
         config = TrainingConfig(
-            strategy="fsdp2", device=local_device, epochs=1, run_name="classifier"
+            strategy="fsdp2",
+            device=local_device,
+            precision="bfloat16",
+            epochs=1,
+            run_name="classifier",
         )
         trainer = Trainer(
             classifier,
@@ -1210,6 +1279,10 @@ def fsdp_worker(directory):
             config,
             validation_loader=[batch],
             fsdp_modules=classifier_groups,
+        )
+        assert all(p.dtype == torch.float32 for p in trainer.model.head.parameters())
+        assert all(
+            p.dtype == torch.bfloat16 for p in trainer.model.backbone.parameters()
         )
         trainer.fit()
         weights, _ = distributed.full_state(trainer.model, trainer.optimizer)

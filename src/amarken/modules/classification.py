@@ -39,7 +39,9 @@ class TextClassifier(nn.Module):
         return self.backbone.tokenize(texts)
 
     def forward(self, inputs: Mapping[str, Tensor]) -> Tensor:
-        return self.head(self.backbone(inputs))
+        features = self.backbone(inputs)
+        # Direct predict() calls also work outside the trainer's autocast context.
+        return self.head(features.to(dtype=self.head.weight.dtype))
 
 
 def build_model(*, device: str = "cpu", precision: str = "float32") -> TextClassifier:

@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 from amarken import distributed
 from amarken.constants import BASES
 from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
-from amarken.utils import prepare_run
+from amarken.utils import prepare_run, prepare_training_precision
 
 
 @dataclass
@@ -73,6 +73,8 @@ def seed_everything(seed: int) -> None:
     """Call before constructing models and dataloaders."""
     random.seed(seed)
     torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
 
 
 class Trainer:
@@ -104,6 +106,7 @@ class Trainer:
         self.config = config
         self.device = torch.device(config.device)
         self.strategy = distributed.resolve_strategy(config.strategy, config.precision)
+        prepare_training_precision(model, config.precision)
         if self.strategy == "fsdp2":
             if not distributed.active():
                 raise ValueError(

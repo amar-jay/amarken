@@ -328,12 +328,21 @@ with a tiny local Qwen model and in-memory HF data. Hub downloads are mocked.
 
 ### Precision
 
-JSON `precision` is the single setting for model weight storage and training
-autocast. Training and inference pass it to the selected module's `build_model`
-and `load_model`, with the same signatures across all implementations.
-For bfloat16 weights and execution, set `"precision": "bfloat16"` in your config.
-No separate dtype constant is needed. Direct Python calls can pass
-`precision="bfloat16"` to either function; their default is `float32`.
+JSON `precision` controls training autocast (`float32` disables it). Trainable
+weights and optimizer moments stay in float32; frozen subtrees can use the
+configured dtype to save memory. Training initializes models in float32 on CPU,
+prepares their dtypes, then moves or shards them onto the target device. Allow
+CPU RAM for that full-precision initialization.
+
+CUDA float16 uses gradient scaling; bfloat16 does not require it. FSDP2 uses its
+mixed-precision policy with FP32 trainable shards and FP32 gradient reductions,
+and still supports only float32/bfloat16. No additional JSON dtype setting is needed.
+
+Checkpoints retain the actual training dtypes. Standalone inference/validation
+load weights in the configured `precision`; direct `build_model`/`load_model`
+calls also retain their existing storage-dtype argument and default to float32.
+Existing reduced-precision checkpoints can resume: trainable weights and optimizer
+moments are promoted to float32, but precision lost in earlier saves cannot be recovered.
 
 ### Final validation
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from amarken import distributed
 from amarken.inference import run_inference
-from amarken.main import train_example
+from amarken.main import run_train
 from amarken.trainer import TrainingConfig
 from amarken.validation import run_validation
 
@@ -75,7 +75,7 @@ def main(argv=None):
             )
         config = TrainingConfig(**json.loads(args.config.read_text()))
         if args.command == "train":
-            checkpoint_prefix, history = train_example(config, resume=args.resume)
+            checkpoint_prefix, history = run_train(config, resume=args.resume)
             if distributed.primary():
                 print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
                 for metrics in history:

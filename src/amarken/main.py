@@ -2,12 +2,12 @@ from dataclasses import replace
 from pathlib import Path
 
 from amarken.dataset import build_dataloaders, build_dataset
-from amarken.distributed import resolve_strategy, training_process
+from amarken.distributed import training_process
 from amarken.model import build_model, fsdp_modules, loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 
 
-def train_example(config: TrainingConfig, *, resume: Path | None = None):
+def run_train(config: TrainingConfig, *, resume: Path | None = None):
     """Train the selected model and dataset without parsing command-line arguments."""
     with training_process(
         config.device, strategy=config.strategy, precision=config.precision
@@ -17,9 +17,8 @@ def train_example(config: TrainingConfig, *, resume: Path | None = None):
 
 def _train(config, *, resume):
     seed_everything(config.seed)
-    strategy = resolve_strategy(config.strategy, config.precision)
-    model_device = "cpu" if strategy == "fsdp2" else config.device
-    model = build_model(device=model_device, precision=config.precision)
+    # Preserve FP32 initialization and cast frozen subtrees before GPU placement.
+    model = build_model(device="cpu", precision="float32")
     train_data, validation_data = build_dataset(
         seed=config.seed, train_size=config.train_size, val_size=config.val_size
     )
