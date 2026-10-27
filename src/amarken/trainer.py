@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 from amarken import distributed
 from amarken.constants import BASES
 from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
-from amarken.utils import prepare_run, prepare_training_precision
+from amarken.utils import prepare_run, prepare_training_precision, seed_everything
 
 
 @dataclass
@@ -67,14 +67,6 @@ class TrainingConfig:
             raise ValueError("run_name must be a single directory name")
         if self.strategy == "fsdp2" and self.device == "cpu":
             os.environ.setdefault("OMP_NUM_THREADS", "1")
-
-
-def seed_everything(seed: int) -> None:
-    """Call before constructing models and dataloaders."""
-    random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
 
 
 class Trainer:

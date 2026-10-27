@@ -4,8 +4,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import questionary
-
 from amarken import logger as logger_module
 
 if TYPE_CHECKING:
@@ -16,6 +14,8 @@ def prompt_run_name(config: "TrainingConfig", *, resume: bool = False) -> str | 
     """Ask only for fresh isolated runs; blank/noninteractive uses UUID."""
     if config.checkpoints.overwrite or resume or not sys.stdin.isatty():
         return None
+
+    import questionary
 
     def validate(value):
         name = value.strip()
@@ -80,3 +80,15 @@ def prepare_training_precision(model, precision: str) -> None:
             setattr(model, name, buffer.float())
     for child in model.children():
         prepare_training_precision(child, precision)
+
+
+def seed_everything(seed: int) -> None:
+    import random
+
+    import torch
+
+    """Call before constructing models and dataloaders."""
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)

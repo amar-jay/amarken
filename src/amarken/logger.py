@@ -64,7 +64,7 @@ class CheckpointConfig:
     overwrite: bool = True
     monitor: str = "val/loss"
     mode: str = "min"
-    backend: str = "wandb"
+    backend: str = "local"
     bucket: str | None = None
     prefix: str = "checkpoints"
     endpoint_url: str | None = None
