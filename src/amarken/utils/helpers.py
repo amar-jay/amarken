@@ -9,7 +9,6 @@ from amarken.utils import logger as logger_module
 
 if TYPE_CHECKING:
     from amarken.config import Config
-    from amarken.trainer import Trainer
 
 
 def prompt_run_name(config: "Config", *, resume: bool = False) -> str | None:
@@ -37,7 +36,7 @@ def prompt_run_name(config: "Config", *, resume: bool = False) -> str | None:
     return answer.strip() or None
 
 
-def prepare_run(trainer: "Trainer") -> None:
+def prepare_run(trainer) -> None:
     """Resolve a name and reserve its directory once, before fit starts work."""
     if trainer._directory_prepared:
         return

@@ -1,21 +1,15 @@
 """Single-device, DDP and FSDP2 training with epoch-boundary checkpoints."""
 
-import sys
-import warnings
 from collections.abc import Callable
-from contextlib import ExitStack
-from dataclasses import asdict
 from pathlib import Path
-from uuid import uuid4
 
 import torch
 import torch.distributed as dist
 from tqdm.auto import tqdm
 
 from amarken.config import Config
-from amarken.utils import checkpoint, distributed
-from amarken.utils.helpers import batch_size, prepare_run
-from amarken.utils.logger import WandbLogger
+from amarken.utils import checkpoint, distributed, run
+from amarken.utils.helpers import batch_size
 
 __all__ = ["Trainer"]
 
@@ -42,7 +36,7 @@ class Trainer:
         run_label: str | None = None,
         fsdp_modules: Callable | None = None,
     ):
-        self.config = config
+        run.initialize(self, config, logger=logger, run_label=run_label)
         self.model, self.device, self.strategy = distributed.prepare_model(
             model,
             config,
@@ -59,23 +53,9 @@ class Trainer:
             else torch.optim.AdamW(self.model.parameters(), lr=config.learning_rate)
         )
         self.scheduler = scheduler
-        self.logger = logger
         self.scaler = torch.amp.GradScaler(
             "cuda", enabled=config.precision == "float16"
         )
-        if run_label is not None and (
-            not run_label
-            or Path(run_label).name != run_label
-            or run_label in {".", ".."}
-        ):
-            raise ValueError("Run name must be a single directory name")
-        self.run_label = run_label
-        self._resumed = False
-        self._directory_prepared = False
-        self.run_id = uuid4().hex
-        self.best_metric = None
-        self.epoch = 0
-        self.global_step = 0
 
     def _autocast(self):
         return torch.autocast(
@@ -145,98 +125,22 @@ class Trainer:
         return total / samples
 
     def fit(self):
-        def prepare():
-            prepare_run(self)
-            return self.run_id, self.run_label
-
-        self.run_id, self.run_label = distributed.primary_call(prepare)
-        stack = ExitStack()
-        original_logger = self.logger
-
-        def open_logger():
-            if self.logger is None:
-                self.logger = stack.enter_context(
-                    WandbLogger(
-                        enabled=self.config.wandb.enabled,
-                        mode=self.config.wandb.mode,
-                        name=self.run_label or self.run_id,
-                        config=asdict(self.config),
-                        checkpoints=self.config.checkpoints,
-                    )
-                )
-
-        try:
-            distributed.primary_call(open_logger)
-            history = self._fit()
-            distributed.primary_call(lambda: self.logger.flush_checkpoints())
-            distributed.primary_call(stack.close)
-            return history
-        except BaseException:
-            if distributed.primary():
-                try:
-                    if self.logger is not None:
-                        self.logger.flush_checkpoints()
-                    stack.__exit__(*sys.exc_info())
-                except Exception as error:  # noqa: BLE001 - preserve original failure
-                    warnings.warn(
-                        f"Checkpoint cleanup failed: {error}",
-                        RuntimeWarning,
-                        stacklevel=2,
-                    )
-            raise
-        finally:
-            self.logger = original_logger
+        return run.fit(self, self._fit)
 
     @property
     def checkpoint_prefix(self):
-        """Use stable paths or one named/UUID directory per run."""
-        if self.config.checkpoints.overwrite:
-            return self.config.run_name
-        return f"{self.config.run_name}/{self.run_label or self.run_id}"
+        return run.checkpoint_prefix(self)
 
     def _save_checkpoints(self, metrics):
-        settings = self.config.checkpoints
-        filenames = []
-        if settings.monitor not in metrics:
-            raise ValueError(f"Checkpoint monitor {settings.monitor!r} is unavailable")
-        value = float(metrics[settings.monitor])
-        improved = self.best_metric is None or (
-            value < self.best_metric
-            if settings.mode == "min"
-            else value > self.best_metric
-        )
-        if improved:
-            self.best_metric = value
-            filenames.append(("best.pt", ("best",)))
-        if settings.policy == "default":
-            filenames.append(("latest.pt", ("latest",)))
-        if not filenames:
-            return
-        training_state = (
-            distributed.full_state(self.model, self.optimizer)
+        return checkpoint.save_checkpoints(
+            self,
+            metrics,
+            capture_training_state=(
+                lambda: distributed.full_state(self.model, self.optimizer)
+            )
             if self.strategy == "fsdp2"
-            else None
+            else None,
         )
-
-        def submit():
-            snapshot = self.state_dict(training_state=training_state)
-            for filename, aliases in filenames:
-                artifact = self.logger.save_checkpoint(
-                    snapshot,
-                    f"{self.checkpoint_prefix}/{filename}",
-                    name=f"model-{self.run_id}",
-                    aliases=aliases,
-                    # Update best/latest within the selected run directory.
-                    overwrite=True,
-                )
-                if (
-                    not settings.async_save
-                    and settings.backend == "wandb"
-                    and artifact is not None
-                ):
-                    artifact.wait()
-
-        distributed.primary_call(submit)
 
     def _fit(self):
         settings = self.config.checkpoints

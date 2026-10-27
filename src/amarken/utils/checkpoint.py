@@ -212,3 +212,48 @@ def restore_trl_checkpoints(path, output):
     if not (output / current / "trainer_state.json").is_file():
         raise ValueError("Native TRL checkpoint has no trainer state")
     return output / current
+
+
+def save_checkpoints(owner, metrics, *, capture_training_state=None):
+    """Select best/latest and save a snapshot supplied by either trainer.
+
+    Optional collective state capture runs on every rank before rank-zero I/O.
+    """
+    settings = owner.config.checkpoints
+    filenames = []
+    if settings.monitor not in metrics:
+        raise ValueError(f"Checkpoint monitor {settings.monitor!r} is unavailable")
+    value = float(metrics[settings.monitor])
+    improved = owner.best_metric is None or (
+        value < owner.best_metric
+        if settings.mode == "min"
+        else value > owner.best_metric
+    )
+    if improved:
+        owner.best_metric = value
+        filenames.append(("best.pt", ("best",)))
+    if settings.policy == "default":
+        filenames.append(("latest.pt", ("latest",)))
+    if not filenames:
+        return
+    training_state = capture_training_state() if capture_training_state else None
+
+    def submit():
+        snapshot = owner.state_dict(training_state=training_state)
+        for filename, aliases in filenames:
+            artifact = owner.logger.save_checkpoint(
+                snapshot,
+                f"{owner.checkpoint_prefix}/{filename}",
+                name=f"model-{owner.run_id}",
+                aliases=aliases,
+                # Update best/latest within the selected run directory.
+                overwrite=True,
+            )
+            if (
+                not settings.async_save
+                and settings.backend == "wandb"
+                and artifact is not None
+            ):
+                artifact.wait()
+
+    distributed.primary_call(submit)

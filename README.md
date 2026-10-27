@@ -669,9 +669,12 @@ validation on the third, and autoregressive WAV inference. The smoke-test WAV wa
 not speech quality or full fine-tuning. The final spectral projection output is
 promoted to FP32 for the codec's complex-number reconstruction on CPU.
 
-Training orchestration stays in `trainer.py`. Model placement, precision setup,
+Supervised training stays in `trainer.py`; RL uses an independent trainer with
+optimization and scaling owned by TRL. Run naming, logger lifetime and cleanup
+are shared through `utils/run.py`. Model placement, precision setup,
 and DDP/FSDP wrapping live in `utils/distributed.py`; checkpoint state, resume
-validation, and RNG capture/restoration live in `utils/checkpoint.py`.
+validation, RNG capture/restoration, and best/latest saving live in
+`utils/checkpoint.py`.
 `Trainer.state_dict()` and `Trainer.resume()` delegate to those checkpoint helpers.
 
 ## Causal language model fine-tuning

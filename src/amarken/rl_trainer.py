@@ -16,11 +16,10 @@ from transformers import TrainerCallback
 from trl import GRPOConfig
 from trl import GRPOTrainer as TRLGRPOTrainer
 
-from amarken.trainer import Trainer
-from amarken.utils import distributed
+from amarken.utils import checkpoint, distributed, run
 from amarken.utils import logger as logger_module
 from amarken.utils.checkpoint import pack_trl_checkpoints, restore_trl_checkpoints
-from amarken.utils.helpers import batch_size
+from amarken.utils.helpers import batch_size, prepare_training_precision
 
 
 def _metadata(owner):
@@ -134,8 +133,8 @@ class _RunCallback(TrainerCallback):
         owner._save_checkpoints(owner.history[-1])
 
 
-class GRPOTrainer(Trainer):
-    """Reuse run naming/logging/export lifecycle; delegate training to TRL."""
+class GRPOTrainer:
+    """Delegate optimization and precision to TRL; share only run utilities."""
 
     def __init__(
         self,
@@ -169,15 +168,28 @@ class GRPOTrainer(Trainer):
             raise ValueError(
                 "RL checkpoints require train/reward or a module validation metric"
             )
-        super().__init__(
-            model, train_loader, None, config, validation_loader=validation_loader
-        )
+        run.initialize(self, config)
+        prepare_training_precision(model, config.precision)
+        self.device = requested
+        self.model = model.to(self.device)
+        self.train_loader = train_loader
+        self.validation_loader = validation_loader
         self.prepare_prompts, self.reward_fn = prepare_prompts, reward_fn
         self.build_metrics, self.validation_step = build_metrics, validation_step
         self.history, self.train_metrics = [], {}
         self.resume_source = None
         self.native_checkpoint = None
         self.engine = None
+
+    def fit(self):
+        return run.fit(self, self._fit)
+
+    @property
+    def checkpoint_prefix(self):
+        return run.checkpoint_prefix(self)
+
+    def _save_checkpoints(self, metrics):
+        return checkpoint.save_checkpoints(self, metrics)
 
     def resume(self, path):
         path = Path(path)

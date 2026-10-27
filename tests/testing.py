@@ -193,7 +193,21 @@ def check_rl_contract(case):
         tempfile.TemporaryDirectory() as directory,
         patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
     ):
-        full = make_trainer(2)
+        with (
+            patch(
+                "torch.optim.AdamW",
+                side_effect=AssertionError("RL must not create a supervised optimizer"),
+            ),
+            patch(
+                "torch.amp.GradScaler",
+                side_effect=AssertionError("TRL owns RL scaling"),
+            ),
+        ):
+            full = make_trainer(2)
+        case.assertNotIsInstance(full, Trainer)
+        case.assertFalse(hasattr(full, "optimizer"))
+        case.assertFalse(hasattr(full, "scaler"))
+        case.assertFalse(hasattr(full, "scheduler"))
         before = {
             key: p.detach().clone()
             for key, p in full.model.named_parameters()
@@ -2246,7 +2260,7 @@ def distributed_worker(directory):
             patch(
                 "amarken.utils.helpers.prompt_run_name", return_value="shared"
             ) as prompt,
-            patch("amarken.trainer.WandbLogger", wraps=WandbLogger) as logger_factory,
+            patch("amarken.utils.run.WandbLogger", wraps=WandbLogger) as logger_factory,
         ):
 
             def create(name, epochs):
