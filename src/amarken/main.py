@@ -2,20 +2,24 @@ from dataclasses import replace
 from pathlib import Path
 
 from amarken.dataset import build_dataloaders, build_dataset
-from amarken.distributed import training_process
-from amarken.model import build_model, loss_fn
+from amarken.distributed import resolve_strategy, training_process
+from amarken.model import build_model, fsdp_modules, loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
 
 
 def train_example(config: TrainingConfig, *, resume: Path | None = None):
     """Train the selected model and dataset without parsing command-line arguments."""
-    with training_process(config.device) as device:
+    with training_process(
+        config.device, strategy=config.strategy, precision=config.precision
+    ) as device:
         return _train(replace(config, device=device), resume=resume)
 
 
 def _train(config, *, resume):
     seed_everything(config.seed)
-    model = build_model(device=config.device, precision=config.precision)
+    strategy = resolve_strategy(config.strategy, config.precision)
+    model_device = "cpu" if strategy == "fsdp2" else config.device
+    model = build_model(device=model_device, precision=config.precision)
     train_data, validation_data = build_dataset(
         seed=config.seed, train_size=config.train_size, val_size=config.val_size
     )
@@ -25,7 +29,14 @@ def _train(config, *, resume):
         batch_size=config.batch_size,
         tokenize=getattr(model, "tokenize", None),
     )
-    trainer = Trainer(model, train, loss_fn, config, validation_loader=validation)
+    trainer = Trainer(
+        model,
+        train,
+        loss_fn,
+        config,
+        validation_loader=validation,
+        fsdp_modules=fsdp_modules,
+    )
     if resume is not None:
         trainer.resume(resume)
     history = trainer.fit()

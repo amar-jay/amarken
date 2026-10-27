@@ -8,6 +8,7 @@
   "batch_size": 16,
   "epochs": 3,
   "device": "cpu",
+	"strategy": "fsdp2",
   "precision": "float32",
   "run_name": "synthetic-example",
   "checkpoints": {

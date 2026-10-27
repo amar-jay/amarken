@@ -2,9 +2,9 @@
 
 import argparse
 import json
-import os
 from pathlib import Path
 
+from amarken import distributed
 from amarken.inference import run_inference
 from amarken.main import train_example
 from amarken.trainer import TrainingConfig
@@ -69,14 +69,14 @@ def main(argv=None):
     root = parser()
     args = root.parse_args(argv)
     try:
-        if args.command != "train" and int(os.environ.get("WORLD_SIZE", "1")) > 1:
+        if args.command != "train" and distributed.launched():
             raise ValueError(
                 "Only train supports torchrun; run evaluation and inference in one process"
             )
         config = TrainingConfig(**json.loads(args.config.read_text()))
         if args.command == "train":
             checkpoint_prefix, history = train_example(config, resume=args.resume)
-            if int(os.environ.get("RANK", "0")) == 0:
+            if distributed.primary():
                 print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
                 for metrics in history:
                     print(json.dumps(metrics))

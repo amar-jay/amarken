@@ -8,6 +8,7 @@
   "batch_size": 1,
   "epochs": 3,
   "device": "cuda",
+  "strategy": "auto",
   "precision": "bfloat16",
   "run_name": "qwen-classifier",
   "checkpoints": {

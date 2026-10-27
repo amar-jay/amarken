@@ -1,4 +1,4 @@
-"""Single-device training with epoch-boundary checkpoints."""
+"""Single-device, DDP and FSDP2 training with epoch-boundary checkpoints."""
 
 import os
 import random
@@ -32,6 +32,7 @@ class TrainingConfig:
     test_size: int = 32
     epochs: int = 3
     device: str = "cpu"
+    strategy: str = "auto"
     precision: str = "float32"
     run_name: str = "training"
     wandb: WandbConfig = field(default_factory=WandbConfig)
@@ -50,6 +51,8 @@ class TrainingConfig:
             size = getattr(self, name)
             if type(size) is not int or size < 1:
                 raise ValueError(f"{name} must be a positive integer")
+        if self.strategy not in {"auto", "ddp", "fsdp2"}:
+            raise ValueError("strategy must be auto, ddp or fsdp2")
         if self.precision not in {"float32", "float16", "bfloat16"}:
             raise ValueError("precision must be float32, float16 or bfloat16")
         if self.precision == "float16" and torch.device(self.device).type != "cuda":
@@ -62,6 +65,8 @@ class TrainingConfig:
             or self.run_name in {".", ".."}
         ):
             raise ValueError("run_name must be a single directory name")
+        if self.strategy == "fsdp2" and self.device == "cpu":
+            os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 
 def seed_everything(seed: int) -> None:
@@ -90,19 +95,37 @@ class Trainer:
         scheduler=None,
         logger=None,
         run_label: str | None = None,
+        fsdp_modules: Callable | None = None,
     ):
-        if int(os.environ.get("WORLD_SIZE", "1")) > 1 and not distributed.active():
+        if distributed.launched() and not distributed.active():
             raise ValueError(
                 "Initialize distributed.training_process before constructing the trainer"
             )
         self.config = config
         self.device = torch.device(config.device)
-        self.model = model.to(self.device)
-        if distributed.active():
-            self.model = DistributedDataParallel(
-                self.model,
-                device_ids=[self.device.index] if self.device.type == "cuda" else None,
+        self.strategy = distributed.resolve_strategy(config.strategy, config.precision)
+        if self.strategy == "fsdp2":
+            if not distributed.active():
+                raise ValueError(
+                    "Initialize training_process before constructing an FSDP2 trainer"
+                )
+            if optimizer is not None or scheduler is not None:
+                raise ValueError(
+                    "FSDP2 constructs its optimizer after sharding; external optimizers/schedulers are unsupported"
+                )
+            if fsdp_modules is None:
+                raise ValueError(
+                    "FSDP2 requires the selected model's fsdp_modules hook"
+                )
+            self.model = distributed.shard_model(
+                model, fsdp_modules, self.device, config.precision
             )
+        else:
+            self.model = model.to(self.device)
+            if self.strategy == "ddp":
+                device_ids = [self.device.index] if self.device.type == "cuda" else None
+                self.model = DistributedDataParallel(self.model, device_ids=device_ids)
+        if distributed.active():
             seed_everything(config.seed + distributed.rank())
         self.train_loader = train_loader
         self.validation_loader = validation_loader
@@ -138,16 +161,27 @@ class Trainer:
             enabled=self.config.precision != "float32",
         )
 
-    def state_dict(self):
+    def state_dict(self, *, training_state=None):
+        if self.strategy == "fsdp2" and training_state is None:
+            raise ValueError(
+                "FSDP2 state capture is collective; pass distributed.full_state(model, optimizer)"
+            )
+        if training_state is None:
+            training_state = (
+                distributed.unwrap(self.model).state_dict(),
+                self.optimizer.state_dict(),
+            )
+        model_state, optimizer_state = training_state
         return {
             "format_version": 1,
             "run_id": self.run_id,
             "run_label": self.run_label,
             "best_metric": self.best_metric,
-            "model": distributed.unwrap(self.model).state_dict(),
+            "model": model_state,
+            "strategy": self.strategy,
             "world_size": distributed.world_size(),
             "rank_rng": getattr(self, "_rank_rng", None),
-            "optimizer": self.optimizer.state_dict(),
+            "optimizer": optimizer_state,
             "scheduler": (
                 self.scheduler.state_dict() if self.scheduler is not None else None
             ),
@@ -165,9 +199,27 @@ class Trainer:
         }
 
     def resume(self, path: str | Path):
-        state = torch.load(path, map_location="cpu", weights_only=True)
+        restored = {}
+        if self.strategy == "fsdp2":
+
+            def read_checkpoint():
+                restored.update(torch.load(path, map_location="cpu", weights_only=True))
+                return {
+                    key: value
+                    for key, value in restored.items()
+                    if key not in {"model", "optimizer"}
+                }
+
+            state = distributed.primary_call(read_checkpoint)
+        else:
+            state = torch.load(path, map_location="cpu", weights_only=True)
         if state.get("world_size", 1) != distributed.world_size():
             raise ValueError("Resume requires the same world size")
+        previous_strategy = state.get(
+            "strategy", "ddp" if state.get("world_size", 1) > 1 else "single"
+        )
+        if previous_strategy != self.strategy:
+            raise ValueError("Resume requires the same strategy")
         if state["format_version"] != 1:
             raise ValueError("Unsupported checkpoint format")
         if (state["scheduler"] is None) != (self.scheduler is None):
@@ -195,8 +247,16 @@ class Trainer:
         if Path(self.run_id).name != self.run_id or self.run_id in {".", "..", ""}:
             raise ValueError("Invalid checkpoint run ID")
         self._resumed = True
-        distributed.unwrap(self.model).load_state_dict(state["model"])
-        self.optimizer.load_state_dict(state["optimizer"])
+        if self.strategy == "fsdp2":
+            distributed.restore_full_state(
+                self.model,
+                self.optimizer,
+                restored.get("model", {}),
+                restored.get("optimizer", {}),
+            )
+        else:
+            distributed.unwrap(self.model).load_state_dict(state["model"])
+            self.optimizer.load_state_dict(state["optimizer"])
         if self.scheduler is not None:
             self.scheduler.load_state_dict(state["scheduler"])
         self.scaler.load_state_dict(state["scaler"])
@@ -255,7 +315,7 @@ class Trainer:
                         self.device,
                     )
                 valid = loss.ndim == 0 and torch.isfinite(loss).item()
-                if training and distributed.active():
+                if distributed.active() and (training or self.strategy == "fsdp2"):
                     flag = torch.tensor(int(valid), device=self.device)
                     dist.all_reduce(flag, op=dist.ReduceOp.MIN)
                     valid = bool(flag.item())
@@ -270,7 +330,7 @@ class Trainer:
                 total += loss.detach().item() * count
                 samples += count
                 progress.set_postfix(loss=total / samples, refresh=False)
-        if training and distributed.active():
+        if distributed.active() and (training or self.strategy == "fsdp2"):
             aggregate = torch.tensor(
                 [total, samples], dtype=torch.float64, device=self.device
             )
@@ -346,21 +406,33 @@ class Trainer:
             filenames.append(("best.pt", ("best",)))
         if settings.policy == "default":
             filenames.append(("latest.pt", ("latest",)))
-        for filename, aliases in filenames:
-            artifact = self.logger.save_checkpoint(
-                self.state_dict(),
-                f"{self.checkpoint_prefix}/{filename}",
-                name=f"model-{self.run_id}",
-                aliases=aliases,
-                # Update best/latest within the selected run directory.
-                overwrite=True,
-            )
-            if (
-                not settings.async_save
-                and settings.backend == "wandb"
-                and artifact is not None
-            ):
-                artifact.wait()
+        if not filenames:
+            return
+        training_state = (
+            distributed.full_state(self.model, self.optimizer)
+            if self.strategy == "fsdp2"
+            else None
+        )
+
+        def submit():
+            snapshot = self.state_dict(training_state=training_state)
+            for filename, aliases in filenames:
+                artifact = self.logger.save_checkpoint(
+                    snapshot,
+                    f"{self.checkpoint_prefix}/{filename}",
+                    name=f"model-{self.run_id}",
+                    aliases=aliases,
+                    # Update best/latest within the selected run directory.
+                    overwrite=True,
+                )
+                if (
+                    not settings.async_save
+                    and settings.backend == "wandb"
+                    and artifact is not None
+                ):
+                    artifact.wait()
+
+        distributed.primary_call(submit)
 
     def _fit(self):
         settings = self.config.checkpoints
@@ -386,20 +458,25 @@ class Trainer:
                 if distributed.active():
                     for buffer in distributed.unwrap(self.model).buffers():
                         dist.broadcast(buffer, src=0)
-                metrics["val/loss"] = distributed.primary_call(
-                    lambda: self._epoch_loss(self.validation_loader, training=False)
-                )
+                if self.strategy == "fsdp2":
+                    metrics["val/loss"] = self._epoch_loss(
+                        self.validation_loader, training=False
+                    )
+                else:
+                    metrics["val/loss"] = distributed.primary_call(
+                        lambda: self._epoch_loss(self.validation_loader, training=False)
+                    )
             if self.scheduler is not None:
                 self.scheduler.step()
             self.epoch += 1
             metrics["epoch"] = self.epoch
             self._gather_rng()
 
-            def log_and_save(metrics=metrics):
-                self.logger.log(metrics, global_step=self.global_step)
-                self._save_checkpoints(metrics)
-                return self.best_metric
-
-            self.best_metric = distributed.primary_call(log_and_save)
+            distributed.primary_call(
+                lambda metrics=metrics: self.logger.log(
+                    metrics, global_step=self.global_step
+                )
+            )
+            self._save_checkpoints(metrics)
             history.append(metrics)
         return history

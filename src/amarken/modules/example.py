@@ -76,3 +76,12 @@ def validation_step(model, batch, device) -> dict:
         "loss": torch.nn.functional.cross_entropy(logits, targets).item(),
         "accuracy": (logits.argmax(-1) == targets).float().mean().item(),
     }
+
+
+def fsdp_modules(model):
+    """Shard parameter-bearing layers before the root module."""
+    return [
+        layer
+        for layer in model.children()
+        if next(layer.parameters(), None) is not None
+    ] + [model]

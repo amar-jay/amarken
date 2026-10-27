@@ -35,6 +35,7 @@ from types import TracebackType
 from typing import Any, Self
 
 from amarken.constants import CHECKPOINT_DIR, PROJECT_NAME, PROJECT_VERSION, WANDB_CACHE
+from amarken.distributed import rank as process_rank
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,7 @@ class WandbLogger:
         **init_kwargs: Any,
     ) -> None:
         # RANK is global under torchrun; LOCAL_RANK is insufficient on multi-node.
-        self.rank = int(os.environ.get("RANK", "0")) if rank is None else rank
+        self.rank = process_rank() if rank is None else rank
         self.enabled = enabled and self.rank == 0
         self.checkpoints = (
             CheckpointConfig(**checkpoints)

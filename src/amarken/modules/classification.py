@@ -9,6 +9,7 @@ from torch import Tensor, nn
 from amarken.constants import CLASSIFICATION_FREEZE_BACKBONE, CLASSIFICATION_LABELS
 from amarken.modules.base import BaseConfig, BaseModel
 from amarken.modules.base import build_model as build_backbone
+from amarken.modules.base import fsdp_modules as backbone_fsdp_modules
 from amarken.utils import load_checkpoint_weights
 
 
@@ -92,3 +93,7 @@ def validation_step(model, batch, device) -> dict:
         "loss": torch.nn.functional.cross_entropy(logits, targets).item(),
         "accuracy": (logits.argmax(-1) == targets).float().mean().item(),
     }
+
+
+def fsdp_modules(model):
+    return [*backbone_fsdp_modules(model.backbone), model.head, model]

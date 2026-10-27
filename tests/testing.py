@@ -48,7 +48,26 @@ class TrainerTests(unittest.TestCase):
         )
 
     def test_resume_matches_uninterrupted_training(self):
-        from amarken.distributed import training_process
+        from amarken.distributed import launched, resolve_strategy, training_process
+
+        for rank_value in (None, "-1"):
+            with patch.dict(os.environ, {"WORLD_SIZE": "8"}):
+                if rank_value is None:
+                    os.environ.pop("RANK", None)
+                else:
+                    os.environ["RANK"] = rank_value
+                self.assertFalse(launched())
+                for strategy in ("auto", "ddp", "fsdp2"):
+                    self.assertEqual(resolve_strategy(strategy), "single")
+                with patch("torch.distributed.init_process_group") as initialize:
+                    with training_process("cpu", strategy="ddp"):
+                        self.assertEqual(self.make_trainer(1).strategy, "single")
+                    initialize.assert_not_called()
+                with WandbLogger(enabled=False) as logger:
+                    self.assertEqual(logger.rank, 0)
+        with patch.dict(os.environ, {"RANK": "0", "WORLD_SIZE": "1"}):
+            self.assertTrue(launched())
+            self.assertEqual(resolve_strategy("auto"), "ddp")
 
         for local_rank in (0, 1):
             with (
@@ -58,6 +77,7 @@ class TrainerTests(unittest.TestCase):
                         "WORLD_SIZE": "2",
                         "LOCAL_WORLD_SIZE": "2",
                         "LOCAL_RANK": str(local_rank),
+                        "RANK": str(local_rank),
                     },
                 ),
                 patch("torch.cuda.device_count", return_value=1),
@@ -69,6 +89,44 @@ class TrainerTests(unittest.TestCase):
                 self.fail("Oversized GPU launch should fail before entering training")
             set_device.assert_not_called()
             initialize.assert_not_called()
+
+        for bad_precision in ("float16",):
+            with (
+                patch.dict(os.environ, {"RANK": "0"}),
+                self.assertRaisesRegex(ValueError, "float16"),
+            ):
+                from amarken.distributed import resolve_strategy
+
+                resolve_strategy("fsdp2", bad_precision)
+        with (
+            patch.dict(os.environ, {"RANK": "0"}),
+            patch("torch.__version__", "2.6.0"),
+            self.assertRaisesRegex(ValueError, "2.14"),
+        ):
+            resolve_strategy("fsdp2")
+        with tempfile.TemporaryDirectory() as fsdp_directory:
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+            environment["OMP_NUM_THREADS"] = "1"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "torch.distributed.run",
+                    "--standalone",
+                    "--nproc-per-node=2",
+                    str(Path(__file__).resolve()),
+                    "--fsdp-worker",
+                    fsdp_directory,
+                ],
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            load_model(Path(fsdp_directory) / "checkpoints" / "full" / "latest.pt")
 
         with tempfile.TemporaryDirectory() as distributed_directory:
             environment = os.environ.copy()
@@ -975,3 +1033,193 @@ def distributed_worker(directory):
 
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--ddp-worker":
     distributed_worker(sys.argv[2])
+
+
+def fsdp_worker(directory):
+    """Real FSDP2 collectives, checkpoint export/resume and frozen HF groups."""
+    from torch.distributed.tensor import DTensor
+
+    from amarken import distributed
+    from amarken.datasets.example import build_dataloaders, build_dataset
+    from amarken.modules.example import fsdp_modules
+
+    directory = Path(directory)
+    device = os.environ.get("AMARKEN_TEST_DEVICE", "cpu")
+
+    def objective(model, batch, device):
+        inputs, targets = (value.to(device) for value in batch)
+        logits = model(inputs).float()
+        if model.training:
+            logits = logits + torch.randn_like(logits) * 0.1
+        return torch.nn.functional.cross_entropy(logits, targets)
+
+    with (
+        distributed.training_process(device, strategy="fsdp2") as local_device,
+        patch("amarken.logger.CHECKPOINT_DIR", directory / "checkpoints"),
+    ):
+
+        def create(name, epochs, strategy="fsdp2", precision="float32"):
+            seed_everything(42)
+            model = build_model(precision=precision)
+            train_rows, val_rows = build_dataset(train_size=32, val_size=7)
+            train, val = build_dataloaders(train_rows, val_rows, batch_size=3)
+            config = TrainingConfig(
+                strategy=strategy,
+                device=local_device,
+                precision=precision,
+                epochs=epochs,
+                run_name=name,
+                checkpoints=CheckpointConfig(backend="local", async_save=True),
+            )
+            return Trainer(
+                model,
+                train,
+                objective,
+                config,
+                validation_loader=val,
+                fsdp_modules=fsdp_modules,
+            )
+
+        full = create("full", 2)
+        assert all(isinstance(p, DTensor) for p in full.model.parameters())
+        if distributed.world_size() > 1:
+            assert sum(p.to_local().numel() for p in full.model.parameters()) < sum(
+                p.numel() for p in full.model.parameters()
+            )
+        history = full.fit()
+        partial = create("partial", 1)
+        partial_history = partial.fit()
+        resumed = create("partial", 2)
+        resumed.resume(directory / "checkpoints" / "partial" / "latest.pt")
+        resumed_history = resumed.fit()
+        assert resumed_history[-1] == history[-1]
+        full_state, full_optimizer = distributed.full_state(full.model, full.optimizer)
+        resumed_state, resumed_optimizer = distributed.full_state(
+            resumed.model, resumed.optimizer
+        )
+        if not distributed.primary():
+            assert not full_state and not full_optimizer
+        if distributed.primary():
+            for name in full_state:
+                torch.testing.assert_close(
+                    full_state[name], resumed_state[name], rtol=0, atol=0
+                )
+            for name in full_optimizer["state"]:
+                for key in full_optimizer["state"][name]:
+                    torch.testing.assert_close(
+                        full_optimizer["state"][name][key],
+                        resumed_optimizer["state"][name][key],
+                        rtol=0,
+                        atol=0,
+                    )
+            restored = load_model(
+                directory / "checkpoints" / "full" / "latest.pt",
+                device=local_device,
+            )
+            rows = full.validation_loader.dataset
+            with torch.inference_mode():
+                expected = objective(restored, rows.tensors, local_device).item()
+            assert abs(expected - history[-1]["val/loss"]) < 1e-6
+        reference = create("reference", 1, strategy="ddp")
+        reference_history = reference.fit()
+        assert (
+            abs(reference_history[0]["train/loss"] - partial_history[0]["train/loss"])
+            < 1e-5
+        )
+        partial_state, _ = distributed.full_state(partial.model, partial.optimizer)
+        for name, param in distributed.unwrap(reference.model).state_dict().items():
+            if distributed.primary():
+                torch.testing.assert_close(
+                    partial_state[name], param.cpu(), rtol=1e-5, atol=1e-6
+                )
+        try:
+            full.resume(directory / "checkpoints" / "reference" / "latest.pt")
+        except (RuntimeError, ValueError) as error:
+            assert "same strategy" in str(error)
+        else:
+            raise AssertionError("Strategy mismatch should fail")
+        try:
+            full.resume(directory / "missing.pt")
+        except RuntimeError as error:
+            assert "FileNotFoundError" in str(error)
+        else:
+            raise AssertionError("Missing checkpoint should fail on all ranks")
+        failing = create("write-failure", 1)
+        with patch.object(
+            WandbLogger,
+            "save_checkpoint",
+            side_effect=OSError("expected disk failure"),
+        ):
+            try:
+                failing.fit()
+            except RuntimeError as error:
+                assert "expected disk failure" in str(error)
+            else:
+                raise AssertionError("Checkpoint write failure must reach every rank")
+        try:
+            Trainer(
+                build_model(),
+                [],
+                objective,
+                TrainingConfig(strategy="fsdp2", device=local_device),
+                optimizer=Mock(),
+                fsdp_modules=fsdp_modules,
+            )
+        except ValueError as error:
+            assert "external optimizers" in str(error)
+        else:
+            raise AssertionError("External optimizers must be rejected before sharding")
+        # Exercise reduced-precision collectives without downloading a model.
+        create("bf16", 1, precision="bfloat16").fit()
+
+        from transformers import AutoModel, Qwen3Config
+
+        from amarken.modules.base import BaseConfig, BaseModel
+        from amarken.modules.classification import TextClassifier
+        from amarken.modules.classification import fsdp_modules as classifier_groups
+        from amarken.modules.classification import loss_fn as classifier_loss
+
+        seed_everything(42)
+        architecture = Qwen3Config(
+            vocab_size=32,
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            num_key_value_heads=1,
+            head_dim=8,
+        )
+        backbone = BaseModel(AutoModel.from_config(architecture), Mock(), BaseConfig())
+        classifier = TextClassifier(backbone)
+        before = {
+            key: value.detach().clone()
+            for key, value in classifier.state_dict().items()
+        }
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3], [2, 3, 4]]),
+            "attention_mask": torch.ones(2, 3, dtype=torch.long),
+        }
+        batch = (inputs, torch.tensor([0, 1]))
+        config = TrainingConfig(
+            strategy="fsdp2", device=local_device, epochs=1, run_name="classifier"
+        )
+        trainer = Trainer(
+            classifier,
+            [batch],
+            classifier_loss,
+            config,
+            validation_loader=[batch],
+            fsdp_modules=classifier_groups,
+        )
+        trainer.fit()
+        weights, _ = distributed.full_state(trainer.model, trainer.optimizer)
+        if distributed.primary():
+            assert not torch.equal(weights["head.weight"], before["head.weight"])
+            for key, value in before.items():
+                if key.startswith("backbone."):
+                    torch.testing.assert_close(weights[key], value, rtol=0, atol=0)
+    assert not distributed.active()
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--fsdp-worker":
+    fsdp_worker(sys.argv[2])

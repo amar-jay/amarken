@@ -198,3 +198,18 @@ def validation_step(model, batch, device) -> dict:
     raise NotImplementedError(
         "Define task-specific validation metrics in modules/base.py"
     )
+
+
+def fsdp_modules(model):
+    """Use the backbone's declared transformer block boundaries."""
+    block_names = set(getattr(model.model, "_no_split_modules", None) or [])
+    blocks = [
+        module
+        for module in model.model.modules()
+        if type(module).__name__ in block_names
+    ]
+    if not blocks:
+        raise ValueError(
+            "Backbone declares no matching FSDP blocks; define fsdp_modules for this architecture"
+        )
+    return list(reversed(blocks)) + [model]

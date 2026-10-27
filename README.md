@@ -156,7 +156,7 @@ from amarken.modules.example import (
     predict,
     validation_step,
 )
-# from amarken.modules.base import build_model, load_model, loss_fn, predict, validation_step
+# from amarken.modules.base import build_model, load_model, loss_fn, predict, validation_step, fsdp_modules
 
 model = build_model(device="cpu")  # New model / pretrained backbone
 model = load_model("checkpoints/my-task/best.pt", device="cpu")
@@ -423,3 +423,75 @@ for synchronization, sampling, weighted metrics, resume, checkpoint compatibilit
 and rank-zero failure propagation. The command above is the CUDA smoke check;
 run it on a host with at least two GPUs and confirm one checkpoint directory,
 one logging run, and successful resume.
+
+### FSDP2 model sharding
+
+Select the strategy in JSON:
+
+```json
+{
+  "strategy": "fsdp2",
+  "device": "cuda",
+  "precision": "bfloat16"
+}
+```
+
+These are fields in the existing training config; retain its other settings.
+`strategy` defaults to `auto`, preserving single-device training and automatic DDP
+under multi-process launches. The configured strategy applies to `torchrun` launches, detected by
+`int(os.environ.get("RANK", "-1")) != -1`. Plain launches always train on a
+single device, even when the config selects `ddp` or `fsdp2`. A lone
+`WORLD_SIZE` value does not activate distributed training.
+FSDP2 requires PyTorch 2.14 or newer and supports `float32` and `bfloat16` initially;
+`float16` remains available for the other training modes.
+
+```bash
+uv run torchrun --standalone --nproc-per-node=2 --no-python \
+  amarken train --config configs/classification.json
+```
+
+Use one worker per visible GPU. On a one-GPU machine, use `--nproc-per-node=1`
+for a functional smoke test; there is no cross-GPU memory saving with one worker.
+CPU/Gloo FSDP2 is also supported for small integration exercises using
+`"device": "cpu"`. Batch size remains per process.
+
+Unlike DDP, FSDP2 shards parameters, gradients, and optimizer state. Models start
+on CPU and are moved/sharded group by group; each process still needs CPU RAM for
+the complete initial model. Each GPU must fit the active group and activations.
+This implementation does not add meta initialization or CPU offloading.
+
+Model implementations export `fsdp_modules(model)` through `model.py`, alongside
+the existing builder/loss/validation functions. It returns unique communication
+groups in bottom-up order, ending with the root model. Numeric modules group
+parameter-bearing layers; base uses the backbone's declared transformer block
+classes; classification reuses those groups and adds its head and root. Adapt
+this hook when replacing the architecture. Optimizers are built after sharding;
+external optimizers and schedulers are currently rejected for FSDP2.
+
+Every rank participates in FSDP2 validation, running the same complete loader so
+weight-gather collectives line up. Validation loss averages those replicated
+results; it does not count them as additional validation examples. Rank zero
+alone displays progress, logs results, prompts for names and writes/uploads files.
+DDP retains its rank-zero validation behavior.
+
+`best.pt` and `latest.pt` remain ordinary checkpoint files usable by standalone
+`infer`, `validate`, and `test`. When saving, every rank collectively gathers full
+model/optimizer state into rank-zero CPU RAM; serialization/uploads can then run
+asynchronously. Allow CPU RAM for the full snapshot and pending async writes.
+
+Resume using the same strategy, precision, world size and training settings:
+
+```bash
+uv run torchrun --standalone --nproc-per-node=2 --no-python \
+  amarken train --config configs/classification.json \
+  --resume checkpoints/qwen-backbone/latest.pt
+```
+
+Changing between DDP and FSDP2 during training resume is rejected. Legacy
+checkpoints retain their existing inference support and count as single-process
+or DDP training checkpoints according to their saved world size.
+
+Verification includes two-process CPU FSDP2 and DDP regression tests, full-state
+export/loading, deterministic resume, uneven validation batches, frozen tiny
+transformer backbones, and rank-zero read/write failures. A one-GPU CUDA smoke
+test also passed; multi-GPU CUDA still needs verification on a multi-GPU host.
