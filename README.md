@@ -886,9 +886,13 @@ temporary staging directory under the run's checkpoint directory. At each save,
 `best.pt`/`latest.pt` contain both the usual full inference weights and the retained
 native training state, including the frozen reference adapter. Staging is cleaned
 only after those exports are captured; previous artifacts are not deleted.
-Resume extracts the bundled state into new staging and passes it to TRL's
+Resume first rebuilds the policy from the complete `.pt` weights, including the
+frozen base and policy adapter, then extracts bundled state into new staging
+and passes it to TRL's
 `train(resume_from_checkpoint=...)`. Files downloaded from a bucket work the
-same way. Keep the same TRL version and RL/model/data/batching settings when
+same way. Adapter-only native checkpoint directories are not sufficient for
+complete restoration; pass the amarken `.pt` file. Keep the same TRL version
+and RL/model/data/batching settings when
 resuming. Earlier hand-written GRPO checkpoints can initialize weights but do
 not provide native TRL resume state.
 

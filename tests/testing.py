@@ -240,7 +240,23 @@ def check_rl_contract(case):
             list((Path(directory) / partial.checkpoint_prefix).glob(".trl-*"))
         )
         resumed = make_trainer(2)
+        # Resume must restore the entire policy, even if reconstruction supplied
+        # different frozen base weights, not just the trainable adapter.
+        with torch.no_grad():
+            for parameter in resumed.model.parameters():
+                parameter.add_(0.25)
+        case.assertTrue(
+            any(
+                not torch.equal(value, resumed.model.state_dict()[key])
+                for key, value in state["model"].items()
+            )
+        )
         resumed.resume(path)
+        for key, value in state["model"].items():
+            torch.testing.assert_close(
+                resumed.model.state_dict()[key], value, rtol=0, atol=0
+            )
+        case.assertIsNone(resumed.engine)
         with patch(
             "peft.peft_model.PeftModelForCausalLM.generate", side_effect=generate
         ):
@@ -275,6 +291,34 @@ def check_rl_contract(case):
             make_trainer()
         from amarken.main import run_train
         from amarken.utils.checkpoint import validate_initial_policy
+
+        # CLI orchestration rebuilds from the complete export, not Hub weights.
+        routed_trainer = Mock(checkpoint_prefix="resumed-run")
+        routed_trainer.fit.return_value = []
+        with (
+            patch(
+                "amarken.main.get_rl_hooks",
+                return_value={
+                    "prepare_prompts": task.prepare_prompts,
+                    "reward_fn": task.reward_fn,
+                },
+            ),
+            patch(
+                "amarken.main.load_model", return_value=make_model()
+            ) as resume_loader,
+            patch(
+                "amarken.main.build_model",
+                side_effect=AssertionError("Resume must not load pretrained weights"),
+            ),
+            patch("amarken.main.build_dataset", return_value=(rows, rows)),
+            patch("amarken.main.build_dataloaders", return_value=loaders),
+            patch("amarken.rl_trainer.GRPOTrainer", return_value=routed_trainer),
+        ):
+            run_train(replace(config, epochs=2), resume=path)
+        case.assertEqual(resume_loader.call_args.args, (path,))
+        routed_trainer.resume.assert_called_once_with(path)
+        with case.assertRaisesRegex(ValueError, "complete policy weights"):
+            make_trainer().resume(Path(directory))
 
         validate_initial_policy(path, config)
         with case.assertRaisesRegex(ValueError, "model_id"):

@@ -37,10 +37,20 @@ def _train(config, *, resume):
     options = (
         {"fine_tuning": config.fine_tuning} if config.fine_tuning is not None else {}
     )
-    if config.rl is not None and config.rl.initial_checkpoint and resume is None:
-        validate_initial_policy(config.rl.initial_checkpoint, config)
+    policy_checkpoint = (
+        (resume if resume is not None else config.rl.initial_checkpoint)
+        if config.rl is not None
+        else None
+    )
+    if policy_checkpoint is not None:
+        if Path(policy_checkpoint).is_dir():
+            raise ValueError(
+                "RL resume requires an amarken .pt checkpoint with complete policy weights"
+            )
+        if resume is None:
+            validate_initial_policy(policy_checkpoint, config)
         model = load_model(
-            config.rl.initial_checkpoint,
+            policy_checkpoint,
             model_id=config.model_id,
             device="cpu",
             precision="float32",

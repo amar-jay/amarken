@@ -181,11 +181,13 @@ class GRPOTrainer(Trainer):
 
     def resume(self, path):
         path = Path(path)
-        state = (
-            json.loads((path / "amarken.json").read_text())
-            if path.is_dir()
-            else torch.load(path, map_location="cpu", weights_only=True, mmap=True)
-        )
+        if self.engine is not None:
+            raise ValueError("Resume requires a fresh GRPOTrainer")
+        if path.is_dir():
+            raise ValueError(
+                "RL resume requires an amarken .pt checkpoint with complete policy weights"
+            )
+        state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
         if (
             state.get("trainer") != "trl-grpo"
             or state.get("trl_version") != trl.__version__
@@ -219,6 +221,11 @@ class GRPOTrainer(Trainer):
                 not value or Path(value).name != value or value in {".", ".."}
             ):
                 raise ValueError("Invalid RL checkpoint run identity")
+        if state.get("format_version") != 1 or not isinstance(state.get("model"), dict):
+            raise ValueError("RL checkpoint is missing complete policy weights")
+        # Restore frozen base weights and the trainable policy adapter BEFORE
+        # TRL constructs its reference adapter and restores native training state.
+        self.model.load_state_dict(state["model"], strict=True)
         self.run_id, self.run_label = state["run_id"], state.get("run_label")
         self.best_metric = state.get("best_metric")
         self._resumed = True
@@ -255,11 +262,7 @@ class GRPOTrainer(Trainer):
         settings = self.config.rl
         native_resume = None
         if self.resume_source is not None:
-            native_resume = (
-                str(self.resume_source)
-                if self.resume_source.is_dir()
-                else str(restore_trl_checkpoints(self.resume_source, output))
-            )
+            native_resume = str(restore_trl_checkpoints(self.resume_source, output))
         raw = self.train_loader.dataset
         prompts = self.prepare_prompts(self.model.tokenizer, raw["prompt"])
         context = self.model.model.config.max_position_embeddings
