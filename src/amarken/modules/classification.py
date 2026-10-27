@@ -13,7 +13,7 @@ from amarken.constants import (
 from amarken.modules.base import BaseConfig, BaseModel
 from amarken.modules.base import build_model as build_backbone
 from amarken.modules.base import fsdp_modules as backbone_fsdp_modules
-from amarken.utils import load_checkpoint_weights
+from amarken.utils.helpers import load_checkpoint_weights
 
 
 class TextClassifier(nn.Module):

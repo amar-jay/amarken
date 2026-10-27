@@ -115,7 +115,7 @@ uv run amarken train --config configs/training-example.json \
 
 - `true` (default): reuse `checkpoints/<run_name>/`, replacing the same files.
 - `false`: save under `checkpoints/<run_name>/<entered-name-or-uuid>/`.
-  At the beginning of `fit()`, the helper in `amarken.utils` asks for a name
+  At the beginning of `fit()`, the helper in `amarken.utils.helpers` asks for a name
   using Questionary. This works for CLI and direct trainer use. Press Enter to use
   a generated UUID. Noninteractive runs use UUIDs without prompting. Ctrl-C
   cancels training. Existing named directories are rejected for fresh runs.
@@ -597,7 +597,7 @@ For Python callers, `run_validation()` still returns a dictionary. Render either
 that dictionary or its JSON string with the shared utility:
 
 ```python
-from amarken.utils import format_validation_table
+from amarken.utils.helpers import format_validation_table
 
 print(format_validation_table(result))
 ```

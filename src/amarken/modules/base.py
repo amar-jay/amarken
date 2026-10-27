@@ -14,7 +14,7 @@ from amarken.constants import (
     HUB_CACHE,
     REVISIONS,
 )
-from amarken.utils import load_checkpoint_weights
+from amarken.utils.helpers import load_checkpoint_weights
 
 
 @dataclass(frozen=True)

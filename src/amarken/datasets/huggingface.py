@@ -12,7 +12,7 @@ from amarken.constants import (
     DATASET_REVISIONS,
 )
 from amarken.datasets.config import DatasetConfig
-from amarken.distributed import train_sampler
+from amarken.utils.distributed import train_sampler
 
 
 def _build_dataset(

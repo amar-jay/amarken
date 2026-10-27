@@ -2,9 +2,9 @@ from dataclasses import replace
 from pathlib import Path
 
 from amarken.dataset import build_dataloaders, build_dataset
-from amarken.distributed import training_process
 from amarken.model import build_model, fsdp_modules, loss_fn
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
+from amarken.utils.distributed import training_process
 
 
 def run_train(config: TrainingConfig, *, resume: Path | None = None):

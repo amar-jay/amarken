@@ -4,11 +4,11 @@ import argparse
 import json
 from pathlib import Path
 
-from amarken import distributed
 from amarken.inference import run_inference
 from amarken.main import run_train
 from amarken.trainer import TrainingConfig
-from amarken.utils import format_validation_table
+from amarken.utils import distributed
+from amarken.utils.helpers import format_validation_table
 from amarken.validation import run_validation
 
 

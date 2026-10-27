@@ -16,11 +16,11 @@ from torch.utils.data import DataLoader, TensorDataset
 from amarken.cli import main as cli_main
 from amarken.datasets.config import DatasetConfig
 from amarken.inference import run_inference
-from amarken.logger import CheckpointConfig, WandbLogger
 from amarken.modules.example import build_model, load_model, loss_fn
 from amarken.modules.example import predict as predict_numeric
 from amarken.trainer import Trainer, TrainingConfig, seed_everything
-from amarken.utils import prompt_run_name
+from amarken.utils.helpers import prompt_run_name
+from amarken.utils.logger import CheckpointConfig, WandbLogger
 
 
 def make_config(*, dataset=None, **options):
@@ -41,7 +41,7 @@ def check_tts_contract(case):
 
     from amarken.datasets import tts
     from amarken.modules.ming import MingTTS, build_metrics, validation_step
-    from amarken.utils import batch_size
+    from amarken.utils.helpers import batch_size
 
     with tempfile.TemporaryDirectory() as folder:
         file = Path(folder) / "speech.parquet"
@@ -254,7 +254,11 @@ class TrainerTests(unittest.TestCase):
         )
 
     def test_resume_matches_uninterrupted_training(self):
-        from amarken.distributed import launched, resolve_strategy, training_process
+        from amarken.utils.distributed import (
+            launched,
+            resolve_strategy,
+            training_process,
+        )
 
         for rank_value in (None, "-1"):
             with patch.dict(os.environ, {"WORLD_SIZE": "8"}):
@@ -301,7 +305,7 @@ class TrainerTests(unittest.TestCase):
                 patch.dict(os.environ, {"RANK": "0"}),
                 self.assertRaisesRegex(ValueError, "float16"),
             ):
-                from amarken.distributed import resolve_strategy
+                from amarken.utils.distributed import resolve_strategy
 
                 resolve_strategy("fsdp2", bad_precision)
         with (
@@ -387,7 +391,7 @@ class TrainerTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
             patch("amarken.inference.load_model", load_model),
             patch("amarken.inference.predict", predict_numeric),
         ):
@@ -564,7 +568,7 @@ class TrainerTests(unittest.TestCase):
                 )
             self.assertEqual(json.loads(output.getvalue()), metrics)
             self.assertEqual(validate.call_args.args[1].precision, "bfloat16")
-            from amarken.utils import format_validation_table
+            from amarken.utils.helpers import format_validation_table
 
             table = format_validation_table(metrics)
             self.assertIn("Metric", table)
@@ -1179,7 +1183,7 @@ class TrainerTests(unittest.TestCase):
             self.assertIsInstance(validator("../escape"), str)
             with (
                 tempfile.TemporaryDirectory() as existing_root,
-                patch("amarken.logger.CHECKPOINT_DIR", Path(existing_root)),
+                patch("amarken.utils.logger.CHECKPOINT_DIR", Path(existing_root)),
             ):
                 existing = Path(existing_root) / config.run_name / "my-run"
                 existing.mkdir(parents=True)
@@ -1201,7 +1205,7 @@ class TrainerTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
         ):
             trainer = self.make_trainer(1)
             trainer.config.checkpoints = CheckpointConfig(
@@ -1209,7 +1213,7 @@ class TrainerTests(unittest.TestCase):
             )
             with (
                 patch(
-                    "amarken.utils.prompt_run_name", return_value="fit-run"
+                    "amarken.utils.helpers.prompt_run_name", return_value="fit-run"
                 ) as prompt,
                 patch.object(trainer, "_fit", return_value=[]) as training,
             ):
@@ -1225,10 +1229,11 @@ class TrainerTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
             patch("sys.stdin.isatty", return_value=True),
             patch(
-                "amarken.utils.prompt_run_name", side_effect=["taken", "available"]
+                "amarken.utils.helpers.prompt_run_name",
+                side_effect=["taken", "available"],
             ) as prompt,
             redirect_stderr(io.StringIO()) as feedback,
         ):
@@ -1253,7 +1258,7 @@ class TrainerTests(unittest.TestCase):
                 with (
                     self.subTest(policy=policy, overwrite=overwrite),
                     tempfile.TemporaryDirectory() as directory,
-                    patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+                    patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
                 ):
                     filenames = (
                         {"best.pt"} if policy == "best" else {"best.pt", "latest.pt"}
@@ -1341,7 +1346,7 @@ class TrainerTests(unittest.TestCase):
         # A held writer proves snapshot isolation while training state mutates.
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
         ):
             entered, release = Event(), Event()
             original_save = torch.save
@@ -1386,7 +1391,7 @@ class TrainerTests(unittest.TestCase):
         # With one slot, the second call waits before allocating its snapshot.
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
         ):
             logger = WandbLogger(
                 enabled=False,
@@ -1419,7 +1424,7 @@ class TrainerTests(unittest.TestCase):
         # Upload failures are observable, with local state retained and worker closed.
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
         ):
             logger = WandbLogger(
                 enabled=False,
@@ -1442,7 +1447,7 @@ class TrainerTests(unittest.TestCase):
         # W&B waits inside the ordered worker before a reused file is replaced.
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("amarken.logger.CHECKPOINT_DIR", Path(directory)),
+            patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
         ):
             logger = WandbLogger(
                 enabled=False,
@@ -1482,9 +1487,9 @@ class TrainerTests(unittest.TestCase):
 
 def distributed_worker(directory):
     """Two-process integration exercise, launched only by the existing test."""
-    from amarken import distributed
     from amarken.datasets.example import build_dataloaders, build_dataset
-    from amarken.utils import load_checkpoint_weights
+    from amarken.utils import distributed
+    from amarken.utils.helpers import load_checkpoint_weights
 
     training_losses = []
 
@@ -1501,8 +1506,10 @@ def distributed_worker(directory):
     directory = Path(directory)
     with distributed.training_process("cpu"):  # noqa: SIM117 - verify cleanup below
         with (
-            patch("amarken.logger.CHECKPOINT_DIR", directory / "checkpoints"),
-            patch("amarken.utils.prompt_run_name", return_value="shared") as prompt,
+            patch("amarken.utils.logger.CHECKPOINT_DIR", directory / "checkpoints"),
+            patch(
+                "amarken.utils.helpers.prompt_run_name", return_value="shared"
+            ) as prompt,
             patch("amarken.trainer.WandbLogger", wraps=WandbLogger) as logger_factory,
         ):
 
@@ -1605,9 +1612,9 @@ def fsdp_worker(directory):
     """Real FSDP2 collectives, checkpoint export/resume and frozen HF groups."""
     from torch.distributed.tensor import DTensor
 
-    from amarken import distributed
     from amarken.datasets.example import build_dataloaders, build_dataset
     from amarken.modules.example import fsdp_modules
+    from amarken.utils import distributed
 
     directory = Path(directory)
     device = os.environ.get("AMARKEN_TEST_DEVICE", "cpu")
@@ -1621,7 +1628,7 @@ def fsdp_worker(directory):
 
     with (
         distributed.training_process(device, strategy="fsdp2") as local_device,
-        patch("amarken.logger.CHECKPOINT_DIR", directory / "checkpoints"),
+        patch("amarken.utils.logger.CHECKPOINT_DIR", directory / "checkpoints"),
     ):
 
         def create(name, epochs, strategy="fsdp2", precision="float32"):
@@ -1788,7 +1795,7 @@ def fsdp_worker(directory):
             BaseConfig(model_id="Qwen/Qwen3-0.6B"),
         )
         classifier = TextClassifier(backbone)
-        from amarken.utils import prepare_training_precision
+        from amarken.utils.helpers import prepare_training_precision
 
         prepare_training_precision(classifier, "bfloat16")
         before = {

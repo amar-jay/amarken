@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 
 from amarken.constants import DATASET_REVISIONS, HUB_CACHE
 from amarken.datasets.config import DatasetConfig
-from amarken.distributed import primary, train_sampler
+from amarken.utils.distributed import primary, train_sampler
 
 
 def _source(config, split):

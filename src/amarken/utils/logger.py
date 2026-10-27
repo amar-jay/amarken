@@ -35,7 +35,7 @@ from types import TracebackType
 from typing import Any, Self
 
 from amarken.constants import CHECKPOINT_DIR, PROJECT_NAME, PROJECT_VERSION, WANDB_CACHE
-from amarken.distributed import rank as process_rank
+from amarken.utils.distributed import rank as process_rank
 
 
 @dataclass(frozen=True)

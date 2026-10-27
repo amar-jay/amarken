@@ -7,7 +7,7 @@ import torch
 from amarken.dataset import build_dataloaders, build_dataset, build_test_dataset
 from amarken.model import build_metrics, load_model, validation_step
 from amarken.trainer import TrainingConfig, seed_everything
-from amarken.utils import batch_size
+from amarken.utils.helpers import batch_size
 
 
 def run_validation(

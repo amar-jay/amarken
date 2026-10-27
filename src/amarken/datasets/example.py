@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from amarken.constants import EXAMPLE_INPUT_SIZE
 from amarken.datasets.config import DatasetConfig
-from amarken.distributed import train_sampler
+from amarken.utils.distributed import train_sampler
 
 
 def build_dataset(config: DatasetConfig, *, seed: int = 42) -> tuple[Dataset, Dataset]:

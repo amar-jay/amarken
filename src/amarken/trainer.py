@@ -15,15 +15,15 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from tqdm.auto import tqdm
 
-from amarken import distributed
 from amarken.datasets.config import DatasetConfig
-from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
-from amarken.utils import (
+from amarken.utils import distributed
+from amarken.utils.helpers import (
     batch_size,
     prepare_run,
     prepare_training_precision,
     seed_everything,
 )
+from amarken.utils.logger import CheckpointConfig, WandbConfig, WandbLogger
 
 
 @dataclass

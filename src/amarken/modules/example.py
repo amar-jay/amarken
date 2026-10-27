@@ -11,7 +11,7 @@ from amarken.constants import (
     EXAMPLE_INPUT_SIZE,
     EXAMPLE_NUM_CLASSES,
 )
-from amarken.utils import load_checkpoint_weights
+from amarken.utils.helpers import load_checkpoint_weights
 
 
 def build_model(

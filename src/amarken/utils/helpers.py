@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from amarken import logger as logger_module
+from amarken.utils import logger as logger_module
 
 if TYPE_CHECKING:
     from amarken.trainer import Trainer, TrainingConfig

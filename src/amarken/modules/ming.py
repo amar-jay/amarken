@@ -22,8 +22,8 @@ from amarken.constants import (
     MING_RUNTIME_REVISION,
     REVISIONS,
 )
-from amarken.distributed import primary
-from amarken.utils import load_checkpoint_weights, prepare_training_precision
+from amarken.utils.distributed import primary
+from amarken.utils.helpers import load_checkpoint_weights, prepare_training_precision
 
 
 def _runtime():
