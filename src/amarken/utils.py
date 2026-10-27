@@ -75,7 +75,7 @@ def load_checkpoint_weights(checkpoint: str | Path) -> dict:
     """Read model weights from an amarken training checkpoint, on CPU."""
     import torch
 
-    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True, mmap=True)
     if not isinstance(state, dict) or state.get("format_version") != 1:
         raise ValueError("Expected an amarken training checkpoint (format_version=1)")
     if not isinstance(state.get("model"), dict):
@@ -175,3 +175,13 @@ def format_validation_table(result) -> str:
         else:
             rows.append([cell(name), cell(value)])
     return "\n\n".join([table(["Metric", "Value"], rows), *matrices])
+
+
+def batch_size(batch) -> int:
+    """Tuple batches use targets; task-owned dictionary batches declare their size."""
+    from collections.abc import Mapping
+
+    count = batch["batch_size"] if isinstance(batch, Mapping) else len(batch[1])
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise ValueError("Batch size must be a positive integer")
+    return count

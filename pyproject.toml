@@ -31,6 +31,15 @@ amarken = "amarken:main"
 Repository = "https://github.com/amar-jay/amarken"
 Issues = "https://github.com/amar-jay/amarken/issues"
 
+[project.optional-dependencies]
+tts = [
+    "diffusers==0.33.0",
+    "loguru>=0.7",
+    "scipy>=1.14",
+    "soundfile>=0.12",
+    "x-transformers==2.9.2",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"

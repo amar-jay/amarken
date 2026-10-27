@@ -18,7 +18,12 @@ from tqdm.auto import tqdm
 from amarken import distributed
 from amarken.datasets.config import DatasetConfig
 from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
-from amarken.utils import prepare_run, prepare_training_precision, seed_everything
+from amarken.utils import (
+    batch_size,
+    prepare_run,
+    prepare_training_precision,
+    seed_everything,
+)
 
 
 @dataclass
@@ -319,7 +324,7 @@ class Trainer:
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                     self.global_step += 1
-                count = len(batch[1])
+                count = batch_size(batch)
                 total += loss.detach().item() * count
                 samples += count
                 progress.set_postfix(loss=total / samples, refresh=False)
