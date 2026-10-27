@@ -8,10 +8,8 @@ from torch.utils.data import DataLoader
 
 from amarken.constants import (
     DATA_CACHE,
-    HF_DATASET_CONFIG,
-    HF_DATASET_ID,
+    DATASET_REVISIONS,
     HF_DATASET_LABEL_COLUMN,
-    HF_DATASET_REVISION,
     HF_DATASET_TEXT_COLUMN,
     HF_DATASET_TRAIN_SPLIT,
     HF_DATASET_VALIDATION_SPLIT,
@@ -22,14 +20,18 @@ from amarken.distributed import train_sampler
 def _build_dataset(
     *,
     seed: int = 42,
+    dataset_id: str | None = None,
+    dataset_config: str | None = None,
     train_size: int = 128,
     val_size: int = 32,
     _test: bool = False,
 ) -> tuple[Dataset, Dataset]:
+    if not isinstance(dataset_id, str) or not dataset_id.strip():
+        raise ValueError("Pass dataset_id from the training config")
     train, validation = load_dataset(
-        HF_DATASET_ID,
-        name=HF_DATASET_CONFIG,
-        revision=HF_DATASET_REVISION,
+        dataset_id,
+        name=dataset_config,
+        revision=DATASET_REVISIONS.get(dataset_id),
         split=[HF_DATASET_TRAIN_SPLIT, HF_DATASET_VALIDATION_SPLIT],
         cache_dir=DATA_CACHE,
     )
@@ -62,9 +64,20 @@ def _build_dataset(
 
 
 def build_dataset(
-    *, seed: int = 42, train_size: int = 128, val_size: int = 32
+    *,
+    seed: int = 42,
+    dataset_id: str | None = None,
+    dataset_config: str | None = None,
+    train_size: int = 128,
+    val_size: int = 32,
 ) -> tuple[Dataset, Dataset]:
-    return _build_dataset(seed=seed, train_size=train_size, val_size=val_size)
+    return _build_dataset(
+        seed=seed,
+        dataset_id=dataset_id,
+        dataset_config=dataset_config,
+        train_size=train_size,
+        val_size=val_size,
+    )
 
 
 def build_dataloaders(
@@ -115,7 +128,20 @@ def build_dataloaders(
     )
 
 
-def build_test_dataset(*, seed: int = 42, test_size: int = 32) -> Dataset:
+def build_test_dataset(
+    *,
+    seed: int = 42,
+    dataset_id: str | None = None,
+    dataset_config: str | None = None,
+    test_size: int = 32,
+) -> Dataset:
     """Load the held-out half of the labeled validation source split."""
-    _, test = _build_dataset(seed=seed, train_size=1, val_size=test_size, _test=True)
+    _, test = _build_dataset(
+        seed=seed,
+        dataset_id=dataset_id,
+        dataset_config=dataset_config,
+        train_size=1,
+        val_size=test_size,
+        _test=True,
+    )
     return test

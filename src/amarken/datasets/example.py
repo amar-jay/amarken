@@ -10,7 +10,12 @@ from amarken.distributed import train_sampler
 
 
 def build_dataset(
-    *, seed: int = 42, train_size: int = 128, val_size: int = 32
+    *,
+    seed: int = 42,
+    dataset_id: str | None = None,
+    dataset_config: str | None = None,
+    train_size: int = 128,
+    val_size: int = 32,
 ) -> tuple[Dataset, Dataset]:
     if any(type(size) is not int or size < 1 for size in (train_size, val_size)):
         raise ValueError("Dataset sizes must be positive integers")
@@ -48,7 +53,13 @@ def build_dataloaders(
     )
 
 
-def build_test_dataset(*, seed: int = 42, test_size: int = 32) -> Dataset:
+def build_test_dataset(
+    *,
+    seed: int = 42,
+    dataset_id: str | None = None,
+    dataset_config: str | None = None,
+    test_size: int = 32,
+) -> Dataset:
     """Use a separate random stream so test rows are independent of split sizes."""
     if type(test_size) is not int or test_size < 1:
         raise ValueError("test_size must be a positive integer")

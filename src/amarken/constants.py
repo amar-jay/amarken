@@ -49,9 +49,9 @@ CLASSIFICATION_FREEZE_BACKBONE = True
 
 
 # Hugging Face dataset example. SST-2 labels: 0=negative, 1=positive.
-HF_DATASET_ID = "stanfordnlp/sst2"
-HF_DATASET_CONFIG = None
-HF_DATASET_REVISION = "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+DATASET_REVISIONS = {
+    "stanfordnlp/sst2": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb",
+}
 HF_DATASET_TRAIN_SPLIT = "train"
 HF_DATASET_VALIDATION_SPLIT = "validation"
 HF_DATASET_TEXT_COLUMN = "sentence"

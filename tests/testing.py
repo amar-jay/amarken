@@ -22,6 +22,12 @@ from amarken.trainer import Trainer, TrainingConfig, seed_everything
 from amarken.utils import prompt_run_name
 
 
+def make_config(**options):
+    return TrainingConfig(
+        model_id="synthetic-mlp", dataset_id="stanfordnlp/sst2", **options
+    )
+
+
 class TrainerTests(unittest.TestCase):
     def make_trainer(self, epochs):
         model = torch.nn.Sequential(
@@ -30,7 +36,7 @@ class TrainerTests(unittest.TestCase):
         inputs = torch.arange(24, dtype=torch.float32).reshape(12, 2) / 24
         targets = torch.arange(12) % 2
         loader = DataLoader(TensorDataset(inputs, targets), batch_size=4, shuffle=True)
-        config = TrainingConfig(
+        config = make_config(
             epochs=epochs,
             run_name="test",
             checkpoints=CheckpointConfig(backend="local", async_save=True),
@@ -186,7 +192,11 @@ class TrainerTests(unittest.TestCase):
             patch("amarken.inference.predict", predict_numeric),
         ):
             inference_config = Path(directory) / "inference-config.json"
-            inference_config.write_text("{}")
+            inference_config.write_text(
+                json.dumps(
+                    {"model_id": "synthetic-mlp", "dataset_id": "stanfordnlp/sst2"}
+                )
+            )
 
             def infer_cli(arguments):
                 if "--config" not in arguments:
@@ -279,7 +289,14 @@ class TrainerTests(unittest.TestCase):
             self.assertEqual(invalid.exception.code, 2)
             config_file = Path(directory) / "config.json"
             config_file.write_text(
-                json.dumps({"device": "cpu:0", "precision": "bfloat16"})
+                json.dumps(
+                    {
+                        "model_id": "synthetic-mlp",
+                        "dataset_id": "stanfordnlp/sst2",
+                        "device": "cpu:0",
+                        "precision": "bfloat16",
+                    }
+                )
             )
             with (
                 patch(
@@ -322,7 +339,7 @@ class TrainerTests(unittest.TestCase):
                     return_value=(None, DataLoader(rows, batch_size=2)),
                 ),
             ):
-                metrics = run_validation(checkpoint, TrainingConfig())
+                metrics = run_validation(checkpoint, make_config())
                 self.assertEqual(metrics["samples"], 3)
                 self.assertAlmostEqual(metrics["val/accuracy"], 2 / 3)
                 self.assertAlmostEqual(
@@ -384,10 +401,15 @@ class TrainerTests(unittest.TestCase):
                 ),
             ):
                 test_metrics = run_validation(
-                    checkpoint, TrainingConfig(test_size=3), split="test"
+                    checkpoint, make_config(test_size=3), split="test"
                 )
                 training_data.assert_not_called()
-                test_data.assert_called_once_with(seed=42, test_size=3)
+                test_data.assert_called_once_with(
+                    seed=42,
+                    dataset_id=make_config().dataset_id,
+                    dataset_config=None,
+                    test_size=3,
+                )
                 self.assertAlmostEqual(test_metrics["test/accuracy"], 2 / 3)
                 self.assertNotIn("val/accuracy", test_metrics)
             with (
@@ -440,7 +462,7 @@ class TrainerTests(unittest.TestCase):
                         ),
                     ),
                 ):
-                    results.append(run_validation(checkpoint, TrainingConfig()))
+                    results.append(run_validation(checkpoint, make_config()))
             for output_metrics in results:
                 self.assertEqual(
                     output_metrics["val/confusion_matrix"], [[1, 1], [1, 2]]
@@ -523,7 +545,7 @@ class TrainerTests(unittest.TestCase):
                 optimizer.step()
                 expected = base.predict(backbone, "hello")
                 trainer = Trainer(
-                    backbone, [], None, TrainingConfig(), optimizer=optimizer
+                    backbone, [], None, make_config(), optimizer=optimizer
                 )
                 with WandbLogger(
                     enabled=False,
@@ -565,7 +587,7 @@ class TrainerTests(unittest.TestCase):
                 }
                 tokenized = classifier.tokenize(["hello"])
                 classification_batch = (tokenized, torch.tensor([1]))
-                training_config = TrainingConfig(
+                training_config = make_config(
                     epochs=1,
                     run_name="classification-test",
                     checkpoints={"backend": "local", "async_save": True},
@@ -655,16 +677,56 @@ class TrainerTests(unittest.TestCase):
                     ) as hub_load,
                 ):
                     text_train, text_validation = hub_data.build_dataset(
-                        seed=42, train_size=3, val_size=2
+                        seed=42,
+                        dataset_id=make_config().dataset_id,
+                        train_size=3,
+                        val_size=2,
                     )
                     self.assertEqual((len(text_train), len(text_validation)), (3, 2))
-                    held_out = hub_data.build_test_dataset(seed=42, test_size=2)
+                    self.assertEqual(
+                        hub_load.call_args.args[0], make_config().dataset_id
+                    )
+                    with patch.dict(
+                        hub_data.DATASET_REVISIONS,
+                        {"custom/reviews": "pinned-revision"},
+                    ):
+                        hub_data.build_dataset(
+                            dataset_id="custom/reviews",
+                            dataset_config="reviews-subset",
+                            train_size=3,
+                            val_size=2,
+                        )
+                        self.assertEqual(hub_load.call_args.args[0], "custom/reviews")
+                        self.assertEqual(
+                            hub_load.call_args.kwargs["name"], "reviews-subset"
+                        )
+                        self.assertEqual(
+                            hub_load.call_args.kwargs["revision"], "pinned-revision"
+                        )
+                        hub_data.build_test_dataset(
+                            dataset_id="custom/reviews",
+                            dataset_config="reviews-subset",
+                            test_size=2,
+                        )
+                        self.assertEqual(hub_load.call_args.args[0], "custom/reviews")
+                        self.assertEqual(
+                            hub_load.call_args.kwargs["name"], "reviews-subset"
+                        )
+                        self.assertEqual(
+                            hub_load.call_args.kwargs["revision"], "pinned-revision"
+                        )
+
+                    held_out = hub_data.build_test_dataset(
+                        seed=42, dataset_id=make_config().dataset_id, test_size=2
+                    )
                     self.assertTrue(
                         set(text_validation["sentence"]).isdisjoint(
                             held_out["sentence"]
                         )
                     )
-                    changed_seed = hub_data.build_test_dataset(seed=99, test_size=2)
+                    changed_seed = hub_data.build_test_dataset(
+                        seed=99, dataset_id=make_config().dataset_id, test_size=2
+                    )
                     self.assertEqual(
                         set(held_out["sentence"]), set(changed_seed["sentence"])
                     )
@@ -695,7 +757,7 @@ class TrainerTests(unittest.TestCase):
                     hub_data.build_dataloaders(
                         text_train, text_validation, batch_size=2
                     )
-                dataset_config = TrainingConfig(
+                dataset_config = make_config(
                     epochs=1,
                     batch_size=2,
                     run_name="hf-dataset-test",
@@ -757,17 +819,21 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
-        nested = TrainingConfig(wandb={"enabled": True, "mode": "online"})
+        self.assertIsNone(make_config().dataset_config)
+        self.assertEqual(make_config(dataset_config="subset").dataset_config, "subset")
+        with self.assertRaisesRegex(ValueError, "dataset_config"):
+            make_config(dataset_config=1)
+        nested = make_config(wandb={"enabled": True, "mode": "online"})
         self.assertTrue(nested.wandb.enabled)
         self.assertEqual(nested.wandb.mode, "online")
-        self.assertFalse(TrainingConfig().wandb.enabled)
-        self.assertEqual(TrainingConfig().checkpoints.policy, "default")
+        self.assertFalse(make_config().wandb.enabled)
+        self.assertEqual(make_config().checkpoints.policy, "default")
         self.assertTrue(CheckpointConfig().overwrite)
         with self.assertRaises(ValueError):
             CheckpointConfig(policy="all")
         with self.assertRaises(ValueError):
             CheckpointConfig(overwrite="false")
-        config = TrainingConfig(checkpoints={"backend": "local", "overwrite": False})
+        config = make_config(checkpoints={"backend": "local", "overwrite": False})
         with (
             patch("sys.stdin.isatty", return_value=True),
             patch("questionary.text") as prompt,
@@ -794,7 +860,7 @@ class TrainerTests(unittest.TestCase):
             self.assertEqual(cancelled.exception.code, 130)
             prompt.reset_mock()
             self.assertIsNone(prompt_run_name(config, resume=True))
-            self.assertIsNone(prompt_run_name(TrainingConfig()))
+            self.assertIsNone(prompt_run_name(make_config()))
             with patch("sys.stdin.isatty", return_value=False):
                 self.assertIsNone(prompt_run_name(config))
             prompt.assert_not_called()
@@ -923,7 +989,11 @@ class TrainerTests(unittest.TestCase):
         # The entry point parses training options once and passes typed values.
         with tempfile.TemporaryDirectory() as directory:
             config_file = Path(directory) / "config.json"
-            config_file.write_text("{}")
+            config_file.write_text(
+                json.dumps(
+                    {"model_id": "synthetic-mlp", "dataset_id": "stanfordnlp/sst2"}
+                )
+            )
             with (
                 patch("amarken.cli.run_train", return_value=("test", [])) as train,
                 redirect_stdout(io.StringIO()),
@@ -1109,7 +1179,7 @@ def distributed_worker(directory):
                 train, validation = build_dataloaders(
                     train_data, validation_data, batch_size=3
                 )
-                config = TrainingConfig(
+                config = make_config(
                     epochs=epochs,
                     run_name=name,
                     checkpoints=CheckpointConfig(
@@ -1220,7 +1290,7 @@ def fsdp_worker(directory):
             model = build_model(precision=precision)
             train_rows, val_rows = build_dataset(train_size=32, val_size=7)
             train, val = build_dataloaders(train_rows, val_rows, batch_size=3)
-            config = TrainingConfig(
+            config = make_config(
                 strategy=strategy,
                 device=local_device,
                 precision=precision,
@@ -1318,7 +1388,7 @@ def fsdp_worker(directory):
                 build_model(),
                 [],
                 objective,
-                TrainingConfig(strategy="fsdp2", device=local_device),
+                make_config(strategy="fsdp2", device=local_device),
                 optimizer=Mock(),
                 fsdp_modules=fsdp_modules,
             )
@@ -1383,7 +1453,7 @@ def fsdp_worker(directory):
             "attention_mask": torch.ones(2, 3, dtype=torch.long),
         }
         batch = (inputs, torch.tensor([0, 1]))
-        config = TrainingConfig(
+        config = make_config(
             strategy="fsdp2",
             device=local_device,
             precision="bfloat16",

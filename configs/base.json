@@ -1,5 +1,6 @@
 {
   "model_id": "Qwen/Qwen3.5-0.8B",
+  "dataset_id": "stanfordnlp/sst2",
   "seed": 42,
   "learning_rate": 0.01,
   "train_size": 128,

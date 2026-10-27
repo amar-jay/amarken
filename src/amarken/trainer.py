@@ -16,14 +16,15 @@ from torch.nn.parallel import DistributedDataParallel
 from tqdm.auto import tqdm
 
 from amarken import distributed
-from amarken.constants import BASES
 from amarken.logger import CheckpointConfig, WandbConfig, WandbLogger
 from amarken.utils import prepare_run, prepare_training_precision, seed_everything
 
 
 @dataclass
 class TrainingConfig:
-    model_id: str = BASES[0]
+    model_id: str
+    dataset_id: str
+    dataset_config: str | None = None
     seed: int = 42
     learning_rate: float = 3e-4
     batch_size: int = 16
@@ -45,6 +46,12 @@ class TrainingConfig:
             self.wandb = WandbConfig(**self.wandb)
         if isinstance(self.checkpoints, dict):
             self.checkpoints = CheckpointConfig(**self.checkpoints)
+        if not isinstance(self.dataset_id, str) or not self.dataset_id.strip():
+            raise ValueError("dataset_id must be a nonempty string")
+        if self.dataset_config is not None and (
+            not isinstance(self.dataset_config, str) or not self.dataset_config.strip()
+        ):
+            raise ValueError("dataset_config must be a nonempty string or null")
         if self.epochs < 1 or self.batch_size < 1 or self.learning_rate <= 0:
             raise ValueError("epochs, batch_size and learning_rate must be positive")
         for name in ("train_size", "val_size", "test_size"):

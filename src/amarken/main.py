@@ -20,7 +20,11 @@ def _train(config, *, resume):
     # Preserve FP32 initialization and cast frozen subtrees before GPU placement.
     model = build_model(device="cpu", precision="float32")
     train_data, validation_data = build_dataset(
-        seed=config.seed, train_size=config.train_size, val_size=config.val_size
+        seed=config.seed,
+        dataset_id=config.dataset_id,
+        dataset_config=config.dataset_config,
+        train_size=config.train_size,
+        val_size=config.val_size,
     )
     train, validation = build_dataloaders(
         train_data,

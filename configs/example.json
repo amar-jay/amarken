@@ -1,5 +1,6 @@
 {
   "model_id": "synthetic-mlp",
+  "dataset_id": "synthetic",
   "seed": 42,
   "learning_rate": 0.01,
   "train_size": 128,

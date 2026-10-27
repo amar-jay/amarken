@@ -283,7 +283,9 @@ from amarken.datasets.huggingface import (
 Both expose the same interface:
 
 ```python
-train_data, validation_data = build_dataset(seed=42, train_size=128, val_size=32)
+train_data, validation_data = build_dataset(
+    dataset_id="stanfordnlp/sst2", seed=42, train_size=128, val_size=32
+)
 train_loader, validation_loader = build_dataloaders(
     train_data,
     validation_data,
@@ -303,7 +305,11 @@ JSON config; both must be positive integers. Defaults are 128 and 32.
 
 The Hugging Face module defaults to pinned `stanfordnlp/sst2` train/validation
 splits, with 0=negative and 1=positive, matching the classifier label order.
-Dataset ID, revision, split names and column names live in `constants.py`.
+Set `"dataset_id": "stanfordnlp/sst2"` in the training JSON to choose the Hub
+dataset. Optional `"dataset_config": "subset-name"` selects a dataset subset;
+omit it or use `null` for the default. Revisions are looked up by ID in `DATASET_REVISIONS` in `constants.py`;
+unlisted IDs use the Hub default revision. Split names and column mappings stay
+in constants. The numeric dataset accepts the same argument and ignores it.
 The same JSON `train_size` and `val_size` settings control sample counts, capped
 at the available split sizes. Sampling limits
 reduce training work, but the initial dataset download may include full splits.
