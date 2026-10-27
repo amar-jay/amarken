@@ -11,6 +11,10 @@ class DatasetConfig:
     test_size: int = 32
     config: str | None = None
     test_fraction: float = 0.5
+    train_split: str = "train"
+    validation_split: str = "validation"
+    text_column: str = "sentence"
+    label_column: str = "label"
 
     def __post_init__(self):
         if not isinstance(self.id, str) or not self.id.strip():
@@ -19,6 +23,10 @@ class DatasetConfig:
             not isinstance(self.config, str) or not self.config.strip()
         ):
             raise ValueError("dataset.config must be a nonempty string or null")
+        for name in ("train_split", "validation_split", "text_column", "label_column"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"dataset.{name} must be a nonempty string")
         for name in ("train_size", "val_size", "test_size"):
             size = getattr(self, name)
             if type(size) is not int or size < 1:

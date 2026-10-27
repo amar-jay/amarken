@@ -26,6 +26,7 @@ def build_dataset(config: DatasetConfig, *, seed: int = 42) -> tuple[Dataset, Da
 
 
 def build_dataloaders(
+    config: DatasetConfig,
     train: Dataset,
     validation: Dataset,
     *,

@@ -23,6 +23,7 @@ def run_validation(
     else:
         train, validation = build_dataset(config.dataset, seed=config.seed)
     _, loader = build_dataloaders(
+        config.dataset,
         train,
         validation,
         batch_size=config.batch_size,

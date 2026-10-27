@@ -10,10 +10,6 @@ from torch.utils.data import DataLoader
 from amarken.constants import (
     DATA_CACHE,
     DATASET_REVISIONS,
-    HF_DATASET_LABEL_COLUMN,
-    HF_DATASET_TEXT_COLUMN,
-    HF_DATASET_TRAIN_SPLIT,
-    HF_DATASET_VALIDATION_SPLIT,
 )
 from amarken.datasets.config import DatasetConfig
 from amarken.distributed import train_sampler
@@ -26,7 +22,7 @@ def _build_dataset(
         config.id,
         name=config.config,
         revision=DATASET_REVISIONS.get(config.id),
-        split=[HF_DATASET_TRAIN_SPLIT, HF_DATASET_VALIDATION_SPLIT],
+        split=[config.train_split, config.validation_split],
         cache_dir=DATA_CACHE,
     )
 
@@ -44,7 +40,7 @@ def _build_dataset(
     )
 
     def sample(dataset, size):
-        required = {HF_DATASET_TEXT_COLUMN, HF_DATASET_LABEL_COLUMN}
+        required = {config.text_column, config.label_column}
         if not required.issubset(dataset.column_names):
             raise ValueError(f"Dataset requires columns {sorted(required)}")
         if len(dataset) == 0:
@@ -63,6 +59,7 @@ def build_dataset(config: DatasetConfig, *, seed: int = 42) -> tuple[Dataset, Da
 
 
 def build_dataloaders(
+    config: DatasetConfig,
     train: Dataset,
     validation: Dataset,
     *,
@@ -79,14 +76,14 @@ def build_dataloaders(
         raise TypeError("The Hugging Face text dataloader requires model.tokenize")
 
     def collate(samples):
-        inputs = tokenize([sample[HF_DATASET_TEXT_COLUMN] for sample in samples])
+        inputs = tokenize([sample[config.text_column] for sample in samples])
         if not isinstance(inputs, Mapping) or not {
             "input_ids",
             "attention_mask",
         }.issubset(inputs):
             raise ValueError("Tokenizer must return input_ids and attention_mask")
         targets = torch.tensor(
-            [sample[HF_DATASET_LABEL_COLUMN] for sample in samples], dtype=torch.long
+            [sample[config.label_column] for sample in samples], dtype=torch.long
         )
         if (targets < 0).any().item():
             raise ValueError(

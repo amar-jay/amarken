@@ -655,7 +655,10 @@ class TrainerTests(unittest.TestCase):
                     random_train.tensors[0], repeated_train.tensors[0]
                 )
                 random_loaders = random_data.build_dataloaders(
-                    random_train, random_validation, batch_size=8
+                    DatasetConfig(id="synthetic"),
+                    random_train,
+                    random_validation,
+                    batch_size=8,
                 )
                 random_inputs, random_targets = next(iter(random_loaders[0]))
                 self.assertEqual(tuple(random_inputs.shape), (8, 8))
@@ -751,11 +754,47 @@ class TrainerTests(unittest.TestCase):
                     self.assertTrue(
                         set(ratio_val["sentence"]).isdisjoint(ratio_test["sentence"])
                     )
+                    renamed = text_rows.rename_columns(
+                        {"sentence": "body", "label": "category"}
+                    )
+                    settings = DatasetConfig(
+                        id="custom/reviews",
+                        train_split="training",
+                        validation_split="development",
+                        text_column="body",
+                        label_column="category",
+                    )
+                    hub_load.return_value = [renamed, renamed]
+                    schema_train, schema_val = hub_data.build_dataset(settings)
+                    self.assertEqual(
+                        hub_load.call_args.kwargs["split"], ["training", "development"]
+                    )
+                    tokenize_schema = Mock(
+                        side_effect=lambda texts: {
+                            "input_ids": torch.ones(len(texts), 3, dtype=torch.long),
+                            "attention_mask": torch.ones(
+                                len(texts), 3, dtype=torch.long
+                            ),
+                        }
+                    )
+                    _, schema_loader = hub_data.build_dataloaders(
+                        settings,
+                        schema_train,
+                        schema_val,
+                        batch_size=2,
+                        tokenize=tokenize_schema,
+                    )
+                    _, schema_targets = next(iter(schema_loader))
+                    self.assertEqual(
+                        tokenize_schema.call_args.args[0], schema_val["body"]
+                    )
+                    self.assertEqual(schema_targets.tolist(), schema_val["category"])
                 tokenizer.side_effect = lambda texts, **kwargs: {
                     "input_ids": torch.tensor([[1, 2, 3]] * len(texts)),
                     "attention_mask": torch.ones(len(texts), 3, dtype=torch.long),
                 }
                 text_loaders = hub_data.build_dataloaders(
+                    DatasetConfig(id="stanfordnlp/sst2"),
                     text_train,
                     text_validation,
                     batch_size=2,
@@ -773,7 +812,10 @@ class TrainerTests(unittest.TestCase):
                 )
                 with self.assertRaisesRegex(TypeError, "tokenize"):
                     hub_data.build_dataloaders(
-                        text_train, text_validation, batch_size=2
+                        DatasetConfig(id="stanfordnlp/sst2"),
+                        text_train,
+                        text_validation,
+                        batch_size=2,
                     )
                 dataset_config = make_config(
                     epochs=1,
@@ -846,6 +888,19 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
+        defaults = DatasetConfig(id="stanfordnlp/sst2")
+        self.assertEqual(
+            (
+                defaults.train_split,
+                defaults.validation_split,
+                defaults.text_column,
+                defaults.label_column,
+            ),
+            ("train", "validation", "sentence", "label"),
+        )
+        for field in ("train_split", "validation_split", "text_column", "label_column"):
+            with self.assertRaisesRegex(ValueError, field):
+                DatasetConfig(id="data", **{field: ""})
         self.assertIsNone(make_config().dataset.config)
         self.assertEqual(
             make_config(
@@ -1224,7 +1279,10 @@ def distributed_worker(directory):
                     DatasetConfig(id="synthetic", train_size=32, val_size=7)
                 )
                 train, validation = build_dataloaders(
-                    train_data, validation_data, batch_size=3
+                    DatasetConfig(id="synthetic"),
+                    train_data,
+                    validation_data,
+                    batch_size=3,
                 )
                 config = make_config(
                     epochs=epochs,
@@ -1338,7 +1396,9 @@ def fsdp_worker(directory):
             train_rows, val_rows = build_dataset(
                 DatasetConfig(id="synthetic", train_size=32, val_size=7)
             )
-            train, val = build_dataloaders(train_rows, val_rows, batch_size=3)
+            train, val = build_dataloaders(
+                DatasetConfig(id="synthetic"), train_rows, val_rows, batch_size=3
+            )
             config = make_config(
                 strategy=strategy,
                 device=local_device,

@@ -21,6 +21,7 @@ def _train(config, *, resume):
     model = build_model(device="cpu", precision="float32")
     train_data, validation_data = build_dataset(config.dataset, seed=config.seed)
     train, validation = build_dataloaders(
+        config.dataset,
         train_data,
         validation_data,
         batch_size=config.batch_size,

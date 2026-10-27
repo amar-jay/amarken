@@ -297,6 +297,7 @@ settings = DatasetConfig(id="stanfordnlp/sst2", train_size=128, val_size=32)
 train_data, validation_data = build_dataset(settings, seed=42)
 test_data = build_test_dataset(settings, seed=42)
 train_loader, validation_loader = build_dataloaders(
+    settings,
     train_data,
     validation_data,
     batch_size=16,
@@ -331,8 +332,7 @@ Dataset settings are grouped in the same training JSON:
 `id` is required; `config` optionally selects a Hub subset. Sizes default to
 128/32/32 and must be positive integers. `test_fraction` defaults to 0.5 and must
 be strictly between 0 and 1. Revisions are looked up by ID in `DATASET_REVISIONS`
-in `constants.py`; unlisted IDs use the Hub default revision. Split names and
-column mappings remain in constants. The same nested settings are used by training,
+in `constants.py`; unlisted IDs use the Hub default revision. Split and column names have optional defaults in `DatasetConfig`. The same nested settings are used by training,
 validation and testing and saved in checkpoint metadata. Python callers can use a
 dictionary or `DatasetConfig` from `amarken.datasets.config`.
 
@@ -340,6 +340,20 @@ Size limits are capped at available Hugging Face split sizes. They reduce traini
 work, but the initial dataset download may include full splits. Numeric data uses
 explicit sizes and independent random streams; Hub ID, subset and test fraction
 are accepted for interface compatibility but do not alter its generation.
+
+Schema overrides are optional. Omit them to keep the JSON small:
+
+| Dataset field | Default |
+| --- | --- |
+| `train_split` | `"train"` |
+| `validation_split` | `"validation"` |
+| `text_column` | `"sentence"` |
+| `label_column` | `"label"` |
+
+For a compatible dataset whose text field is `text`, add only
+`"text_column": "text"` inside `dataset`. Defaults are saved in checkpoint metadata
+even when omitted from JSON. The module still owns tokenization and label semantics;
+column overrides do not automatically remap class IDs.
 
 This replaces top-level `dataset_id`, `dataset_config`, `train_size`, `val_size`,
 and `test_size`; migrate custom JSON files to the nested object as above.
