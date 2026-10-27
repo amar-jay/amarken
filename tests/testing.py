@@ -337,6 +337,8 @@ class TrainerTests(unittest.TestCase):
                 cli_main(
                     [
                         "validate",
+                        "--format",
+                        "json",
                         "--config",
                         str(config_file),
                         "--checkpoint",
@@ -345,6 +347,27 @@ class TrainerTests(unittest.TestCase):
                 )
             self.assertEqual(json.loads(output.getvalue()), metrics)
             self.assertEqual(validate.call_args.args[1].precision, "bfloat16")
+            from amarken.utils import format_validation_table
+
+            table = format_validation_table(metrics)
+            self.assertIn("Metric", table)
+            self.assertIn("val/accuracy", table)
+            self.assertIn("Row / Col", table)
+            self.assertEqual(table, format_validation_table(json.dumps(metrics)))
+            with (
+                patch("amarken.cli.run_validation", return_value=metrics),
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                cli_main(
+                    [
+                        "validate",
+                        "--config",
+                        str(config_file),
+                        "--checkpoint",
+                        str(checkpoint),
+                    ]
+                )
+            self.assertEqual(output.getvalue().rstrip(), table)
 
             with (
                 patch("amarken.validation.load_model", side_effect=load_model),
@@ -376,6 +399,8 @@ class TrainerTests(unittest.TestCase):
                 cli_main(
                     [
                         "test",
+                        "--format",
+                        "json",
                         "--config",
                         str(config_file),
                         "--checkpoint",

@@ -8,6 +8,7 @@ from amarken import distributed
 from amarken.inference import run_inference
 from amarken.main import run_train
 from amarken.trainer import TrainingConfig
+from amarken.utils import format_validation_table
 from amarken.validation import run_validation
 
 
@@ -62,6 +63,13 @@ def parser():
         help="Evaluate a checkpoint on the held-out test split",
     )
     test.add_argument("--checkpoint", type=Path, required=True)
+    for evaluator in (validate, test):
+        evaluator.add_argument(
+            "--format",
+            choices=("table", "json"),
+            default="table",
+            help="Result format (default: table)",
+        )
     return root
 
 
@@ -80,15 +88,14 @@ def main(argv=None):
                 print(f"Checkpoint directory: checkpoints/{checkpoint_prefix}")
                 for metrics in history:
                     print(json.dumps(metrics))
-        elif args.command == "test":
+        elif args.command in {"test", "validate"}:
+            options = {"split": "test"} if args.command == "test" else {}
+            result = run_validation(args.checkpoint, config, **options)
             print(
-                json.dumps(
-                    run_validation(args.checkpoint, config, split="test"),
-                    allow_nan=False,
-                )
+                json.dumps(result, allow_nan=False)
+                if args.format == "json"
+                else format_validation_table(result)
             )
-        elif args.command == "validate":
-            print(json.dumps(run_validation(args.checkpoint, config), allow_nan=False))
         elif args.command == "infer":
             raw = (
                 args.input_file.read_text()

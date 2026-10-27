@@ -356,7 +356,7 @@ uv run amarken validate \
   --checkpoint checkpoints/qwen-backbone/best.pt
 ```
 
-The command prints JSON with `samples`, sample-weighted `val/loss`, and
+The command reports `samples`, sample-weighted `val/loss`, and
 TorchMetrics scores accumulated over the complete split: `accuracy`,
 `precision_macro`, `recall_macro`, `f1_macro`, `f1_weighted`, per-class precision,
 recall and F1 arrays, `confusion_matrix`, and `calibration_error` (all prefixed
@@ -520,3 +520,26 @@ Verification includes two-process CPU FSDP2 and DDP regression tests, full-state
 export/loading, deterministic resume, uneven validation batches, frozen tiny
 transformer backbones, and rank-zero read/write failures. A one-GPU CUDA smoke
 test also passed; multi-GPU CUDA still needs verification on a multi-GPU host.
+
+### Console evaluation tables
+
+`validate` and `test` display metric tables by default, including per-class arrays
+and separate grids for matrix metrics. Matrix indices follow the model's class
+order; confusion matrix rows are true labels and columns are predictions.
+Use `--format json` to preserve full-precision machine-readable output:
+
+```bash
+uv run amarken validate --config configs/classification.json \
+  --checkpoint checkpoints/qwen-backbone/best.pt --format json
+```
+
+For Python callers, `run_validation()` still returns a dictionary. Render either
+that dictionary or its JSON string with the shared utility:
+
+```python
+from amarken.utils import format_validation_table
+
+print(format_validation_table(result))
+```
+
+Tables show floats with six significant digits; underlying results are unchanged.
