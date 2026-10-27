@@ -1,5 +1,6 @@
 """Shared configuration for training, inference, and evaluation."""
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -131,6 +132,44 @@ class FineTuningConfig:
 
 
 @dataclass
+class RLConfig:
+    """Single-device GRPO settings. Batch size counts prompts, not completions."""
+
+    group_size: int = 4
+    max_new_tokens: int = 16
+    temperature: float = 1.0
+    clip_epsilon: float = 0.2
+    beta: float = 0.02
+    update_epochs: int = 2
+    max_grad_norm: float = 1.0
+    initial_checkpoint: str | None = None
+
+    def __post_init__(self):
+        for key, minimum in (
+            ("group_size", 2),
+            ("max_new_tokens", 1),
+            ("update_epochs", 1),
+        ):
+            if type(getattr(self, key)) is not int or getattr(self, key) < minimum:
+                raise ValueError(f"rl.{key} must be an integer >= {minimum}")
+        for key in ("temperature", "clip_epsilon", "beta", "max_grad_norm"):
+            value = getattr(self, key)
+            if type(value) not in (int, float) or not math.isfinite(value):
+                raise ValueError(f"rl.{key} must be finite")
+        if self.temperature <= 0 or self.max_grad_norm <= 0 or self.beta < 0:
+            raise ValueError(
+                "RL temperature/gradient norm must be positive and beta nonnegative"
+            )
+        if not 0 < self.clip_epsilon < 1:
+            raise ValueError("rl.clip_epsilon must be between 0 and 1")
+        if self.initial_checkpoint is not None and (
+            not isinstance(self.initial_checkpoint, str)
+            or not self.initial_checkpoint.strip()
+        ):
+            raise ValueError("rl.initial_checkpoint must be a nonempty path or null")
+
+
+@dataclass
 class Config:
     model_id: str
     dataset: DatasetConfig
@@ -143,12 +182,17 @@ class Config:
     precision: str = "float32"
     run_name: str = "training"
     fine_tuning: FineTuningConfig | None = None
+    rl: RLConfig | None = None
     wandb: WandbConfig = field(default_factory=WandbConfig)
     checkpoints: CheckpointConfig = field(
         default_factory=lambda: CheckpointConfig(backend="local")
     )
 
     def __post_init__(self):
+        if isinstance(self.rl, dict):
+            self.rl = RLConfig(**self.rl)
+        if self.rl is not None and not isinstance(self.rl, RLConfig):
+            raise TypeError("rl must be an RLConfig or dictionary")
         if isinstance(self.fine_tuning, dict):
             self.fine_tuning = FineTuningConfig(**self.fine_tuning)
         if self.fine_tuning is not None and not isinstance(
@@ -157,6 +201,10 @@ class Config:
             raise TypeError("fine_tuning must be a FineTuningConfig or dictionary")
         if isinstance(self.wandb, dict):
             self.wandb = WandbConfig(**self.wandb)
+        if self.rl is not None and (
+            self.fine_tuning is None or self.fine_tuning.mode != "lora"
+        ):
+            raise ValueError("The initial GRPO trainer requires fine_tuning.mode=lora")
         if isinstance(self.checkpoints, dict):
             self.checkpoints = CheckpointConfig(**self.checkpoints)
         if isinstance(self.dataset, dict):

@@ -10,6 +10,28 @@ import torch.distributed as dist
 from amarken.utils import distributed
 
 
+def validate_initial_policy(path, config):
+    """Warm-start weights need matching model identity and LoRA scaling/shapes."""
+    state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    if not isinstance(state, dict) or state.get("format_version") != 1:
+        raise ValueError(
+            "Initial policy must be an amarken format_version=1 checkpoint"
+        )
+    previous = state.get("config", {})
+    if previous.get("model_id") != config.model_id:
+        raise ValueError("Initial checkpoint model_id does not match the RL config")
+    tuning = previous.get("fine_tuning") or {}
+    current = asdict(config.fine_tuning)
+    for key in ("mode", "r", "alpha", "target_modules"):
+        old, new = tuning.get(key), current[key]
+        if key == "target_modules":
+            old, new = tuple(old or ()), tuple(new)
+        if old != new:
+            raise ValueError(
+                f"Initial checkpoint fine_tuning.{key} does not match the RL config"
+            )
+
+
 def capture_state(trainer, *, training_state=None):
     """Serialize trainer state; FSDP model/optimizer state must be gathered first."""
     if trainer.strategy == "fsdp2" and training_state is None:
@@ -79,6 +101,8 @@ def restore_state(trainer, path: str | Path):
     if state["config"]["precision"] != trainer.config.precision:
         raise ValueError("Resume requires the same precision")
     previous_tuning = state["config"].get("fine_tuning")
+    if state["config"].get("rl") != asdict(trainer.config).get("rl"):
+        raise ValueError("Resume requires the same RL settings and trainer type")
     current_tuning = asdict(trainer.config).get("fine_tuning")
     if previous_tuning != current_tuning:
         raise ValueError("Resume requires the same fine_tuning settings")
@@ -124,6 +148,7 @@ def restore_state(trainer, path: str | Path):
         torch.cuda.set_rng_state(rng["cuda_local_rng"], trainer.device)
     elif rng["cuda_rng"] is not None and torch.cuda.is_available():
         torch.cuda.set_rng_state_all(rng["cuda_rng"])
+    return state
 
 
 def gather_rng(trainer):
@@ -141,3 +166,49 @@ def gather_rng(trainer):
         states = [None] * distributed.world_size()
         dist.all_gather_object(states, rng)
         trainer._rank_rng = states
+
+
+def pack_trl_checkpoints(output):
+    """Bundle TRL's retained adapter/optimizer/RNG files into the backend-neutral .pt."""
+    return {
+        path.relative_to(output).as_posix(): path.read_bytes()
+        for directory in output.glob("checkpoint-*")
+        if directory.is_dir()
+        for path in directory.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    }
+
+
+def restore_trl_checkpoints(path, output):
+    """Restore native TRL state from a local or downloaded amarken .pt file."""
+    import json
+
+    state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    files, current = state.get("trl_files"), state.get("trl_checkpoint")
+    if not files or not isinstance(current, str) or Path(current).name != current:
+        raise ValueError("RL checkpoint is missing native TRL training state")
+    root = output.resolve()
+    for name, data in files.items():
+        target = (root / name).resolve()
+        if (
+            Path(name).is_absolute()
+            or not target.is_relative_to(root)
+            or target == root
+        ):
+            raise ValueError("Invalid path in native TRL checkpoint")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    # Bundles are portable across machines/run directories. Rebase HF's saved
+    # best-model pointer to the retained best checkpoint extracted alongside it.
+    for directory in output.glob("checkpoint-*"):
+        metadata = directory / "trainer_state.json"
+        if metadata.is_file():
+            saved = json.loads(metadata.read_text())
+            if saved.get("best_model_checkpoint"):
+                saved["best_model_checkpoint"] = str(
+                    output / Path(saved["best_model_checkpoint"]).name
+                )
+                metadata.write_text(json.dumps(saved))
+    if not (output / current / "trainer_state.json").is_file():
+        raise ValueError("Native TRL checkpoint has no trainer state")
+    return output / current

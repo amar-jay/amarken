@@ -1,0 +1,46 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B",
+  "dataset": {
+    "id": "arithmetic-hard",
+    "train_size": 128,
+    "val_size": 32,
+    "test_size": 32
+  },
+  "fine_tuning": {
+    "mode": "lora",
+    "r": 8,
+    "alpha": 16,
+    "dropout": 0.05,
+    "target_modules": [
+      "q_proj",
+      "v_proj"
+    ]
+  },
+  "rl": {
+    "group_size": 4,
+    "max_new_tokens": 16,
+    "temperature": 1.0,
+    "clip_epsilon": 0.2,
+    "beta": 0.02,
+    "update_epochs": 2,
+    "max_grad_norm": 1.0,
+    "initial_checkpoint": "checkpoints/qwen-arithmetic-sft/best.pt"
+  },
+  "learning_rate": 1e-05,
+  "batch_size": 1,
+  "epochs": 2,
+  "device": "cuda",
+  "precision": "bfloat16",
+  "run_name": "qwen-arithmetic-grpo",
+  "checkpoints": {
+    "backend": "local",
+    "policy": "default",
+    "overwrite": true,
+    "monitor": "val/accuracy",
+    "mode": "max"
+  },
+  "wandb": {
+    "enabled": false,
+    "mode": "offline"
+  }
+}

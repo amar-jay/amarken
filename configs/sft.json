@@ -1,15 +1,21 @@
 {
   "model_id": "Qwen/Qwen2.5-0.5B",
+  // "dataset": {
+  //   "id": "tatsu-lab/alpaca",
+  //   "train_size": 1024,
+  //   "val_size": 128,
+  //   "test_size": 128,
+  //   "train_split": "train",
+  //   "validation_split": "train",
+  //   "text_column": "instruction",
+  //   "label_column": "output",
+  //   "input_column": "input"
+  // },
   "dataset": {
-    "id": "tatsu-lab/alpaca",
-    "train_size": 1024,
-    "val_size": 128,
-    "test_size": 128,
-    "train_split": "train",
-    "validation_split": "train",
-    "text_column": "instruction",
-    "label_column": "output",
-    "input_column": "input"
+    "id": "arithmetic",
+    "train_size": 2048,
+    "val_size": 32,
+    "test_size": 32
   },
   "fine_tuning": {
     "mode": "lora",
@@ -23,7 +29,8 @@
   "epochs": 2,
   "device": "cuda",
   "precision": "bfloat16",
-  "run_name": "qwen-sft",
+  // "run_name": "qwen-sft",
+  "run_name": "qwen-arithmetic-sft",
   "checkpoints": { "backend": "local", "policy": "default", "overwrite": true },
   "wandb": { "enabled": false, "mode": "offline" }
 }

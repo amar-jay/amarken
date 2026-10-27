@@ -47,6 +47,12 @@ CAUSAL_MAX_NEW_TOKENS = 64
 # Single-turn SFT: optional fixed system instruction. Qwen thinking stays disabled.
 SFT_SYSTEM_PROMPT = ""
 
+# Arithmetic GRPO task; canonical operand pairs prevent reversed-sum leakage.
+ARITHMETIC_MAX_OPERAND = 99
+ARITHMETIC_HARD_OPERANDS = (10_000, 99_999)
+ARITHMETIC_HARD_POOL_SIZE = 8192
+ARITHMETIC_MAX_NEW_TOKENS = 16
+
 # Numeric example architecture.
 EXAMPLE_INPUT_SIZE = 8
 EXAMPLE_HIDDEN_SIZE = 16

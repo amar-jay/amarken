@@ -31,6 +31,340 @@ def make_config(*, dataset=None, **options):
     )
 
 
+def check_rl_contract(case):
+    from dataclasses import replace
+
+    from datasets import Dataset
+    from peft import LoraConfig, get_peft_model
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+    from transformers import PreTrainedTokenizerFast, Qwen2Config, Qwen2ForCausalLM
+    from trl import GRPOTrainer as TRLGRPOTrainer
+
+    from amarken import model as selected
+    from amarken.config import RLConfig
+    from amarken.datasets import arithmetic as data
+    from amarken.modules import arithmetic as task
+    from amarken.modules import example
+    from amarken.modules.causal import CausalLM
+    from amarken.rl_trainer import GRPOTrainer
+    from amarken.utils.helpers import load_checkpoint_weights
+
+    # Selecting a supervised-only module must not require RL exports.
+    with (
+        patch.object(selected, "module", example),
+        case.assertRaisesRegex(ValueError, "does not support RL"),
+    ):
+        selected.get_rl_hooks()
+    with patch.object(selected, "module", task):
+        case.assertEqual(selected.get_rl_hooks()["reward_fn"], task.reward_fn)
+
+    for text in ("2", " 2\n", "+2", "02"):
+        case.assertEqual(task.reward_fn(text, 2), 1)
+    for text in ("", "2 and 3", "The answer is 2", "2.0", "2\n2", "9999999", "3"):
+        case.assertEqual(task.reward_fn(text, 2), 0)
+    dataset_config = DatasetConfig(
+        id="arithmetic", train_size=16, val_size=8, test_size=8
+    )
+    train, val = data.build_dataset(dataset_config)
+    test = data.build_test_dataset(dataset_config)
+    sets = [set(source["prompt"]) for source in (train, val, test)]
+    case.assertFalse(sets[0] & sets[1] or sets[0] & sets[2] or sets[1] & sets[2])
+    _, repeated_val = data.build_dataset(replace(dataset_config, train_size=32))
+    case.assertEqual(val["prompt"], repeated_val["prompt"])
+
+    hard_config = replace(dataset_config, id="arithmetic-hard")
+    hard_train, hard_val = data.build_dataset(hard_config)
+    hard_test = data.build_test_dataset(hard_config)
+    hard_sets = [set(source["prompt"]) for source in (hard_train, hard_val, hard_test)]
+    case.assertFalse(
+        hard_sets[0] & hard_sets[1]
+        or hard_sets[0] & hard_sets[2]
+        or hard_sets[1] & hard_sets[2]
+    )
+    case.assertFalse(set.union(*sets) & set.union(*hard_sets))
+    for source in (hard_train, hard_val, hard_test):
+        for row in source:
+            a, b = map(int, (row["prompt"].split()[2], row["prompt"].split()[4][:-1]))
+            case.assertTrue(10_000 <= a <= b <= 99_999)
+            case.assertEqual(row["answer"], a + b)
+    _, repeated_hard_val = data.build_dataset(replace(hard_config, train_size=32))
+    case.assertEqual(hard_val["prompt"], repeated_hard_val["prompt"])
+    case.assertEqual(hard_train["prompt"], data.build_dataset(hard_config)[0]["prompt"])
+    with case.assertRaisesRegex(ValueError, "dataset.id"):
+        data.build_dataset(replace(dataset_config, id="unknown"))
+
+    backend = Tokenizer(
+        WordLevel(
+            {
+                "<unk>": 0,
+                "<eos>": 1,
+                "0": 2,
+                "1": 3,
+                "2": 4,
+                "3": 5,
+                "user": 6,
+                "assistant": 7,
+            },
+            unk_token="<unk>",
+        )
+    )
+    backend.pre_tokenizer = Whitespace()
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        unk_token="<unk>",
+        eos_token="<eos>",
+        pad_token="<eos>",
+    )
+    tokenizer.chat_template = "{% for message in messages %}{{ message.role }} {{ message.content }} {{ eos_token }} {% endfor %}{% if add_generation_prompt %}assistant {% endif %}"
+    architecture = Qwen2Config(
+        vocab_size=8,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        max_position_embeddings=512,
+        eos_token_id=1,
+        pad_token_id=1,
+    )
+    base_directory = case.enterContext(tempfile.TemporaryDirectory())
+    architecture.save_pretrained(base_directory)
+    architecture._name_or_path = base_directory
+    rows = Dataset.from_list([{"prompt": "What is 1 + 1?", "answer": 2}])
+
+    def make_model():
+        torch.manual_seed(83)
+        model = Qwen2ForCausalLM(architecture)
+        return CausalLM(
+            get_peft_model(
+                model,
+                LoraConfig(
+                    task_type="CAUSAL_LM",
+                    r=2,
+                    lora_alpha=4,
+                    target_modules=["q_proj", "v_proj"],
+                    lora_dropout=0.1,
+                ),
+            ),
+            tokenizer,
+        )
+
+    config = make_config(
+        dataset=dataset_config,
+        fine_tuning={"mode": "lora", "r": 2, "alpha": 4, "dropout": 0.1},
+        rl={"group_size": 2, "max_new_tokens": 2, "update_epochs": 2},
+        learning_rate=0.01,
+        batch_size=1,
+        epochs=1,
+        checkpoints={"backend": "local", "monitor": "val/accuracy", "mode": "max"},
+    )
+    loaders = data.build_dataloaders(dataset_config, rows, rows, batch_size=1)
+
+    def make_trainer(epochs=1):
+        return GRPOTrainer(
+            make_model(),
+            loaders[0],
+            replace(config, epochs=epochs),
+            validation_loader=loaders[1],
+            prepare_prompts=task.prepare_prompts,
+            reward_fn=task.reward_fn,
+            build_metrics=task.build_metrics,
+            validation_step=task.validation_step,
+        )
+
+    config.model_id = "Qwen/Qwen2.5-0.5B"
+    calls = [0]
+
+    def generate(input_ids, generation_config=None, **options):
+        tokens = []
+        for _ in range(input_ids.shape[0]):
+            token = 4
+            if generation_config is not None and generation_config.do_sample:
+                token = 4 if calls[0] % 2 == 0 else 3
+                calls[0] += 1
+            tokens.append([token, 1])
+        return torch.cat(
+            [input_ids, torch.tensor(tokens, device=input_ids.device)], dim=1
+        )
+
+    with (
+        tempfile.TemporaryDirectory() as directory,
+        patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory)),
+    ):
+        full = make_trainer(2)
+        before = {
+            key: p.detach().clone()
+            for key, p in full.model.named_parameters()
+            if ".default." in key
+        }
+        with patch(
+            "peft.peft_model.PeftModelForCausalLM.generate", side_effect=generate
+        ):
+            history = full.fit()
+        case.assertIsInstance(full.engine, TRLGRPOTrainer)
+        case.assertEqual(full.engine.args.num_generations, 2)
+        case.assertEqual(full.engine.args.generation_batch_size, 2)
+        case.assertEqual(history[-1]["val/accuracy"], 1)
+        case.assertTrue(
+            any(
+                not torch.equal(value, full.model.get_parameter(key))
+                for key, value in before.items()
+            )
+        )
+        for key, value in before.items():
+            torch.testing.assert_close(
+                value,
+                full.model.get_parameter(key.replace(".default.", ".ref.")),
+                rtol=0,
+                atol=0,
+            )
+        full_state = torch.load(
+            Path(directory) / full.checkpoint_prefix / "latest.pt", weights_only=True
+        )
+        expected = {key: value.clone() for key, value in full_state["model"].items()}
+        partial = make_trainer()
+        with patch(
+            "peft.peft_model.PeftModelForCausalLM.generate", side_effect=generate
+        ):
+            partial.fit()
+        path = Path(directory) / partial.checkpoint_prefix / "latest.pt"
+        state = torch.load(path, weights_only=True)
+        case.assertEqual(state["trainer"], "trl-grpo")
+        case.assertTrue(any("/ref/adapter_model" in key for key in state["trl_files"]))
+        case.assertFalse(any(".ref." in key for key in state["model"]))
+        case.assertTrue(load_checkpoint_weights(path))
+        case.assertFalse(
+            list((Path(directory) / partial.checkpoint_prefix).glob(".trl-*"))
+        )
+        resumed = make_trainer(2)
+        resumed.resume(path)
+        with patch(
+            "peft.peft_model.PeftModelForCausalLM.generate", side_effect=generate
+        ):
+            resumed.fit()
+        resumed_state = torch.load(path, weights_only=True)
+        for key, value in resumed_state["model"].items():
+            torch.testing.assert_close(value, expected[key], rtol=0, atol=1e-7)
+        from amarken.modules.causal import load_model as load_policy
+
+        with (
+            patch(
+                "amarken.modules.causal.AutoConfig.from_pretrained",
+                return_value=architecture,
+            ),
+            patch(
+                "amarken.modules.causal.AutoTokenizer.from_pretrained",
+                return_value=tokenizer,
+            ),
+        ):
+            exported = load_policy(
+                path, model_id=config.model_id, fine_tuning=config.fine_tuning
+            )
+        case.assertFalse(any(".ref." in key for key in exported.state_dict()))
+        with case.assertRaisesRegex(ValueError, "same rl"):
+            changed = make_trainer()
+            changed.config.rl = RLConfig(group_size=4)
+            changed.resume(path)
+        with (
+            patch("amarken.rl_trainer.distributed.launched", return_value=True),
+            case.assertRaisesRegex(ValueError, "one device"),
+        ):
+            make_trainer()
+        from amarken.main import run_train
+        from amarken.utils.checkpoint import validate_initial_policy
+
+        validate_initial_policy(path, config)
+        with case.assertRaisesRegex(ValueError, "model_id"):
+            validate_initial_policy(path, replace(config, model_id="other/model"))
+        with (
+            patch("amarken.main.build_model", return_value=make_model()),
+            patch("amarken.main.build_dataset", return_value=(rows, rows)),
+            patch("amarken.main.build_dataloaders", return_value=loaders),
+        ):
+            # Also exercise actual TRL sampling, rather than controlled completions.
+            _, routed_history = run_train(config)
+            case.assertIn("train/loss", routed_history[0])
+        # The same arithmetic imports also support normal response-only SFT.
+        supervised_model = make_model()
+        sft_loaders = data.build_dataloaders(
+            dataset_config, rows, rows, batch_size=1, tokenize=supervised_model.tokenize
+        )
+        supervised_batch = next(iter(sft_loaders[1]))
+        labels = supervised_batch["labels"]
+        case.assertEqual(labels[labels != -100].tolist(), [4, 1])
+        case.assertEqual(supervised_batch["prompts"], rows["prompt"])
+        case.assertTrue((labels == -100).any())
+        case.assertEqual(supervised_batch["answers"].tolist(), [2])
+        logits = supervised_model(supervised_batch["inputs"])
+        logits.retain_grad()
+        from amarken.modules.causal import _token_losses
+
+        _token_losses(logits, labels)[0].backward()
+        case.assertTrue((logits.grad[:, :-1][labels[:, 1:] == -100] == 0).all())
+        sft_config = replace(
+            config,
+            rl=None,
+            run_name="arithmetic-sft",
+            epochs=2,
+            checkpoints=CheckpointConfig(backend="local"),
+        )
+        before_sft = {
+            key: value.detach().clone()
+            for key, value in supervised_model.named_parameters()
+            if value.requires_grad
+        }
+        with (
+            patch("amarken.main.build_model", return_value=supervised_model),
+            patch("amarken.main.build_dataset", return_value=(rows, rows)),
+            patch("amarken.main.build_dataloaders", return_value=sft_loaders),
+        ):
+            _, supervised_history = run_train(sft_config)
+        case.assertEqual(len(supervised_history), 2)
+        case.assertTrue(
+            any(
+                not torch.equal(value, supervised_model.get_parameter(key))
+                for key, value in before_sft.items()
+            )
+        )
+        sft_path = Path(directory) / "arithmetic-sft/best.pt"
+        sft_state = torch.load(sft_path, weights_only=True)
+        warm_model = make_model()
+        warm_model.load_state_dict(sft_state["model"])
+        warm_config = replace(
+            config, rl=replace(config.rl, initial_checkpoint=str(sft_path))
+        )
+        with (
+            patch("amarken.main.load_model", return_value=warm_model) as initial_loader,
+            patch("amarken.main.build_dataset", return_value=(rows, rows)),
+            patch("amarken.main.build_dataloaders", return_value=loaders),
+            patch(
+                "peft.peft_model.PeftModelForCausalLM.generate", side_effect=generate
+            ),
+        ):
+            _, warm_history = run_train(warm_config)
+        initial_loader.assert_called_once()
+        case.assertEqual(warm_history[0]["val/accuracy"], 1)
+        for key, value in sft_state["model"].items():
+            if ".default." in key:
+                torch.testing.assert_close(
+                    value,
+                    warm_model.get_parameter(key.replace(".default.", ".ref.")),
+                    rtol=0,
+                    atol=0,
+                )
+    for settings in (
+        {"group_size": 1},
+        {"beta": -1},
+        {"temperature": 0},
+        {"clip_epsilon": 1},
+        {"temperature": float("nan")},
+    ):
+        with case.assertRaises(ValueError):
+            RLConfig(**settings)
+
+
 def check_sft_contract(case):
     from dataclasses import replace
 
@@ -119,12 +453,14 @@ def check_sft_contract(case):
     tokenizer.chat_template = tokenizer.chat_template.replace(
         "{{ eos_token }}", "<end_turn>"
     )
-    _, targets = sft.encode_sample(tokenizer, rows[0], config)
+    tokens, targets = sft.encode_sample(tokenizer, rows[0], config)
     case.assertEqual(
         [token for token in targets if token != -100],
-        [2, tokenizer.convert_tokens_to_ids("<end_turn>")],
+        [2, tokenizer.eos_token_id],
     )
-    case.assertNotIn(tokenizer.eos_token_id, targets)
+    ending = targets.index(tokenizer.eos_token_id)
+    case.assertEqual(tokens[ending], tokenizer.eos_token_id)
+    case.assertNotIn(tokenizer.convert_tokens_to_ids("<end_turn>"), targets)
     tokenizer.chat_template = tokenizer.chat_template.replace(
         "{% if add_generation_prompt %}assistant\n",
         "{% if add_generation_prompt %}different\n",
@@ -1433,6 +1769,7 @@ class TrainerTests(unittest.TestCase):
                 self.assertTrue((Path(directory) / prefix / "latest.pt").exists())
 
     def test_checkpoint_policies(self):
+        check_rl_contract(self)
         check_sft_contract(self)
         check_causal_contract(self)
         check_tts_contract(self)

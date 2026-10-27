@@ -158,8 +158,11 @@ def encode_sample(tokenizer, row, config):
             f"SFT sample has {len(ids)} tokens; exceeds CAUSAL_MAX_LENGTH={CAUSAL_MAX_LENGTH}. "
             "Shorten the sample or increase the constant; truncation is disabled."
         )
+    if tokenizer.eos_token_id is None:
+        raise ValueError("SFT requires a pretrained EOS token")
     labels = []
     content_targets = 0
+    ending_targets = 0
     for index, (token, (left, right)) in enumerate(
         zip(ids, encoded["offset_mapping"], strict=True)
     ):
@@ -167,13 +170,34 @@ def encode_sample(tokenizer, row, config):
         if native:
             content = content and bool(encoded["assistant_masks"][index])
         ending = ending_start <= left < right <= ending_end and token == ending_id
+        if ending:
+            # Some tokenizers provide a chat template even though its chat
+            # ending is untrained. With frozen LoRA embeddings that token cannot
+            # reliably be learned. Supervise the pretrained EOS instead; the
+            # prompt still uses the same chat template as inference and rollouts.
+            token = tokenizer.eos_token_id
+            ids[index] = token
         labels.append(token if content or ending else -100)
         content_targets += content and index > 0
-    if not content_targets or ending_id not in labels:
+        ending_targets += ending
+    if not content_targets or ending_targets != 1:
         raise ValueError(
             "SFT sample must retain response tokens and the turn-ending target"
         )
     return ids, labels
+
+
+def collate_samples(tokenizer, samples, config):
+    encoded = [encode_sample(tokenizer, row, config) for row in samples]
+    width = max(len(ids) for ids, _ in encoded)
+    ids = torch.full((len(samples), width), tokenizer.pad_token_id, dtype=torch.long)
+    mask = torch.zeros_like(ids)
+    labels = torch.full_like(ids, -100)
+    for index, (tokens, targets) in enumerate(encoded):
+        ids[index, : len(tokens)] = torch.tensor(tokens)
+        mask[index, : len(tokens)] = 1
+        labels[index, : len(tokens)] = torch.tensor(targets)
+    return {"input_ids": ids, "attention_mask": mask}, labels
 
 
 def build_dataloaders(config, train, validation, *, batch_size, tokenize=None):
@@ -190,18 +214,7 @@ def build_dataloaders(config, train, validation, *, batch_size, tokenize=None):
         )
 
     def collate(samples):
-        encoded = [encode_sample(tokenizer, row, config) for row in samples]
-        width = max(len(ids) for ids, _ in encoded)
-        ids = torch.full(
-            (len(samples), width), tokenizer.pad_token_id, dtype=torch.long
-        )
-        mask = torch.zeros_like(ids)
-        labels = torch.full_like(ids, -100)
-        for index, (tokens, targets) in enumerate(encoded):
-            ids[index, : len(tokens)] = torch.tensor(tokens)
-            mask[index, : len(tokens)] = 1
-            labels[index, : len(tokens)] = torch.tensor(targets)
-        return {"input_ids": ids, "attention_mask": mask}, labels
+        return collate_samples(tokenizer, samples, config)
 
     sampler = train_sampler(train)
     return (

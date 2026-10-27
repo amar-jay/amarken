@@ -1,0 +1,4 @@
+{
+  "texts": ["What is 17893 + 26947? Reply with only the integer answer."],
+  "max_new_tokens": 16
+}

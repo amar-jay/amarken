@@ -726,7 +726,7 @@ provided, but this module has only been exercised on a tiny CPU model so far.
 
 ## Supervised fine-tuning
 
-`datasets/sft.py` is selected in `dataset.py`, alongside `modules.causal` in
+Select `datasets/sft.py` in `dataset.py`, alongside `modules.causal` in
 `model.py`. It trains single-turn instruction/response pairs using the model's
 chat template. Start with Qwen3.5 LoRA and the pinned Alpaca dataset:
 
@@ -759,9 +759,11 @@ instruction as part of the user message. Set the optional fixed system message
 in `SFT_SYSTEM_PROMPT` in `constants.py`. Thinking is disabled for this
 single-turn task.
 
-Only response tokens and the chat template's final turn-ending token receive labels.
-That token can differ from tokenizer EOS: base Qwen2.5 uses `<|im_end|>` to
-end chat turns and `<|endoftext|>` as EOS. Generation stops on either token. System/user messages,
+Only response tokens and the pretrained tokenizer EOS receive labels. The collator
+replaces the assistant's final chat-ending token with EOS in both inputs and
+labels. Base Qwen2.5's chat-ending token is untrained and its embedding remains
+frozen under ordinary LoRA; supervising pretrained EOS lets the policy learn to
+stop. Generation accepts either ending. System/user messages,
 the assistant prefix (including Qwen's empty thinking block), and padding get
 `-100`. Padding is masked by position, so PAD sharing EOS's ID does not discard
 real ending targets. The tokenizer is obtained from the bound `model.tokenize`
@@ -788,3 +790,112 @@ with `tokenizer.apply_chat_template(..., tokenize=False,
 add_generation_prompt=True, enable_thinking=False)` before passing them to the
 existing inference command. Switch the dataset import back to `datasets.causal`
 for ordinary plain-text next-token training.
+
+## Arithmetic SFT warm-up
+
+The selected arithmetic model/dataset support both supervised learning and RL;
+no import changes are required between stages. Start by teaching integer-only
+answers and the pretrained EOS token:
+
+```bash
+uv run amarken train --config configs/sft.json
+uv run amarken validate --config configs/sft.json --checkpoint checkpoints/qwen-arithmetic-sft/best.pt
+```
+
+The warm-up config uses 2,048 arithmetic training prompts, 32 validation prompts,
+32 test prompts and the configured number of Qwen2.5-0.5B LoRA epochs. It starts from the
+pretrained model and saves separately under `checkpoints/qwen-arithmetic-sft`.
+The normal Trainer monitors response-only validation loss; standalone validation
+measures greedy answer accuracy and integer-format rate. Check those generation
+metrics before starting RL; a loss decrease alone does not establish readiness.
+
+Arithmetic batches contain raw prompts/answers for generation evaluation and
+masked input/label tensors for SFT. They reuse the existing SFT collator, so
+system/user messages, assistant prefixes and padding are excluded from the loss.
+Only answer tokens and pretrained EOS are supervised. The
+same chat formatting is used by SFT, inference and TRL rollout prompts.
+
+The SFT warm-up uses two-digit addition (`dataset.id: "arithmetic"`). RL selects
+`dataset.id: "arithmetic-hard"`: five-digit operands from 10,000 to 99,999, keeping the
+same prompt format, exact-answer rewards and EOS handling. Its bounded source
+contains 8,192 unique canonical pairs; a fixed source seed and expression hash
+keep train/validation/test membership independent of run seed and requested
+sizes. The easy and hard operand ranges do not overlap. Existing checkpoints
+trained against the chat-ending token need fresh SFT training with EOS targets;
+changing inference settings alone does not repair their stopping.
+
+## Arithmetic RL with TRL
+
+`modules/arithmetic.py` and `datasets/arithmetic.py` are selected in `model.py`
+and `dataset.py`. Supervised loss, rewards, prompt formatting and greedy evaluation stay in the
+task module. Only RL-capable model modules define `prepare_prompts` and `reward_fn`;
+`model.py` validates these optional hooks when RL is requested. Ordinary modules
+need no RL exports. Stop tokens are owned by the model implementation, not the
+trainer. `rl_trainer.py` integrates TRL's `GRPOTrainer`; TRL owns rollout
+sampling, reference adapters, advantages, the clipped objective, optimization,
+scheduling and training-state restoration. The supervised Trainer is unchanged.
+Use `configs/sft.json` for arithmetic SFT; switch both source imports
+back to causal/SFT for general text instruction tuning.
+
+After warm-up, the RL starter uses Qwen2.5-0.5B arithmetic SFT weights at
+`checkpoints/qwen-arithmetic-sft/best.pt`, LoRA, one prompt per batch, and four sampled
+completions per prompt. Initial model ID and LoRA rank/scaling/target modules
+must match. The RL run saves separately to `checkpoints/qwen-arithmetic-grpo-hard`.
+Set `rl.initial_checkpoint` to null to start from pretrained weights.
+The harder variant is intended to produce mixed correct/incorrect rollouts;
+check `train/zero_variance_groups` and reward on your checkpoint. Difficulty
+does not guarantee a learning signal for every model or prompt.
+
+```bash
+# Measure the starting policy on held-out arithmetic first.
+uv run amarken validate --config configs/rl.json --checkpoint checkpoints/qwen-arithmetic-sft/best.pt
+uv run amarken train --config configs/rl.json
+uv run amarken test --config configs/rl.json --checkpoint checkpoints/qwen-arithmetic-grpo-hard/best.pt
+uv run amarken infer --config configs/rl.json --checkpoint checkpoints/qwen-arithmetic-grpo-hard/best.pt --input-file samples/input-arithmetic.json
+uv run amarken train --config configs/rl.json --resume checkpoints/qwen-arithmetic-grpo-hard/latest.pt
+```
+
+The optional `rl` section maps directly to TRL: `group_size` becomes
+`num_generations`, `max_new_tokens` becomes `max_completion_length`,
+`update_epochs` becomes `num_iterations`, and `clip_epsilon` becomes `epsilon`.
+`temperature`, `beta` and `max_grad_norm` use their native meanings. `batch_size`
+counts unique prompts in a generation batch: the generation batch contains
+`batch_size * group_size` completions, with `batch_size` as the optimization
+microbatch and `group_size` gradient-accumulation steps. TRL's original GRPO
+loss and group reward scaling are selected explicitly. Dropout is disabled;
+sampling uses no top-k/top-p filtering. Both chat end-of-turn and EOS stop IDs
+are supplied to TRL for consistent generation and completion masking.
+
+With a loaded PEFT policy and nonzero beta, TRL creates a frozen `ref` adapter
+from the initial policy, sharing base weights. A zero beta omits the reference.
+Greedy task accuracy selects the best checkpoint; TRL's generated training
+rewards remain separate from that held-out evaluation. W&B metrics and existing
+local/W&B/bucket checkpoint backends still use the amarken logger; TRL reporting
+is disabled to avoid initializing a second logging run.
+
+TRL writes its native adapter/optimizer/scheduler/RNG state into a newly created
+temporary staging directory under the run's checkpoint directory. At each save,
+`best.pt`/`latest.pt` contain both the usual full inference weights and the retained
+native training state, including the frozen reference adapter. Staging is cleaned
+only after those exports are captured; previous artifacts are not deleted.
+Resume extracts the bundled state into new staging and passes it to TRL's
+`train(resume_from_checkpoint=...)`. Files downloaded from a bucket work the
+same way. Keep the same TRL version and RL/model/data/batching settings when
+resuming. Earlier hand-written GRPO checkpoints can initialize weights but do
+not provide native TRL resume state.
+
+Arithmetic uses canonical addition operand pairs from 0 through 99, grouped
+into stable train/validation/test partitions, so reversed sums cannot leak.
+Reward is 1 for an integer-only answer numerically equal to the sum, otherwise
+0. The task reports greedy answer accuracy, valid-format rate and response
+length. Training tables summarize reward, KL, completion length, clipping and
+zero-variance groups; detailed native metrics remain in TRL's trainer state.
+GRPO loss can be zero or negative and should not be interpreted as SFT loss.
+If every completion earns the same reward, that group has no reward advantage;
+a stronger task-specific SFT starting policy may be needed to learn.
+
+This integration currently requires LoRA and one CPU/CUDA device. `torchrun`,
+DDP and FSDP are rejected before distributed initialization. No vLLM server is
+required. Tests run real TRL updates and sampling on a tiny Qwen/PEFT policy,
+verify reference preservation, inference exports and native resume equivalence.
+GPU memory use and learning gains still need measuring on the target device.

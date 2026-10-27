@@ -21,6 +21,7 @@ dependencies = [
   "tqdm>=4.70.1",
   "wandb>=0.22",
   "flash-linear-attention>=0.6.0",
+  "json5>=0.17.3",
 ]
 
 [project.scripts]
