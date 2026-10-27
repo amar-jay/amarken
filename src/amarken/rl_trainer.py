@@ -271,12 +271,6 @@ class GRPOTrainer(Trainer):
                 )
         dataset = raw.remove_columns("prompt").add_column("prompt", prompts)
 
-        def rewards(completions, answer, **kwargs):
-            return [
-                float(self.reward_fn(text, expected))
-                for text, expected in zip(completions, answer, strict=True)
-            ]
-
         args = GRPOConfig(
             output_dir=str(output),
             per_device_train_batch_size=self.config.batch_size,
@@ -321,7 +315,7 @@ class GRPOTrainer(Trainer):
         )
         self.engine = _TaskGRPOTrainer(
             model=self.model.model,
-            reward_funcs=rewards,
+            reward_funcs=self.reward_fn,
             args=args,
             train_dataset=dataset,
             eval_dataset=dataset.select(range(1)),

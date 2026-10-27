@@ -48,8 +48,20 @@ def parse_answer(text):
     return int(text) if re.fullmatch(r"[+-]?[0-9]{1,6}", text) else None
 
 
-def reward_fn(text, expected):
+def _answer_reward(text, expected):
     return float(parse_answer(text) == int(expected))
+
+
+def reward_fn(completions, answer, **kwargs):
+    """TRL reward callback; answer is an arithmetic dataset column.
+
+    TRL also supplies prompts, completion_ids, trainer_state and extra columns.
+    This task only needs completion text and its reference integer.
+    """
+    return [
+        _answer_reward(text, expected)
+        for text, expected in zip(completions, answer, strict=True)
+    ]
 
 
 def predict(model, inputs):
@@ -78,7 +90,7 @@ class ArithmeticMetrics(Metric):
 
     def update(self, texts, answers):
         self.correct += sum(
-            int(reward_fn(text, answer))
+            int(_answer_reward(text, answer))
             for text, answer in zip(texts, answers, strict=True)
         )
         self.formatted += sum(parse_answer(text) is not None for text in texts)
@@ -103,7 +115,7 @@ def validation_step(model, batch, device, metrics):
     metrics.update(result["texts"], answers.tolist())
     return {
         "reward": sum(
-            reward_fn(text, answer)
+            _answer_reward(text, answer)
             for text, answer in zip(result["texts"], answers, strict=True)
         )
         / len(prompts)

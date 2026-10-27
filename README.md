@@ -834,6 +834,9 @@ The default imports select `modules/causal.py` and `datasets/sft.py` for
 `configs/sft.json`. To run the arithmetic demo, select `modules/arithmetic.py`
 in `model.py` and `datasets/arithmetic.py` in `dataset.py`. Supervised loss, rewards, prompt formatting and greedy evaluation stay in the
 task module. Only RL-capable model modules define `prepare_prompts` and `reward_fn`;
+`reward_fn` is passed directly to TRL: it accepts batched completions and any
+needed dataset columns, plus `**kwargs` for unused TRL arguments. Arithmetic
+uses its `answer` column; the trainer does not require that column.
 `model.py` validates these optional hooks when RL is requested. Ordinary modules
 need no RL exports. Stop tokens are owned by the model implementation, not the
 trainer. `rl_trainer.py` integrates TRL's `GRPOTrainer`; TRL owns rollout

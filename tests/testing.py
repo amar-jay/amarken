@@ -61,9 +61,9 @@ def check_rl_contract(case):
         case.assertEqual(selected.get_rl_hooks()["reward_fn"], task.reward_fn)
 
     for text in ("2", " 2\n", "+2", "02"):
-        case.assertEqual(task.reward_fn(text, 2), 1)
+        case.assertEqual(task.reward_fn(completions=[text], answer=[2]), [1.0])
     for text in ("", "2 and 3", "The answer is 2", "2.0", "2\n2", "9999999", "3"):
-        case.assertEqual(task.reward_fn(text, 2), 0)
+        case.assertEqual(task.reward_fn(completions=[text], answer=[2]), [0.0])
     dataset_config = DatasetConfig(
         id="arithmetic", train_size=16, val_size=8, test_size=8
     )
@@ -204,6 +204,7 @@ def check_rl_contract(case):
         ):
             history = full.fit()
         case.assertIsInstance(full.engine, TRLGRPOTrainer)
+        case.assertIs(full.engine.reward_funcs[0], task.reward_fn)
         case.assertEqual(full.engine.args.num_generations, 2)
         case.assertEqual(full.engine.args.generation_batch_size, 2)
         case.assertEqual(history[-1]["val/accuracy"], 1)
@@ -278,10 +279,41 @@ def check_rl_contract(case):
         validate_initial_policy(path, config)
         with case.assertRaisesRegex(ValueError, "model_id"):
             validate_initial_policy(path, replace(config, model_id="other/model"))
+        # A task can use reference/metadata columns without any answer column.
+        reward_calls = []
+
+        def contextual_reward(
+            prompts,
+            completions,
+            completion_ids,
+            reference,
+            task_tag,
+            trainer_state,
+            **kwargs,
+        ):
+            reward_calls.append(
+                (prompts, completion_ids, reference, task_tag, trainer_state)
+            )
+            return task.reward_fn(completions=completions, answer=reference)
+
+        contextual_rows = rows.rename_column("answer", "reference").add_column(
+            "task_tag", ["custom"] * len(rows)
+        )
+        contextual_loader = DataLoader(contextual_rows, batch_size=1)
         with (
             patch("amarken.main.build_model", return_value=make_model()),
             patch("amarken.main.build_dataset", return_value=(rows, rows)),
-            patch("amarken.main.build_dataloaders", return_value=loaders),
+            patch(
+                "amarken.main.build_dataloaders",
+                return_value=(contextual_loader, loaders[1]),
+            ),
+            patch(
+                "amarken.main.get_rl_hooks",
+                return_value={
+                    "prepare_prompts": task.prepare_prompts,
+                    "reward_fn": contextual_reward,
+                },
+            ),
             patch("amarken.model.module", task),
             patch("amarken.main.build_metrics", task.build_metrics),
             patch("amarken.main.validation_step", task.validation_step),
@@ -289,6 +321,12 @@ def check_rl_contract(case):
             # Also exercise actual TRL sampling, rather than controlled completions.
             _, routed_history = run_train(config)
             case.assertIn("train/loss", routed_history[0])
+        case.assertTrue(reward_calls)
+        for prompts, completion_ids, references, tags, state in reward_calls:
+            case.assertEqual(len(prompts), len(completion_ids))
+            case.assertTrue(all(value == 2 for value in references))
+            case.assertTrue(all(tag == "custom" for tag in tags))
+            case.assertIsNotNone(state)
         # The same arithmetic imports also support normal response-only SFT.
         supervised_model = make_model()
         sft_loaders = data.build_dataloaders(
