@@ -45,6 +45,7 @@ def check_rl_contract(case):
     )
     case.assertEqual(imported.returncode, 0, imported.stderr)
     from dataclasses import replace
+    from types import SimpleNamespace
 
     from datasets import Dataset
     from peft import LoraConfig, get_peft_model
@@ -61,6 +62,7 @@ def check_rl_contract(case):
     from amarken.modules import example
     from amarken.modules.causal import CausalLM
     from amarken.trainers.rl import Trainer as SelectedRLTrainer
+    from amarken.trainers.rl.base import BaseRLTrainer, RLCallback
     from amarken.trainers.rl.grpo import GRPOTrainer
     from amarken.utils.helpers import load_checkpoint_weights
 
@@ -74,6 +76,9 @@ def check_rl_contract(case):
         case.assertEqual(selected.get_rl_hooks()["reward_fn"], task.reward_fn)
 
     case.assertIs(SelectedRLTrainer, GRPOTrainer)
+    case.assertTrue(issubclass(GRPOTrainer, BaseRLTrainer))
+    with case.assertRaises(TypeError):
+        BaseRLTrainer(None, None)
 
     for text in ("2", " 2\n", "+2", "02"):
         case.assertEqual(task.reward_fn(completions=[text], answer=[2]), [1.0])
@@ -188,6 +193,64 @@ def check_rl_contract(case):
         checkpoints={"backend": "local", "monitor": "val/accuracy", "mode": "max"},
     )
     loaders = data.build_dataloaders(dataset_config, rows, rows, batch_size=1)
+
+    # A new adapter needs only input preparation and engine construction; it
+    # need not expose a tokenizer, nested model, rewards or dataset columns.
+    class MinimalAdapter(BaseRLTrainer):
+        config_type = GRPOConfig
+        trainer_kind = "trl-minimal-test"
+
+        @classmethod
+        def from_config(cls, model, config):
+            return cls(model, config)
+
+        def build_engine(self, output, *, training=True):
+            state = SimpleNamespace(global_step=1, epoch=1, best_metric=0.4)
+            engine = Mock(args=SimpleNamespace(output_dir=str(output)), state=state)
+
+            def train(resume_from_checkpoint=None):
+                callback = RLCallback(self)
+                callback.on_step_begin(engine.args, state, None)
+                callback.on_log(engine.args, state, None, logs={"loss": 0.5})
+                callback.on_evaluate(
+                    engine.args,
+                    state,
+                    None,
+                    metrics={"eval_loss": 0.4, "eval_runtime": 1.0},
+                )
+                native = output / "checkpoint-1"
+                native.mkdir()
+                (native / "trainer_state.json").write_text(
+                    json.dumps({"global_step": 1})
+                )
+                callback.on_save(engine.args, state, None)
+
+            engine.train.side_effect = train
+            return engine
+
+    with (
+        tempfile.TemporaryDirectory() as minimal_directory,
+        patch("amarken.utils.logger.CHECKPOINT_DIR", Path(minimal_directory)),
+    ):
+        minimal = MinimalAdapter.from_config(
+            torch.nn.Linear(2, 1),
+            replace(
+                config,
+                run_name="minimal",
+                checkpoints=CheckpointConfig(backend="local"),
+            ),
+        )
+        case.assertEqual(
+            minimal.fit(), [{"train/loss": 0.5, "val/loss": 0.4, "epoch": 1}]
+        )
+        case.assertFalse(hasattr(minimal, "optimizer"))
+        case.assertFalse(hasattr(minimal, "scaler"))
+        saved = torch.load(
+            Path(minimal_directory) / "minimal/latest.pt", weights_only=True
+        )
+        case.assertEqual(saved["trainer"], "trl-minimal-test")
+        case.assertTrue(saved["trl_files"])
+        case.assertFalse(Path(minimal.engine.args.output_dir).exists())
 
     rl_records = rows.remove_columns("prompt").add_column(
         "prompt", task.prepare_prompts(tokenizer, rows["prompt"])
@@ -383,7 +446,7 @@ def check_rl_contract(case):
             changed.config.rl = GRPOConfig(group_size=4)
             changed.resume(path)
         with (
-            patch("amarken.trainers.rl.grpo.distributed.launched", return_value=True),
+            patch("amarken.trainers.rl.base.distributed.launched", return_value=True),
             case.assertRaisesRegex(ValueError, "one device"),
         ):
             make_trainer()
@@ -589,6 +652,7 @@ def check_dpo_contract(case):
     from amarken.config import DPOConfig
     from amarken.datasets import preference
     from amarken.modules import causal
+    from amarken.trainers.rl.base import BaseRLTrainer
     from amarken.trainers.rl.dpo import DPOTrainer
     from amarken.validation import run_validation
 
@@ -755,6 +819,9 @@ def check_dpo_contract(case):
             if ".default." in key
         }
         history = full.fit()
+        case.assertIsInstance(full, BaseRLTrainer)
+        case.assertFalse(hasattr(full, "optimizer"))
+        case.assertFalse(hasattr(full, "scaler"))
         case.assertIsInstance(full.engine, NativeDPOTrainer)
         case.assertEqual(len(history), 2)
         case.assertIn("val/rewards/accuracies", history[-1])

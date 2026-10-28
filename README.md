@@ -848,11 +848,28 @@ GRPO checkpoints keep their format. The old `amarken.trainer`, `amarken.rl_train
 Python imports have been removed; use the new package paths and the selected
 algorithm's configuration type.
 
-Each adapter provides `fit()`, `resume()` and `checkpoint_prefix`, and shares
-run/checkpoint utilities without inheriting another trainer. GRPO uses prompts
-and rewards; DPO uses chosen/rejected pairs without rollout or reward hooks.
-Future algorithms get their own adapters, configuration and input contracts.
-No registry or universal RL constructor is imposed.
+GRPO and DPO inherit `BaseRLTrainer` from `trainers/rl/base.py`. It owns run
+identity, logging/cleanup, temporary native-state staging, full-policy resume,
+checkpoint metadata and export. Its thin methods delegate to `utils/run.py`,
+`utils/checkpoint.py` and `utils/trl.py`; TRL alone creates optimizers and scalers.
+The parent does not require rewards, dataset columns, a tokenizer or a nested
+model. GRPO and DPO keep their own input and evaluation behavior.
+
+To add another TRL adapter, declare `config_type` and a unique `trainer_kind`,
+then implement `from_config(model, config)` to prepare inputs and
+`build_engine(output, training=True)` to return the native trainer. Attach
+`RLCallback(self)` to the engine during training for shared metric logging and
+checkpoint exports. The default `train(engine, resume_from_checkpoint=...)`
+invokes the engine; override it only when the algorithm needs a different call.
+The inherited public interface remains `fit()`, `resume()` and `checkpoint_prefix`.
+
+Optional hooks are `validate_config()` for algorithm requirements,
+`training_metrics()` / `evaluation_metrics()` for unprefixed metric names, and
+`extra_state_dict()` / `restore_extra_state()` for extra checkpoint fields.
+DPO uses the latter pair to preserve its frozen reference adapter; GRPO owns
+reward aliases and greedy task evaluation. Checkpoint formats and explicit
+adapter selection remain unchanged; no registry or shared algorithm constructor
+is imposed.
 
 ## DPO preference optimization
 
