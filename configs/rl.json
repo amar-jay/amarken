@@ -25,7 +25,8 @@
   },
   "rl": {
     "group_size": 4,
-    "max_new_tokens": 16,
+    "max_new_tokens": 16, // Sampled rollout budget.
+    "eval_max_new_tokens": null, // Greedy evaluation; null uses the rollout budget.
     "temperature": 1.0,
     "clip_epsilon": 0.2,
     "beta": 0.02,

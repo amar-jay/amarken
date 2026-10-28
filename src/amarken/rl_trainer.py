@@ -16,6 +16,7 @@ from transformers import TrainerCallback
 from trl import GRPOConfig
 from trl import GRPOTrainer as TRLGRPOTrainer
 
+from amarken.config import RLConfig
 from amarken.utils import checkpoint, distributed, run
 from amarken.utils import logger as logger_module
 from amarken.utils.checkpoint import pack_trl_checkpoints, restore_trl_checkpoints
@@ -46,7 +47,11 @@ class _TaskGRPOTrainer(TRLGRPOTrainer):
             with torch.inference_mode(), self.accelerator.autocast():
                 for batch in owner.validation_loader:
                     owner.validation_step(
-                        owner.model, batch, self.accelerator.device, metrics
+                        owner.model,
+                        batch,
+                        self.accelerator.device,
+                        metrics,
+                        generation=owner.config.rl.evaluation_generation,
                     )
                     samples += batch_size(batch)
         finally:
@@ -139,11 +144,10 @@ class GRPOTrainer:
     def __init__(
         self,
         model,
-        train_loader,
+        train_dataset,
         config,
         *,
         validation_loader,
-        prepare_prompts,
         reward_fn,
         build_metrics,
         validation_step,
@@ -172,9 +176,9 @@ class GRPOTrainer:
         prepare_training_precision(model, config.precision)
         self.device = requested
         self.model = model.to(self.device)
-        self.train_loader = train_loader
+        self.train_dataset = train_dataset
         self.validation_loader = validation_loader
-        self.prepare_prompts, self.reward_fn = prepare_prompts, reward_fn
+        self.reward_fn = reward_fn
         self.build_metrics, self.validation_step = build_metrics, validation_step
         self.history, self.train_metrics = [], {}
         self.resume_source = None
@@ -208,6 +212,8 @@ class GRPOTrainer:
                 "Resume requires an amarken TRL checkpoint from the installed TRL version"
             )
         previous, current = state["config"], asdict(self.config)
+        # Older checkpoints predate the optional evaluation budget.
+        previous["rl"] = asdict(RLConfig(**previous["rl"]))
         for key in (
             "rl",
             "fine_tuning",
@@ -275,17 +281,6 @@ class GRPOTrainer:
         native_resume = None
         if self.resume_source is not None:
             native_resume = str(restore_trl_checkpoints(self.resume_source, output))
-        raw = self.train_loader.dataset
-        prompts = self.prepare_prompts(self.model.tokenizer, raw["prompt"])
-        context = self.model.model.config.max_position_embeddings
-        for prompt in prompts:
-            tokens = self.model.tokenizer.encode(prompt, add_special_tokens=False)
-            if not tokens or len(tokens) + settings.max_new_tokens > context:
-                raise ValueError(
-                    "RL prompt plus completion exceeds the training context limit"
-                )
-        dataset = raw.remove_columns("prompt").add_column("prompt", prompts)
-
         args = GRPOConfig(
             output_dir=str(output),
             per_device_train_batch_size=self.config.batch_size,
@@ -332,8 +327,8 @@ class GRPOTrainer:
             model=self.model.model,
             reward_funcs=self.reward_fn,
             args=args,
-            train_dataset=dataset,
-            eval_dataset=dataset.select(range(1)),
+            train_dataset=self.train_dataset,
+            eval_dataset=self.train_dataset.select(range(1)),
             processing_class=self.model.tokenizer,
             callbacks=[_RunCallback(self)],
         )

@@ -137,6 +137,7 @@ class RLConfig:
 
     group_size: int = 4
     max_new_tokens: int = 16
+    eval_max_new_tokens: int | None = None
     temperature: float = 1.0
     clip_epsilon: float = 0.2
     beta: float = 0.02
@@ -152,6 +153,12 @@ class RLConfig:
         ):
             if type(getattr(self, key)) is not int or getattr(self, key) < minimum:
                 raise ValueError(f"rl.{key} must be an integer >= {minimum}")
+        if self.eval_max_new_tokens is not None and (
+            type(self.eval_max_new_tokens) is not int or self.eval_max_new_tokens < 1
+        ):
+            raise ValueError(
+                "rl.eval_max_new_tokens must be a positive integer or null"
+            )
         for key in ("temperature", "clip_epsilon", "beta", "max_grad_norm"):
             value = getattr(self, key)
             if type(value) not in (int, float) or not math.isfinite(value):
@@ -167,6 +174,15 @@ class RLConfig:
             or not self.initial_checkpoint.strip()
         ):
             raise ValueError("rl.initial_checkpoint must be a nonempty path or null")
+
+    @property
+    def evaluation_generation(self):
+        """Settings passed to the task's generation-based validation hook."""
+        return {
+            "max_new_tokens": self.max_new_tokens
+            if self.eval_max_new_tokens is None
+            else self.eval_max_new_tokens
+        }
 
 
 @dataclass

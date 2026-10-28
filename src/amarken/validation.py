@@ -39,6 +39,9 @@ def run_validation(
         batch_size=config.batch_size,
         tokenize=getattr(model, "tokenize", None),
     )
+    evaluation_options = (
+        {"generation": config.rl.evaluation_generation} if config.rl is not None else {}
+    )
     totals = {}
     samples = 0
     device = torch.device(config.device)
@@ -51,7 +54,9 @@ def run_validation(
                 dtype=getattr(torch, config.precision),
                 enabled=config.precision != "float32",
             ):
-                metrics = validation_step(model, batch, device, task_metrics)
+                metrics = validation_step(
+                    model, batch, device, task_metrics, **evaluation_options
+                )
             for name, value in metrics.items():
                 value = float(value)
                 if not torch.isfinite(torch.tensor(value)).item():

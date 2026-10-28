@@ -2,7 +2,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from amarken.config import Config
-from amarken.dataset import build_dataloaders, build_dataset
+from amarken.dataset import build_dataloaders, build_dataset, build_rl_dataset
 from amarken.model import (
     build_metrics,
     build_model,
@@ -60,27 +60,35 @@ def _train(config, *, resume):
         model = build_model(
             model_id=config.model_id, device="cpu", precision="float32", **options
         )
-    train_data, validation_data = build_dataset(config.dataset, seed=config.seed)
-    train, validation = build_dataloaders(
-        config.dataset,
-        train_data,
-        validation_data,
-        batch_size=config.batch_size,
-        tokenize=getattr(model, "tokenize", None),
-    )
     if config.rl is not None:
         from amarken.rl_trainer import GRPOTrainer
 
+        train_records, validation = build_rl_dataset(
+            config.dataset,
+            seed=config.seed,
+            batch_size=config.batch_size,
+            tokenize=getattr(model, "tokenize", None),
+            prepare_prompts=rl_hooks["prepare_prompts"],
+            max_new_tokens=config.rl.max_new_tokens,
+        )
         trainer = GRPOTrainer(
             model,
-            train,
+            train_records,
             config,
             validation_loader=validation,
-            **rl_hooks,
+            reward_fn=rl_hooks["reward_fn"],
             build_metrics=build_metrics,
             validation_step=validation_step,
         )
     else:
+        train_data, validation_data = build_dataset(config.dataset, seed=config.seed)
+        train, validation = build_dataloaders(
+            config.dataset,
+            train_data,
+            validation_data,
+            batch_size=config.batch_size,
+            tokenize=getattr(model, "tokenize", None),
+        )
         trainer = Trainer(
             model,
             train,

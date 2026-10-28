@@ -866,6 +866,23 @@ uv run amarken infer --config configs/rl.json --checkpoint checkpoints/qwen-arit
 uv run amarken train --config configs/rl.json --resume checkpoints/qwen-arithmetic-grpo-hard/latest.pt
 ```
 
+RL-capable dataset modules provide an optional
+`build_rl_dataset(config, *, batch_size, tokenize, prepare_prompts, max_new_tokens, seed)`
+hook. It returns `(train_records, validation_loader)`: ready-to-use TRL records
+with a `prompt` column and any reward metadata, plus the task's evaluation loader.
+The dataset hook owns formatting and transformations; the RL trainer passes
+records to TRL unchanged. Supervised training still uses `build_dataset()` and
+`build_dataloaders()`. Arithmetic's RL evaluation loader produces only raw
+prompts/answers, without constructing SFT labels. Non-RL dataset modules do not
+need to implement this hook.
+
+`rl.max_new_tokens` controls sampled rollouts. `rl.eval_max_new_tokens` controls
+module-owned generation evaluation: null inherits the rollout budget, while a
+positive integer overrides it. Both training-time evaluation and standalone
+`validate`/`test` pass the resolved `generation` dictionary to the module's
+`validation_step(..., generation=...)` hook. Arithmetic evaluation remains greedy;
+rollouts sample using `rl.temperature`. Non-RL validation hooks are unchanged.
+
 The optional `rl` section maps directly to TRL: `group_size` becomes
 `num_generations`, `max_new_tokens` becomes `max_completion_length`,
 `update_epochs` becomes `num_iterations`, and `clip_epsilon` becomes `epsilon`.

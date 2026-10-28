@@ -12,6 +12,7 @@ from amarken.constants import (
     ARITHMETIC_HARD_OPERANDS,
     ARITHMETIC_HARD_POOL_SIZE,
     ARITHMETIC_MAX_OPERAND,
+    CAUSAL_MAX_LENGTH,
 )
 from amarken.datasets.sft import collate_samples
 from amarken.utils.distributed import train_sampler
@@ -76,6 +77,38 @@ def build_test_dataset(config, *, seed=42):
     return _build_dataset(config, seed=seed)[2]
 
 
+def _generation_batch(rows):
+    return {
+        "prompts": [row["prompt"] for row in rows],
+        "answers": torch.tensor([row["answer"] for row in rows]),
+        "batch_size": len(rows),
+    }
+
+
+def build_rl_dataset(
+    config, *, batch_size, tokenize, prepare_prompts, max_new_tokens, seed=42
+):
+    """Return formatted TRL records and an evaluation-only generation loader."""
+    model = getattr(tokenize, "__self__", None)
+    tokenizer = getattr(model, "tokenizer", None)
+    if tokenizer is None:
+        raise TypeError("Arithmetic RL requires model.tokenize with a tokenizer")
+    train, validation = build_dataset(config, seed=seed)
+    prompts = prepare_prompts(tokenizer, train["prompt"])
+    context = min(CAUSAL_MAX_LENGTH, model.model.config.max_position_embeddings)
+    for prompt in prompts:
+        tokens = tokenizer.encode(prompt, add_special_tokens=False)
+        if not tokens or len(tokens) + max_new_tokens > context:
+            raise ValueError(
+                "Arithmetic RL prompt plus completion exceeds the context limit"
+            )
+    records = train.remove_columns("prompt").add_column("prompt", prompts)
+    evaluation = DataLoader(
+        validation, batch_size=batch_size, collate_fn=_generation_batch, num_workers=0
+    )
+    return records, evaluation
+
+
 def build_dataloaders(config, train, validation, *, batch_size, tokenize=None):
     tokenizer = getattr(getattr(tokenize, "__self__", None), "tokenizer", None)
     settings = replace(
@@ -83,11 +116,7 @@ def build_dataloaders(config, train, validation, *, batch_size, tokenize=None):
     )
 
     def collate(rows):
-        batch = {
-            "prompts": [row["prompt"] for row in rows],
-            "answers": torch.tensor([row["answer"] for row in rows]),
-            "batch_size": len(rows),
-        }
+        batch = _generation_batch(rows)
         if tokenizer is not None:
             samples = [
                 {"prompt": row["prompt"], "response": str(row["answer"])}

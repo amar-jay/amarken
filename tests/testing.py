@@ -64,6 +64,13 @@ def check_rl_contract(case):
         case.assertEqual(task.reward_fn(completions=[text], answer=[2]), [1.0])
     for text in ("", "2 and 3", "The answer is 2", "2.0", "2\n2", "9999999", "3"):
         case.assertEqual(task.reward_fn(completions=[text], answer=[2]), [0.0])
+    case.assertEqual(
+        RLConfig(max_new_tokens=7).evaluation_generation, {"max_new_tokens": 7}
+    )
+    case.assertEqual(
+        RLConfig(max_new_tokens=7, eval_max_new_tokens=4).evaluation_generation,
+        {"max_new_tokens": 4},
+    )
     dataset_config = DatasetConfig(
         id="arithmetic", train_size=16, val_size=8, test_size=8
     )
@@ -154,7 +161,12 @@ def check_rl_contract(case):
     config = make_config(
         dataset=dataset_config,
         fine_tuning={"mode": "lora", "r": 2, "alpha": 4, "dropout": 0.1},
-        rl={"group_size": 2, "max_new_tokens": 2, "update_epochs": 2},
+        rl={
+            "group_size": 2,
+            "max_new_tokens": 2,
+            "eval_max_new_tokens": 3,
+            "update_epochs": 2,
+        },
         learning_rate=0.01,
         batch_size=1,
         epochs=1,
@@ -162,17 +174,68 @@ def check_rl_contract(case):
     )
     loaders = data.build_dataloaders(dataset_config, rows, rows, batch_size=1)
 
+    rl_records = rows.remove_columns("prompt").add_column(
+        "prompt", task.prepare_prompts(tokenizer, rows["prompt"])
+    )
+    from amarken import dataset as selected_data
+    from amarken.datasets import example as example_data
+
+    with (
+        patch.object(selected_data, "module", example_data),
+        case.assertRaisesRegex(TypeError, "does not support RL datasets"),
+    ):
+        selected_data.build_rl_dataset(dataset_config)
+    with (
+        patch.object(selected_data, "module", data),
+        patch.object(data, "build_dataset", return_value=(rows, rows)),
+        patch.object(
+            data,
+            "collate_samples",
+            side_effect=AssertionError("RL evaluation must not build SFT labels"),
+        ),
+    ):
+        built, evaluation = selected_data.build_rl_dataset(
+            dataset_config,
+            batch_size=1,
+            tokenize=make_model().tokenize,
+            prepare_prompts=task.prepare_prompts,
+            max_new_tokens=2,
+        )
+        case.assertEqual(built["prompt"], rl_records["prompt"])
+        case.assertEqual(built["answer"], rows["answer"])
+        case.assertEqual(next(iter(evaluation))["prompts"], rows["prompt"])
+        case.assertNotIn("labels", next(iter(evaluation)))
+
+    evaluation_step = Mock(wraps=task.validation_step)
+
     def make_trainer(epochs=1):
         return GRPOTrainer(
             make_model(),
-            loaders[0],
+            rl_records,
             replace(config, epochs=epochs),
             validation_loader=loaders[1],
-            prepare_prompts=task.prepare_prompts,
             reward_fn=task.reward_fn,
             build_metrics=task.build_metrics,
-            validation_step=task.validation_step,
+            validation_step=evaluation_step,
         )
+
+    from amarken.validation import run_validation
+
+    with (
+        patch("amarken.validation.load_model", return_value=make_model()),
+        patch("amarken.validation.build_dataset", return_value=(rows, rows)),
+        patch("amarken.validation.build_test_dataset", return_value=rows),
+        patch("amarken.validation.build_dataloaders", return_value=loaders),
+        patch("amarken.validation.build_metrics", task.build_metrics),
+        patch("amarken.validation.validation_step", task.validation_step),
+        patch.object(
+            task, "predict", return_value={"texts": ["2"]}
+        ) as evaluate_predict,
+    ):
+        for split in ("val", "test"):
+            output = run_validation("unused.pt", config, split=split)
+            case.assertEqual(output[f"{split}/accuracy"], 1)
+            case.assertEqual(evaluate_predict.call_args.args[1]["max_new_tokens"], 3)
 
     config.model_id = "Qwen/Qwen2.5-0.5B"
     calls = [0]
@@ -219,6 +282,12 @@ def check_rl_contract(case):
             history = full.fit()
         case.assertIsInstance(full.engine, TRLGRPOTrainer)
         case.assertIs(full.engine.reward_funcs[0], task.reward_fn)
+        case.assertTrue(evaluation_step.called)
+        case.assertEqual(
+            evaluation_step.call_args.kwargs["generation"], {"max_new_tokens": 3}
+        )
+        case.assertEqual(full.engine.args.max_completion_length, 2)
+        case.assertEqual(full.engine.train_dataset["prompt"], rl_records["prompt"])
         case.assertEqual(full.engine.args.num_generations, 2)
         case.assertEqual(full.engine.args.generation_batch_size, 2)
         case.assertEqual(history[-1]["val/accuracy"], 1)
@@ -324,8 +393,9 @@ def check_rl_contract(case):
                 "amarken.main.build_model",
                 side_effect=AssertionError("Resume must not load pretrained weights"),
             ),
-            patch("amarken.main.build_dataset", return_value=(rows, rows)),
-            patch("amarken.main.build_dataloaders", return_value=loaders),
+            patch(
+                "amarken.main.build_rl_dataset", return_value=(rl_records, loaders[1])
+            ),
             patch("amarken.rl_trainer.GRPOTrainer", return_value=routed_trainer),
         ):
             run_train(replace(config, epochs=2), resume=path)
@@ -357,13 +427,24 @@ def check_rl_contract(case):
         contextual_rows = rows.rename_column("answer", "reference").add_column(
             "task_tag", ["custom"] * len(rows)
         )
-        contextual_loader = DataLoader(contextual_rows, batch_size=1)
+        contextual_rows = contextual_rows.remove_columns("prompt").add_column(
+            "prompt", rl_records["prompt"]
+        )
         with (
             patch("amarken.main.build_model", return_value=make_model()),
-            patch("amarken.main.build_dataset", return_value=(rows, rows)),
+            patch(
+                "amarken.main.build_rl_dataset",
+                return_value=(contextual_rows, loaders[1]),
+            ) as rl_builder,
+            patch(
+                "amarken.main.build_dataset",
+                side_effect=AssertionError("RL must use its dataset hook"),
+            ),
             patch(
                 "amarken.main.build_dataloaders",
-                return_value=(contextual_loader, loaders[1]),
+                side_effect=AssertionError(
+                    "RL must not construct a supervised train loader"
+                ),
             ),
             patch(
                 "amarken.main.get_rl_hooks",
@@ -379,6 +460,9 @@ def check_rl_contract(case):
             # Also exercise actual TRL sampling, rather than controlled completions.
             _, routed_history = run_train(config)
             case.assertIn("train/loss", routed_history[0])
+        case.assertEqual(
+            rl_builder.call_args.kwargs["prepare_prompts"], task.prepare_prompts
+        )
         case.assertTrue(reward_calls)
         for prompts, completion_ids, references, tags, state in reward_calls:
             case.assertEqual(len(prompts), len(completion_ids))
@@ -437,8 +521,9 @@ def check_rl_contract(case):
         )
         with (
             patch("amarken.main.load_model", return_value=warm_model) as initial_loader,
-            patch("amarken.main.build_dataset", return_value=(rows, rows)),
-            patch("amarken.main.build_dataloaders", return_value=loaders),
+            patch(
+                "amarken.main.build_rl_dataset", return_value=(rl_records, loaders[1])
+            ),
             patch("amarken.model.module", task),
             patch("amarken.main.build_metrics", task.build_metrics),
             patch("amarken.main.validation_step", task.validation_step),
@@ -463,6 +548,9 @@ def check_rl_contract(case):
         {"temperature": 0},
         {"clip_epsilon": 1},
         {"temperature": float("nan")},
+        {"eval_max_new_tokens": 0},
+        {"eval_max_new_tokens": True},
+        {"eval_max_new_tokens": "16"},
     ):
         with case.assertRaises(ValueError):
             RLConfig(**settings)

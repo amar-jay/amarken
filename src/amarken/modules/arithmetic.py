@@ -109,9 +109,10 @@ def build_metrics():
     return ArithmeticMetrics()
 
 
-def validation_step(model, batch, device, metrics):
+def validation_step(model, batch, device, metrics, *, generation=None):
+    """Greedy evaluation with the completion budget supplied by the caller."""
     prompts, answers = batch["prompts"], batch["answers"]
-    result = predict(model, prompts)
+    result = predict(model, {"texts": prompts, **(generation or {})})
     metrics.update(result["texts"], answers.tolist())
     return {
         "reward": sum(
