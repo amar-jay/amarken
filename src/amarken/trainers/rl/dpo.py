@@ -36,6 +36,8 @@ class DPOTrainer(BaseRLTrainer):
         self.reference_adapter = None
 
     def validate_config(self, model, config):
+        if config.fine_tuning is None or config.fine_tuning.mode != "lora":
+            raise ValueError("DPO currently requires fine_tuning.mode=lora")
         if not config.checkpoints.monitor.startswith("val/"):
             raise ValueError("DPO checkpoints require a val/ metric such as val/loss")
         if not hasattr(model.model, "peft_config"):

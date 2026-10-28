@@ -44,7 +44,7 @@ def check_rl_contract(case):
         check=False,
     )
     case.assertEqual(imported.returncode, 0, imported.stderr)
-    from dataclasses import replace
+    from dataclasses import asdict, dataclass, replace
     from types import SimpleNamespace
 
     from datasets import Dataset
@@ -196,8 +196,17 @@ def check_rl_contract(case):
 
     # A new adapter needs only input preparation and engine construction; it
     # need not expose a tokenizer, nested model, rewards or dataset columns.
+    @dataclass
+    class MinimalSettings:
+        scale: float = 0.5
+        initial_checkpoint: str | None = None
+
+        def __post_init__(self):
+            if self.scale <= 0:
+                raise ValueError("scale must be positive")
+
     class MinimalAdapter(BaseRLTrainer):
-        config_type = GRPOConfig
+        config_type = MinimalSettings
         trainer_kind = "trl-minimal-test"
 
         @classmethod
@@ -209,9 +218,15 @@ def check_rl_contract(case):
             engine = Mock(args=SimpleNamespace(output_dir=str(output)), state=state)
 
             def train(resume_from_checkpoint=None):
+                if resume_from_checkpoint is not None:
+                    case.assertTrue(
+                        (Path(resume_from_checkpoint) / "trainer_state.json").is_file()
+                    )
                 callback = RLCallback(self)
                 callback.on_step_begin(engine.args, state, None)
-                callback.on_log(engine.args, state, None, logs={"loss": 0.5})
+                callback.on_log(
+                    engine.args, state, None, logs={"loss": self.config.rl.scale}
+                )
                 callback.on_evaluate(
                     engine.args,
                     state,
@@ -219,7 +234,7 @@ def check_rl_contract(case):
                     metrics={"eval_loss": 0.4, "eval_runtime": 1.0},
                 )
                 native = output / "checkpoint-1"
-                native.mkdir()
+                native.mkdir(exist_ok=True)
                 (native / "trainer_state.json").write_text(
                     json.dumps({"global_step": 1})
                 )
@@ -228,29 +243,90 @@ def check_rl_contract(case):
             engine.train.side_effect = train
             return engine
 
+    from torchmetrics import MetricCollection
+
+    from amarken import main as training
+    from amarken import validation as evaluation
+    from amarken.trainers import rl as adapters
+
+    def load_minimal(path, **options):
+        model = torch.nn.Linear(2, 1)
+        model.load_state_dict(torch.load(path, weights_only=True)["model"])
+        return model
+
     with (
         tempfile.TemporaryDirectory() as minimal_directory,
         patch("amarken.utils.logger.CHECKPOINT_DIR", Path(minimal_directory)),
+        patch.object(adapters, "Trainer", MinimalAdapter),
+        patch.object(
+            training, "build_model", side_effect=lambda **kw: torch.nn.Linear(2, 1)
+        ),
+        patch.object(training, "load_model", side_effect=load_minimal),
+        patch.object(evaluation, "load_model", side_effect=load_minimal),
+        patch.object(evaluation, "build_dataset", return_value=([], [])),
+        patch.object(evaluation, "build_test_dataset", return_value=[]),
+        patch.object(
+            evaluation,
+            "build_dataloaders",
+            return_value=([], [(torch.zeros(2, 2), torch.zeros(2))]),
+        ),
+        patch.object(
+            evaluation, "build_metrics", side_effect=lambda: MetricCollection({})
+        ),
+        patch.object(evaluation, "validation_step", return_value={"loss": 0.4}) as step,
     ):
-        minimal = MinimalAdapter.from_config(
-            torch.nn.Linear(2, 1),
-            replace(
-                config,
-                run_name="minimal",
-                checkpoints=CheckpointConfig(backend="local"),
-            ),
-        )
+        # Round-trip a JSON object through the selected adapter, with no LoRA
+        # or knowledge of its custom settings in Config or orchestration.
+        custom = make_config(run_name="minimal", rl=json.loads('{"scale": 0.5}'))
+        case.assertIsInstance(custom.rl, MinimalSettings)
+        case.assertIsNone(custom.fine_tuning)
         case.assertEqual(
-            minimal.fit(), [{"train/loss": 0.5, "val/loss": 0.4, "epoch": 1}]
+            asdict(custom)["rl"], {"scale": 0.5, "initial_checkpoint": None}
         )
+        with case.assertRaisesRegex(ValueError, "scale must be positive"):
+            make_config(rl={"scale": 0})
+        with case.assertRaises(TypeError):
+            make_config(rl={"unknown": True})
+        with case.assertRaisesRegex(TypeError, "dataclass"):
+            make_config(rl=object())
+        with case.assertRaisesRegex(ValueError, "initial_checkpoint"):
+            make_config(rl=MinimalSettings(initial_checkpoint=""))
+        with case.assertRaisesRegex(TypeError, "matching RL adapter"):
+            MinimalAdapter.from_config(torch.nn.Linear(2, 1), config)
+        history = [{"train/loss": 0.5, "val/loss": 0.4, "epoch": 1}]
+        prefix, actual = training.run_train(custom)
+        case.assertEqual(actual, history)
+        case.assertEqual(prefix, "minimal")
+        path = Path(minimal_directory) / "minimal/latest.pt"
+        saved = torch.load(path, weights_only=True)
+        case.assertEqual(saved["trainer"], "trl-minimal-test")
+        case.assertEqual(saved["config"]["rl"], asdict(custom.rl))
+        case.assertTrue(saved["trl_files"])
+        case.assertTrue(path.with_name("best.pt").is_file())
+        case.assertEqual(training.run_train(custom, resume=path)[1], history)
+        warm = replace(
+            custom,
+            run_name="minimal-warm",
+            rl=MinimalSettings(initial_checkpoint=str(path)),
+        )
+        case.assertEqual(training.run_train(warm)[1], history)
+        with case.assertRaisesRegex(ValueError, "same rl settings"):
+            training.run_train(
+                replace(custom, rl=MinimalSettings(scale=0.6)), resume=path
+            )
+        for split in ("val", "test"):
+            result = evaluation.run_validation(path, custom, split=split)
+            case.assertEqual(result, {"samples": 2, f"{split}/loss": 0.4})
+            case.assertEqual(step.call_args.kwargs, {})
+        with (
+            patch.object(adapters, "Trainer", GRPOTrainer),
+            case.assertRaisesRegex(TypeError, "matching RL adapter"),
+        ):
+            evaluation.run_validation(path, custom)
+        minimal = MinimalAdapter.from_config(torch.nn.Linear(2, 1), custom)
         case.assertFalse(hasattr(minimal, "optimizer"))
         case.assertFalse(hasattr(minimal, "scaler"))
-        saved = torch.load(
-            Path(minimal_directory) / "minimal/latest.pt", weights_only=True
-        )
-        case.assertEqual(saved["trainer"], "trl-minimal-test")
-        case.assertTrue(saved["trl_files"])
-        case.assertFalse(Path(minimal.engine.args.output_dir).exists())
+        case.assertFalse(list((Path(minimal_directory) / "minimal").glob(".trl-*")))
 
     rl_records = rows.remove_columns("prompt").add_column(
         "prompt", task.prepare_prompts(tokenizer, rows["prompt"])
@@ -894,7 +970,12 @@ def check_dpo_contract(case):
             patch("amarken.trainers.rl.Trainer", DPOTrainer),
             case.assertRaises(ValueError),
         ):
-            make_config(fine_tuning={"mode": "full"}, rl={"beta": 0.1})
+            DPOTrainer(
+                make_model(),
+                train,
+                make_config(fine_tuning={"mode": "full"}, rl={"beta": 0.1}),
+                validation_dataset=validation,
+            )
         from amarken.main import run_train
 
         with (

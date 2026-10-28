@@ -2,8 +2,9 @@
 
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass
 from pathlib import Path
+from typing import Protocol
 
 import torch
 
@@ -131,6 +132,12 @@ class FineTuningConfig:
         self.target_modules = tuple(self.target_modules)
 
 
+class RLSettings(Protocol):
+    """Adapter-owned dataclass settings; policy warm-start is shared."""
+
+    initial_checkpoint: str | None
+
+
 @dataclass
 class GRPOConfig:
     """Single-device GRPO settings. Batch size counts prompts, not completions."""
@@ -228,7 +235,7 @@ class Config:
     precision: str = "float32"
     run_name: str = "training"
     fine_tuning: FineTuningConfig | None = None
-    rl: GRPOConfig | DPOConfig | None = None
+    rl: RLSettings | dict | None = None
     wandb: WandbConfig = field(default_factory=WandbConfig)
     checkpoints: CheckpointConfig = field(
         default_factory=lambda: CheckpointConfig(backend="local")
@@ -240,8 +247,22 @@ class Config:
             from amarken.trainers.rl import Trainer as RLTrainer
 
             self.rl = RLTrainer.config_type(**self.rl)
-        if self.rl is not None and not isinstance(self.rl, (GRPOConfig, DPOConfig)):
-            raise TypeError("rl must be a selected trainer configuration or dictionary")
+        if self.rl is not None:
+            if (
+                isinstance(self.rl, type)
+                or not is_dataclass(self.rl)
+                or "initial_checkpoint" not in self.rl.__dataclass_fields__
+            ):
+                raise TypeError(
+                    "rl must be a dataclass with initial_checkpoint or a settings dictionary"
+                )
+            initial = self.rl.initial_checkpoint
+            if initial is not None and (
+                not isinstance(initial, str) or not initial.strip()
+            ):
+                raise ValueError(
+                    "rl.initial_checkpoint must be a nonempty path or null"
+                )
         if isinstance(self.fine_tuning, dict):
             self.fine_tuning = FineTuningConfig(**self.fine_tuning)
         if self.fine_tuning is not None and not isinstance(
@@ -250,10 +271,6 @@ class Config:
             raise TypeError("fine_tuning must be a FineTuningConfig or dictionary")
         if isinstance(self.wandb, dict):
             self.wandb = WandbConfig(**self.wandb)
-        if self.rl is not None and (
-            self.fine_tuning is None or self.fine_tuning.mode != "lora"
-        ):
-            raise ValueError("TRL adapters currently require fine_tuning.mode=lora")
         if isinstance(self.checkpoints, dict):
             self.checkpoints = CheckpointConfig(**self.checkpoints)
         if isinstance(self.dataset, dict):

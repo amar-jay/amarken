@@ -93,6 +93,25 @@ class BaseRLTrainer(ABC):
     def validate_config(self, model, config):
         """Optionally validate algorithm-specific requirements before placement."""
 
+    @classmethod
+    def evaluation_options(cls, config):
+        """Optional keyword arguments for the selected module's validation step."""
+        return {}
+
+    @classmethod
+    def evaluate_checkpoint(cls, model, config, path, *, split):
+        """Use ordinary task evaluation unless the adapter needs another path."""
+        from amarken.validation import evaluate_model
+
+        if not isinstance(config.rl, cls.config_type):
+            raise TypeError("Select the matching RL adapter and its configuration")
+        return evaluate_model(
+            model,
+            config,
+            split=split,
+            evaluation_options=cls.evaluation_options(config),
+        )
+
     def fit(self):
         return run.fit(self, self._fit)
 

@@ -11,7 +11,7 @@ from amarken.utils import distributed
 
 
 def validate_initial_policy(path, config):
-    """Warm-start weights need matching model identity and LoRA scaling/shapes."""
+    """Warm-start weights need matching model identity and fine-tuning setup."""
     state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
     if not isinstance(state, dict) or state.get("format_version") != 1:
         raise ValueError(
@@ -21,7 +21,9 @@ def validate_initial_policy(path, config):
     if previous.get("model_id") != config.model_id:
         raise ValueError("Initial checkpoint model_id does not match the RL config")
     tuning = previous.get("fine_tuning") or {}
-    current = asdict(config.fine_tuning)
+    current = asdict(config.fine_tuning) if config.fine_tuning is not None else {}
+    if tuning.get("mode", "full") == current.get("mode", "full") == "full":
+        return
     for key in ("mode", "r", "alpha", "target_modules"):
         old, new = tuning.get(key), current[key]
         if key == "target_modules":

@@ -842,7 +842,7 @@ adapter's `config_type` parses the `"rl"` settings; its `from_config()` prepares
 algorithm-specific inputs. Ordinary training without an `"rl"` section does not
 load TRL through trainer imports.
 
-The application config types are `GRPOConfig` and `DPOConfig` in
+The built-in application config types are `GRPOConfig` and `DPOConfig` in
 `amarken.config`; the JSON section remains `"rl"`. Existing configurations and
 GRPO checkpoints keep their format. The old `amarken.trainer`, `amarken.rl_trainer` and `RLConfig`
 Python imports have been removed; use the new package paths and the selected
@@ -855,13 +855,23 @@ checkpoint metadata and export. Its thin methods delegate to `utils/run.py`,
 The parent does not require rewards, dataset columns, a tokenizer or a nested
 model. GRPO and DPO keep their own input and evaluation behavior.
 
-To add another TRL adapter, declare `config_type` and a unique `trainer_kind`,
+To add another TRL adapter, define a settings dataclass with
+`initial_checkpoint: str | None = None` and validate its algorithm fields in
+`__post_init__()`. Set it as `config_type`, declare a unique `trainer_kind`,
 then implement `from_config(model, config)` to prepare inputs and
 `build_engine(output, training=True)` to return the native trainer. Attach
 `RLCallback(self)` to the engine during training for shared metric logging and
 checkpoint exports. The default `train(engine, resume_from_checkpoint=...)`
 invokes the engine; override it only when the algorithm needs a different call.
 The inherited public interface remains `fit()`, `resume()` and `checkpoint_prefix`.
+
+The selected adapter also handles standalone validation and testing through
+`evaluate_checkpoint(model, config, path, split=...)`. Its default uses the selected
+module and dataset; `evaluation_options(config)` supplies extra validation-step
+keywords (empty by default). Override checkpoint evaluation when an algorithm
+needs its own dataset or reference state, as DPO does. Adding settings or an
+adapter requires no central config or evaluation dispatch changes. LoRA is a
+requirement of the built-in GRPO/DPO adapters rather than the parent.
 
 Optional hooks are `validate_config()` for algorithm requirements,
 `training_metrics()` / `evaluation_metrics()` for unprefixed metric names, and

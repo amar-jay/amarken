@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 
-from amarken.config import Config, DPOConfig
+from amarken.config import Config
 from amarken.dataset import build_dataloaders, build_dataset, build_test_dataset
 from amarken.model import build_metrics, load_model, validation_step
 from amarken.utils.helpers import batch_size, seed_everything
@@ -27,12 +27,17 @@ def run_validation(
         **options,
     )
     model.eval()
-    if isinstance(config.rl, DPOConfig):
+    if config.rl is not None:
         from amarken.trainers.rl import Trainer as RLTrainer
 
-        if RLTrainer.config_type is not DPOConfig:
-            raise TypeError("Select the DPO adapter to evaluate preference checkpoints")
+        if not isinstance(config.rl, RLTrainer.config_type):
+            raise TypeError("Select the matching RL adapter and its configuration")
         return RLTrainer.evaluate_checkpoint(model, config, checkpoint, split=split)
+    return evaluate_model(model, config, split=split)
+
+
+def evaluate_model(model, config, *, split, evaluation_options=None):
+    """Evaluate an already loaded model through the selected module and dataset."""
     if split == "test":
         validation = build_test_dataset(config.dataset, seed=config.seed)
         train = validation  # Only the evaluation loader is iterated.
@@ -45,9 +50,7 @@ def run_validation(
         batch_size=config.batch_size,
         tokenize=getattr(model, "tokenize", None),
     )
-    evaluation_options = (
-        {"generation": config.rl.evaluation_generation} if config.rl is not None else {}
-    )
+    evaluation_options = {} if evaluation_options is None else evaluation_options
     totals = {}
     samples = 0
     device = torch.device(config.device)

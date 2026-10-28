@@ -30,7 +30,7 @@ class _TaskGRPOTrainer(TRLGRPOTrainer):
                         batch,
                         self.accelerator.device,
                         metrics,
-                        generation=owner.config.rl.evaluation_generation,
+                        **owner.evaluation_options(owner.config),
                     )
                     samples += batch_size(batch)
         finally:
@@ -111,6 +111,8 @@ class GRPOTrainer(BaseRLTrainer):
         self.build_metrics, self.validation_step = build_metrics, validation_step
 
     def validate_config(self, model, config):
+        if config.fine_tuning is None or config.fine_tuning.mode != "lora":
+            raise ValueError("GRPO currently requires fine_tuning.mode=lora")
         if (
             config.checkpoints.monitor != "train/reward"
             and not config.checkpoints.monitor.startswith("val/")
@@ -118,6 +120,10 @@ class GRPOTrainer(BaseRLTrainer):
             raise ValueError(
                 "RL checkpoints require train/reward or a module validation metric"
             )
+
+    @classmethod
+    def evaluation_options(cls, config):
+        return {"generation": config.rl.evaluation_generation}
 
     def training_metrics(self, logs):
         aliases = {
