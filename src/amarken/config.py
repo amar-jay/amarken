@@ -132,7 +132,7 @@ class FineTuningConfig:
 
 
 @dataclass
-class RLConfig:
+class GRPOConfig:
     """Single-device GRPO settings. Batch size counts prompts, not completions."""
 
     group_size: int = 4
@@ -186,6 +186,36 @@ class RLConfig:
 
 
 @dataclass
+class DPOConfig:
+    """Single-device LoRA preference optimization; no rollouts or reward callback."""
+
+    beta: float = 0.1
+    max_length: int = 512
+    max_grad_norm: float = 1.0
+    gradient_checkpointing: bool = True
+    initial_checkpoint: str | None = None
+
+    def __post_init__(self):
+        for name in ("beta", "max_grad_norm"):
+            value = getattr(self, name)
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"rl.{name} must be finite and positive")
+        if type(self.max_length) is not int or self.max_length < 2:
+            raise ValueError("rl.max_length must be an integer >= 2")
+        if type(self.gradient_checkpointing) is not bool:
+            raise ValueError("rl.gradient_checkpointing must be a boolean")
+        if self.initial_checkpoint is not None and (
+            not isinstance(self.initial_checkpoint, str)
+            or not self.initial_checkpoint.strip()
+        ):
+            raise ValueError("rl.initial_checkpoint must be a nonempty path or null")
+
+
+@dataclass
 class Config:
     model_id: str
     dataset: DatasetConfig
@@ -198,7 +228,7 @@ class Config:
     precision: str = "float32"
     run_name: str = "training"
     fine_tuning: FineTuningConfig | None = None
-    rl: RLConfig | None = None
+    rl: GRPOConfig | DPOConfig | None = None
     wandb: WandbConfig = field(default_factory=WandbConfig)
     checkpoints: CheckpointConfig = field(
         default_factory=lambda: CheckpointConfig(backend="local")
@@ -206,9 +236,12 @@ class Config:
 
     def __post_init__(self):
         if isinstance(self.rl, dict):
-            self.rl = RLConfig(**self.rl)
-        if self.rl is not None and not isinstance(self.rl, RLConfig):
-            raise TypeError("rl must be an RLConfig or dictionary")
+            # The explicit trainer import selects its settings as well as its loop.
+            from amarken.trainers.rl import Trainer as RLTrainer
+
+            self.rl = RLTrainer.config_type(**self.rl)
+        if self.rl is not None and not isinstance(self.rl, (GRPOConfig, DPOConfig)):
+            raise TypeError("rl must be a selected trainer configuration or dictionary")
         if isinstance(self.fine_tuning, dict):
             self.fine_tuning = FineTuningConfig(**self.fine_tuning)
         if self.fine_tuning is not None and not isinstance(
@@ -220,7 +253,7 @@ class Config:
         if self.rl is not None and (
             self.fine_tuning is None or self.fine_tuning.mode != "lora"
         ):
-            raise ValueError("The initial GRPO trainer requires fine_tuning.mode=lora")
+            raise ValueError("TRL adapters currently require fine_tuning.mode=lora")
         if isinstance(self.checkpoints, dict):
             self.checkpoints = CheckpointConfig(**self.checkpoints)
         if isinstance(self.dataset, dict):

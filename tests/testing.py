@@ -18,7 +18,7 @@ from amarken.config import CheckpointConfig, Config, DatasetConfig
 from amarken.inference import run_inference
 from amarken.modules.example import build_model, load_model, loss_fn
 from amarken.modules.example import predict as predict_numeric
-from amarken.trainer import Trainer
+from amarken.trainers.supervised import Trainer
 from amarken.utils.helpers import prompt_run_name, seed_everything
 from amarken.utils.logger import WandbLogger
 
@@ -32,6 +32,18 @@ def make_config(*, dataset=None, **options):
 
 
 def check_rl_contract(case):
+    # Exercise lazy imports in a fresh interpreter; the parent tests use TRL.
+    imported = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import amarken.trainers; import amarken.trainers.supervised; import amarken.main; assert not any(n == 'trl' or n.startswith('trl.') for n in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    case.assertEqual(imported.returncode, 0, imported.stderr)
     from dataclasses import replace
 
     from datasets import Dataset
@@ -43,12 +55,13 @@ def check_rl_contract(case):
     from trl import GRPOTrainer as TRLGRPOTrainer
 
     from amarken import model as selected
-    from amarken.config import RLConfig
+    from amarken.config import GRPOConfig
     from amarken.datasets import arithmetic as data
     from amarken.modules import arithmetic as task
     from amarken.modules import example
     from amarken.modules.causal import CausalLM
-    from amarken.rl_trainer import GRPOTrainer
+    from amarken.trainers.rl import Trainer as SelectedRLTrainer
+    from amarken.trainers.rl.grpo import GRPOTrainer
     from amarken.utils.helpers import load_checkpoint_weights
 
     # Selecting a supervised-only module must not require RL exports.
@@ -60,15 +73,17 @@ def check_rl_contract(case):
     with patch.object(selected, "module", task):
         case.assertEqual(selected.get_rl_hooks()["reward_fn"], task.reward_fn)
 
+    case.assertIs(SelectedRLTrainer, GRPOTrainer)
+
     for text in ("2", " 2\n", "+2", "02"):
         case.assertEqual(task.reward_fn(completions=[text], answer=[2]), [1.0])
     for text in ("", "2 and 3", "The answer is 2", "2.0", "2\n2", "9999999", "3"):
         case.assertEqual(task.reward_fn(completions=[text], answer=[2]), [0.0])
     case.assertEqual(
-        RLConfig(max_new_tokens=7).evaluation_generation, {"max_new_tokens": 7}
+        GRPOConfig(max_new_tokens=7).evaluation_generation, {"max_new_tokens": 7}
     )
     case.assertEqual(
-        RLConfig(max_new_tokens=7, eval_max_new_tokens=4).evaluation_generation,
+        GRPOConfig(max_new_tokens=7, eval_max_new_tokens=4).evaluation_generation,
         {"max_new_tokens": 4},
     )
     dataset_config = DatasetConfig(
@@ -365,10 +380,10 @@ def check_rl_contract(case):
         case.assertFalse(any(".ref." in key for key in exported.state_dict()))
         with case.assertRaisesRegex(ValueError, "same rl"):
             changed = make_trainer()
-            changed.config.rl = RLConfig(group_size=4)
+            changed.config.rl = GRPOConfig(group_size=4)
             changed.resume(path)
         with (
-            patch("amarken.rl_trainer.distributed.launched", return_value=True),
+            patch("amarken.trainers.rl.grpo.distributed.launched", return_value=True),
             case.assertRaisesRegex(ValueError, "one device"),
         ):
             make_trainer()
@@ -380,7 +395,7 @@ def check_rl_contract(case):
         routed_trainer.fit.return_value = []
         with (
             patch(
-                "amarken.main.get_rl_hooks",
+                "amarken.model.get_rl_hooks",
                 return_value={
                     "prepare_prompts": task.prepare_prompts,
                     "reward_fn": task.reward_fn,
@@ -394,10 +409,12 @@ def check_rl_contract(case):
                 side_effect=AssertionError("Resume must not load pretrained weights"),
             ),
             patch(
-                "amarken.main.build_rl_dataset", return_value=(rl_records, loaders[1])
+                "amarken.dataset.build_rl_dataset",
+                return_value=(rl_records, loaders[1]),
             ),
-            patch("amarken.rl_trainer.GRPOTrainer", return_value=routed_trainer),
+            patch("amarken.trainers.rl.Trainer") as selected_trainer,
         ):
+            selected_trainer.from_config.return_value = routed_trainer
             run_train(replace(config, epochs=2), resume=path)
         case.assertEqual(resume_loader.call_args.args, (path,))
         routed_trainer.resume.assert_called_once_with(path)
@@ -433,7 +450,7 @@ def check_rl_contract(case):
         with (
             patch("amarken.main.build_model", return_value=make_model()),
             patch(
-                "amarken.main.build_rl_dataset",
+                "amarken.dataset.build_rl_dataset",
                 return_value=(contextual_rows, loaders[1]),
             ) as rl_builder,
             patch(
@@ -447,15 +464,15 @@ def check_rl_contract(case):
                 ),
             ),
             patch(
-                "amarken.main.get_rl_hooks",
+                "amarken.model.get_rl_hooks",
                 return_value={
                     "prepare_prompts": task.prepare_prompts,
                     "reward_fn": contextual_reward,
                 },
             ),
             patch("amarken.model.module", task),
-            patch("amarken.main.build_metrics", task.build_metrics),
-            patch("amarken.main.validation_step", task.validation_step),
+            patch("amarken.model.build_metrics", task.build_metrics),
+            patch("amarken.model.validation_step", task.validation_step),
         ):
             # Also exercise actual TRL sampling, rather than controlled completions.
             _, routed_history = run_train(config)
@@ -522,11 +539,12 @@ def check_rl_contract(case):
         with (
             patch("amarken.main.load_model", return_value=warm_model) as initial_loader,
             patch(
-                "amarken.main.build_rl_dataset", return_value=(rl_records, loaders[1])
+                "amarken.dataset.build_rl_dataset",
+                return_value=(rl_records, loaders[1]),
             ),
             patch("amarken.model.module", task),
-            patch("amarken.main.build_metrics", task.build_metrics),
-            patch("amarken.main.validation_step", task.validation_step),
+            patch("amarken.model.build_metrics", task.build_metrics),
+            patch("amarken.model.validation_step", task.validation_step),
             patch(
                 "peft.peft_model.PeftModelForCausalLM.generate", side_effect=generate
             ),
@@ -553,7 +571,292 @@ def check_rl_contract(case):
         {"eval_max_new_tokens": "16"},
     ):
         with case.assertRaises(ValueError):
-            RLConfig(**settings)
+            GRPOConfig(**settings)
+
+
+def check_dpo_contract(case):
+    from dataclasses import asdict, replace
+
+    from datasets import Dataset
+    from peft import LoraConfig, get_peft_model
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+    from transformers import PreTrainedTokenizerFast, Qwen2Config, Qwen2ForCausalLM
+    from trl import DPOTrainer as NativeDPOTrainer
+
+    from amarken import dataset as selected_data
+    from amarken.config import DPOConfig
+    from amarken.datasets import preference
+    from amarken.modules import causal
+    from amarken.trainers.rl.dpo import DPOTrainer
+    from amarken.validation import run_validation
+
+    for settings in (
+        {"beta": 0},
+        {"beta": float("nan")},
+        {"max_length": True},
+        {"max_length": 1},
+        {"gradient_checkpointing": 1},
+    ):
+        with case.assertRaises(ValueError):
+            DPOConfig(**settings)
+    with patch("amarken.trainers.rl.Trainer", DPOTrainer):
+        parsed = make_config(
+            fine_tuning={"mode": "lora"}, rl={"beta": 0.2, "max_length": 32}
+        )
+        case.assertIsInstance(parsed.rl, DPOConfig)
+        case.assertEqual(parsed.rl.beta, 0.2)
+
+    backend = Tokenizer(
+        WordLevel(
+            {
+                "<unk>": 0,
+                "<eos>": 1,
+                "hello": 2,
+                "1": 3,
+                "2": 4,
+                "user": 5,
+                "assistant": 6,
+                "world": 7,
+            },
+            unk_token="<unk>",
+        )
+    )
+    backend.pre_tokenizer = Whitespace()
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        unk_token="<unk>",
+        eos_token="<eos>",
+        pad_token="<eos>",
+    )
+    tokenizer.chat_template = "{% for message in messages %}{{ message.role }} {{ message.content }} {{ eos_token }} {% endfor %}{% if add_generation_prompt %}assistant {% endif %}"
+    architecture = Qwen2Config(
+        vocab_size=8,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        max_position_embeddings=512,
+        eos_token_id=1,
+        pad_token_id=1,
+    )
+    directory = case.enterContext(tempfile.TemporaryDirectory())
+    architecture.save_pretrained(directory)
+    architecture._name_or_path = directory
+
+    def make_model():
+        torch.manual_seed(83)
+        core = get_peft_model(
+            Qwen2ForCausalLM(architecture),
+            LoraConfig(
+                task_type="CAUSAL_LM",
+                r=2,
+                lora_alpha=4,
+                target_modules=["q_proj", "v_proj"],
+                lora_dropout=0.1,
+            ),
+        )
+        with torch.no_grad():
+            for name, parameter in core.named_parameters():
+                if "lora_B" in name:
+                    parameter.fill_(0.005)
+        return causal.CausalLM(core, tokenizer)
+
+    rows = Dataset.from_list(
+        [{"prompt": f"hello {i}", "chosen": "2", "rejected": "1"} for i in range(300)]
+    )
+    data_config = DatasetConfig(
+        id="fixture",
+        train_split="train",
+        validation_split="train",
+        train_size=2,
+        val_size=1,
+        test_size=1,
+    )
+    with patch.object(preference, "load_dataset", return_value=[rows]):
+        train, validation = preference.build_preference_dataset(
+            data_config, tokenize=make_model().tokenize, max_length=32
+        )
+        test = preference.build_preference_dataset(
+            data_config, tokenize=make_model().tokenize, max_length=32, split="test"
+        )
+        _, repeated = preference.build_preference_dataset(
+            replace(data_config, train_size=3),
+            tokenize=make_model().tokenize,
+            max_length=32,
+        )
+    case.assertEqual(validation["prompt"], repeated["prompt"])
+    groups = [set(x["prompt"]) for x in (train, validation, test)]
+    case.assertFalse(
+        groups[0] & groups[1] or groups[0] & groups[2] or groups[1] & groups[2]
+    )
+    case.assertTrue(all(x.endswith(tokenizer.eos_token) for x in train["chosen"]))
+    messages, chosen, rejected = preference._pair(
+        {
+            "chosen": [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "2"},
+            ],
+            "rejected": [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "1"},
+            ],
+        }
+    )
+    case.assertEqual((chosen, rejected), ("2", "1"))
+    case.assertEqual(messages, [{"role": "user", "content": "hello"}])
+    with case.assertRaisesRegex(ValueError, "must differ"):
+        preference._pair({"prompt": "hello", "chosen": "2", "rejected": "2"})
+    invalid_rows = Dataset.from_list(
+        [{"prompt": "invalid", "chosen": "2", "rejected": "2"}] + list(rows)
+    )
+    with patch.object(preference, "load_dataset", return_value=[invalid_rows]):
+        eligible, _ = preference.build_preference_dataset(
+            data_config, tokenize=make_model().tokenize, max_length=32
+        )
+    case.assertEqual(len(eligible), data_config.train_size)
+
+    with (
+        patch.object(preference, "load_dataset", return_value=[rows]),
+        case.assertRaisesRegex(ValueError, "eligible pairs"),
+    ):
+        preference.build_preference_dataset(
+            data_config, tokenize=make_model().tokenize, max_length=1
+        )
+    with (
+        patch.object(selected_data, "module", preference),
+        patch.object(preference, "load_dataset", return_value=[rows]),
+    ):
+        prepared, _ = selected_data.build_preference_dataset(
+            data_config, tokenize=make_model().tokenize, max_length=32
+        )
+        case.assertEqual(prepared["prompt"], train["prompt"])
+
+    # Use one pair per epoch to test real loss/gradient and native resume deterministically.
+    train = train.select(range(1))
+    config = make_config(
+        dataset=data_config,
+        fine_tuning={"mode": "lora", "r": 2, "alpha": 4, "dropout": 0.1},
+        rl=DPOConfig(max_length=32, gradient_checkpointing=False),
+        learning_rate=0.01,
+        batch_size=1,
+        epochs=2,
+        run_name="dpo",
+        checkpoints={"backend": "local", "monitor": "val/loss", "mode": "min"},
+    )
+    config.model_id = "Qwen/Qwen2.5-0.5B"
+    with patch("amarken.utils.logger.CHECKPOINT_DIR", Path(directory) / "checkpoints"):
+        full = DPOTrainer(make_model(), train, config, validation_dataset=validation)
+        before = {
+            key: value.clone()
+            for key, value in full.model.state_dict().items()
+            if ".default." in key
+        }
+        history = full.fit()
+        case.assertIsInstance(full.engine, NativeDPOTrainer)
+        case.assertEqual(len(history), 2)
+        case.assertIn("val/rewards/accuracies", history[-1])
+        case.assertTrue(
+            any(
+                not torch.equal(value, full.model.state_dict()[key])
+                for key, value in before.items()
+            )
+        )
+        for key, value in before.items():
+            parameter = full.model.get_parameter(key.replace(".default.", ".ref."))
+            torch.testing.assert_close(parameter, value, rtol=0, atol=0)
+            case.assertFalse(parameter.requires_grad)
+        path = Path(directory) / "checkpoints/dpo/latest.pt"
+        expected = torch.load(path, weights_only=True)
+        case.assertEqual(expected["trainer"], "trl-dpo")
+        case.assertTrue(expected["reference_adapter"])
+        case.assertFalse(any(".ref." in key for key in expected["model"]))
+        first = DPOTrainer(
+            make_model(),
+            train,
+            replace(config, epochs=1),
+            validation_dataset=validation,
+        )
+        first.fit()
+        resumed = DPOTrainer(make_model(), train, config, validation_dataset=validation)
+        with torch.no_grad():
+            for parameter in resumed.model.parameters():
+                parameter.add_(0.25)
+        resumed.resume(path)
+        resumed.fit()
+        actual = torch.load(path, weights_only=True)
+        for key, value in expected["model"].items():
+            torch.testing.assert_close(value, actual["model"][key], rtol=0, atol=1e-7)
+        for key, value in expected["reference_adapter"].items():
+            torch.testing.assert_close(
+                value, actual["reference_adapter"][key], rtol=0, atol=0
+            )
+        with (
+            patch(
+                "amarken.modules.causal.AutoConfig.from_pretrained",
+                return_value=architecture,
+            ),
+            patch(
+                "amarken.modules.causal.AutoTokenizer.from_pretrained",
+                return_value=tokenizer,
+            ),
+        ):
+            exported = causal.load_model(
+                path, model_id=config.model_id, fine_tuning=config.fine_tuning
+            )
+        case.assertFalse(any(".ref." in key for key in exported.state_dict()))
+        with (
+            patch("amarken.validation.load_model", return_value=exported),
+            patch("amarken.trainers.rl.Trainer", DPOTrainer),
+            patch("amarken.dataset.build_preference_dataset", return_value=test),
+        ):
+            result = run_validation(path, config, split="test")
+        case.assertEqual(result["samples"], 1)
+        case.assertIn("test/rewards/accuracies", result)
+        case.assertTrue(torch.isfinite(torch.tensor(result["test/loss"])))
+        with case.assertRaisesRegex(ValueError, "amarken TRL checkpoint"):
+            rejected = dict(actual, trainer="trl-grpo")
+            wrong = Path(directory) / "wrong.pt"
+            torch.save(rejected, wrong)
+            DPOTrainer(
+                make_model(), train, config, validation_dataset=validation
+            ).resume(wrong)
+        with (
+            patch("amarken.trainers.rl.Trainer", DPOTrainer),
+            case.assertRaises(ValueError),
+        ):
+            make_config(fine_tuning={"mode": "full"}, rl={"beta": 0.1})
+        from amarken.main import run_train
+
+        with (
+            patch("amarken.trainers.rl.Trainer", DPOTrainer),
+            patch("amarken.main.build_model", return_value=make_model()),
+            patch(
+                "amarken.dataset.build_preference_dataset",
+                return_value=(train, validation),
+            ) as builder,
+            patch(
+                "amarken.model.get_rl_hooks",
+                side_effect=AssertionError("DPO must not request GRPO hooks"),
+            ),
+            patch(
+                "amarken.main.build_dataset",
+                side_effect=AssertionError("DPO must use preference data"),
+            ),
+        ):
+            _, routed = run_train(
+                replace(
+                    config,
+                    epochs=1,
+                    run_name="dpo-route",
+                    rl=replace(config.rl, gradient_checkpointing=True),
+                )
+            )
+        case.assertEqual(len(routed), 1)
+        case.assertEqual(builder.call_args.kwargs["max_length"], 32)
+        case.assertEqual(asdict(config)["rl"]["max_length"], 32)
 
 
 def check_sft_contract(case):
@@ -1961,6 +2264,7 @@ class TrainerTests(unittest.TestCase):
 
     def test_checkpoint_policies(self):
         check_rl_contract(self)
+        check_dpo_contract(self)
         check_sft_contract(self)
         check_causal_contract(self)
         check_tts_contract(self)

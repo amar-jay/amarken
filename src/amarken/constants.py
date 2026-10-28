@@ -30,6 +30,7 @@ REVISIONS = {
 }
 
 DATASET_REVISIONS = {
+    "trl-lib/ultrafeedback_binarized": "47124cb5778f5d50de1c7676a412828f3ea7c555",
     "tatsu-lab/alpaca": "dce01c9b08f87459cf36a430d809084718273017",
     "stanfordnlp/sst2": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb",
     "bookbot/ljspeech_phonemes": "5379ba66d6b869d8ba74c8341f3100d645246d5d",

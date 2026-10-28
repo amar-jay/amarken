@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 
-from amarken.config import Config
+from amarken.config import Config, DPOConfig
 from amarken.dataset import build_dataloaders, build_dataset, build_test_dataset
 from amarken.model import build_metrics, load_model, validation_step
 from amarken.utils.helpers import batch_size, seed_everything
@@ -27,6 +27,12 @@ def run_validation(
         **options,
     )
     model.eval()
+    if isinstance(config.rl, DPOConfig):
+        from amarken.trainers.rl import Trainer as RLTrainer
+
+        if RLTrainer.config_type is not DPOConfig:
+            raise TypeError("Select the DPO adapter to evaluate preference checkpoints")
+        return RLTrainer.evaluate_checkpoint(model, config, checkpoint, split=split)
     if split == "test":
         validation = build_test_dataset(config.dataset, seed=config.seed)
         train = validation  # Only the evaluation loader is iterated.

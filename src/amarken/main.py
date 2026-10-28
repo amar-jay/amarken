@@ -2,17 +2,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from amarken.config import Config
-from amarken.dataset import build_dataloaders, build_dataset, build_rl_dataset
+from amarken.dataset import build_dataloaders, build_dataset
 from amarken.model import (
-    build_metrics,
     build_model,
     fsdp_modules,
-    get_rl_hooks,
     load_model,
     loss_fn,
-    validation_step,
 )
-from amarken.trainer import Trainer
+from amarken.trainers.supervised import Trainer
 from amarken.utils.checkpoint import validate_initial_policy
 from amarken.utils.distributed import launched, training_process
 from amarken.utils.helpers import seed_everything
@@ -22,7 +19,7 @@ def run_train(config: Config, *, resume: Path | None = None):
     """Train the selected model and dataset without parsing command-line arguments."""
     if config.rl is not None and (launched() or config.strategy != "auto"):
         raise ValueError(
-            "GRPO currently supports one device without torchrun, DDP or FSDP"
+            "TRL adapters currently support one device without torchrun, DDP or FSDP"
         )
     with training_process(
         config.device, strategy=config.strategy, precision=config.precision
@@ -32,7 +29,6 @@ def run_train(config: Config, *, resume: Path | None = None):
 
 def _train(config, *, resume):
     seed_everything(config.seed)
-    rl_hooks = get_rl_hooks() if config.rl is not None else {}
     # Preserve FP32 initialization and cast frozen subtrees before GPU placement.
     options = (
         {"fine_tuning": config.fine_tuning} if config.fine_tuning is not None else {}
@@ -61,25 +57,9 @@ def _train(config, *, resume):
             model_id=config.model_id, device="cpu", precision="float32", **options
         )
     if config.rl is not None:
-        from amarken.rl_trainer import GRPOTrainer
+        from amarken.trainers.rl import Trainer as RLTrainer
 
-        train_records, validation = build_rl_dataset(
-            config.dataset,
-            seed=config.seed,
-            batch_size=config.batch_size,
-            tokenize=getattr(model, "tokenize", None),
-            prepare_prompts=rl_hooks["prepare_prompts"],
-            max_new_tokens=config.rl.max_new_tokens,
-        )
-        trainer = GRPOTrainer(
-            model,
-            train_records,
-            config,
-            validation_loader=validation,
-            reward_fn=rl_hooks["reward_fn"],
-            build_metrics=build_metrics,
-            validation_step=validation_step,
-        )
+        trainer = RLTrainer.from_config(model, config)
     else:
         train_data, validation_data = build_dataset(config.dataset, seed=config.seed)
         train, validation = build_dataloaders(

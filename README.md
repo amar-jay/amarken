@@ -208,7 +208,7 @@ its unused imports are removed. The synthetic defaults require no Hub downloads.
 ## Custom training
 
 For your own task, import `Config` from `amarken.config`, `Trainer` from
-`amarken.trainer`, and `seed_everything` from `amarken.utils.helpers`. Seed before
+`amarken.trainers.supervised`, and `seed_everything` from `amarken.utils.helpers`. Seed before
 constructing the model and loaders, and supply
 `loss_fn(model, batch, device)` returning a scalar loss. The callback moves its
 batch to the supplied device. Optionally pass a validation loader, optimizer,
@@ -669,13 +669,15 @@ validation on the third, and autoregressive WAV inference. The smoke-test WAV wa
 not speech quality or full fine-tuning. The final spectral projection output is
 promoted to FP32 for the codec's complex-number reconstruction on CPU.
 
-Supervised training stays in `trainer.py`; RL uses an independent trainer with
+Supervised training stays in `trainers/supervised.py`; RL uses an independent trainer with
 optimization and scaling owned by TRL. Run naming, logger lifetime and cleanup
 are shared through `utils/run.py`. Model placement, precision setup,
 and DDP/FSDP wrapping live in `utils/distributed.py`; checkpoint state, resume
 validation, RNG capture/restoration, and best/latest saving live in
 `utils/checkpoint.py`.
 `Trainer.state_dict()` and `Trainer.resume()` delegate to those checkpoint helpers.
+TRL-native bundles, adapter export compatibility, run metadata and resume helpers
+live separately in `utils/trl.py`, shared by GRPO and DPO.
 
 ## Causal language model fine-tuning
 
@@ -831,18 +833,92 @@ sizes. The easy and hard operand ranges do not overlap. Existing checkpoints
 trained against the chat-ending token need fresh SFT training with EOS targets;
 changing inference settings alone does not repair their stopping.
 
+## Trainer selection
+
+`trainers/supervised.py` contains the supervised loop. RL adapters live under
+`trainers/rl/`; its `__init__.py` selects the current algorithm with one explicit
+import (`GRPOTrainer as Trainer` or `DPOTrainer as Trainer`). The selected
+adapter's `config_type` parses the `"rl"` settings; its `from_config()` prepares
+algorithm-specific inputs. Ordinary training without an `"rl"` section does not
+load TRL through trainer imports.
+
+The application config types are `GRPOConfig` and `DPOConfig` in
+`amarken.config`; the JSON section remains `"rl"`. Existing configurations and
+GRPO checkpoints keep their format. The old `amarken.trainer`, `amarken.rl_trainer` and `RLConfig`
+Python imports have been removed; use the new package paths and the selected
+algorithm's configuration type.
+
+Each adapter provides `fit()`, `resume()` and `checkpoint_prefix`, and shares
+run/checkpoint utilities without inheriting another trainer. GRPO uses prompts
+and rewards; DPO uses chosen/rejected pairs without rollout or reward hooks.
+Future algorithms get their own adapters, configuration and input contracts.
+No registry or universal RL constructor is imposed.
+
+## DPO preference optimization
+
+Use `configs/dpo.json` with these explicit selections:
+
+```python
+# model.py
+import amarken.modules.causal as module
+# dataset.py
+from amarken.datasets import preference as module
+# trainers/rl/__init__.py (replace the GRPO import)
+from amarken.trainers.rl.dpo import DPOTrainer as Trainer
+```
+
+```bash
+uv run amarken train --config configs/dpo.json
+uv run amarken validate --config configs/dpo.json --checkpoint checkpoints/qwen-dpo/best.pt
+uv run amarken test --config configs/dpo.json --checkpoint checkpoints/qwen-dpo/best.pt
+uv run amarken train --config configs/dpo.json --resume checkpoints/qwen-dpo/latest.pt
+```
+
+This single-device LoRA adapter delegates sigmoid DPO loss and evaluation to
+TRL. It does not generate rollouts, accept reward callbacks, or require GRPO
+model hooks. `rl.beta` sets the DPO preference scale; `rl.max_length` bounds each
+complete prompt/response sequence. Set `rl.initial_checkpoint` to a compatible
+SFT `.pt` to warm-start, or leave null to start from pretrained weights.
+
+The pinned UltraFeedback starter supplies chosen/rejected conversations. The
+preference dataset also accepts plain `prompt`/`chosen`/`rejected` strings. It
+filters out inconsistent histories, empty responses and identical pairs, then
+formats the prompt once, and appends pretrained EOS to both responses. Only
+complete pairs fitting `max_length` are sampled; it never truncates a preference.
+Reduce requested sizes or raise the limit if too few eligible pairs remain.
+
+A fixed prompt hash assigns train/validation/test groups across configured
+source splits; duplicate prompts remain in one group regardless of run seed or
+sample sizes. The preset uses the source train split for training and source
+test split for held-out validation/test. This is a small integration preset,
+not a tuned preference-training recipe.
+
+Native validation reports DPO loss, preference reward accuracy/margins and
+chosen/rejected log probabilities. Preference reward accuracy measures whether
+the chosen response scores above the rejected one relative to the reference;
+it is not generated-answer task accuracy. By default `val/loss` selects the
+best checkpoint. Standalone evaluation restores the saved frozen reference,
+so it does not compare the trained policy against a fresh copy of itself.
+
+Public checkpoints contain full inference-compatible policy weights, native
+TRL training state and the fixed reference adapter. Resume restores complete
+policy weights before native optimizer/scheduler/RNG state. Cross-algorithm
+resume is rejected. Both adapters use the existing naming, logging, checkpoint
+policies and storage backends. Switch the RL import back to GRPO before reading
+`configs/rl.json`; source selection determines which settings the `"rl"` object
+accepts.
+
 ## Arithmetic RL with TRL
 
-The default imports select `modules/causal.py` and `datasets/sft.py` for
-`configs/sft.json`. To run the arithmetic demo, select `modules/arithmetic.py`
+For `configs/sft.json`, select `modules/causal.py` and `datasets/sft.py`. To run the arithmetic demo, select `modules/arithmetic.py`
 in `model.py` and `datasets/arithmetic.py` in `dataset.py`. Supervised loss, rewards, prompt formatting and greedy evaluation stay in the
-task module. Only RL-capable model modules define `prepare_prompts` and `reward_fn`;
+task module. GRPO model modules provide `prepare_prompts` and `reward_fn`;
 `reward_fn` is passed directly to TRL: it accepts batched completions and any
 needed dataset columns, plus `**kwargs` for unused TRL arguments. Arithmetic
 uses its `answer` column; the trainer does not require that column.
-`model.py` validates these optional hooks when RL is requested. Ordinary modules
+`model.py` validates these optional hooks when GRPO is requested. Ordinary modules
 need no RL exports. Stop tokens are owned by the model implementation, not the
-trainer. `rl_trainer.py` integrates TRL's `GRPOTrainer`; TRL owns rollout
+trainer. `trainers/rl/grpo.py` integrates TRL's `GRPOTrainer`; TRL owns rollout
 sampling, reference adapters, advantages, the clipped objective, optimization,
 scheduling and training-state restoration. The supervised Trainer is unchanged.
 Use `configs/sft.json` for arithmetic SFT; switch both source imports

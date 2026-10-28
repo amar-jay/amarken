@@ -1,0 +1,39 @@
+/*
+ * LoRA DPO on chosen/rejected response pairs; no rollouts or reward callback.
+ * Model: modules.causal; dataset: datasets.preference; trainer: trainers.rl.dpo.
+ * Select DPOTrainer as Trainer in trainers/rl/__init__.py before using this file.
+ * Only complete pairs fitting max_length are sampled; none are truncated.
+ * train/test source rows are further grouped by prompt into disjoint partitions.
+ */
+{
+  "model_id": "Qwen/Qwen2.5-0.5B",
+  "dataset": {
+    "id": "trl-lib/ultrafeedback_binarized",
+    "train_split": "train",
+    "validation_split": "test",
+    "train_size": 32,
+    "val_size": 8,
+    "test_size": 8
+  },
+  "fine_tuning": {
+    "mode": "lora",
+    "r": 8,
+    "alpha": 16,
+    "dropout": 0.05,
+    "target_modules": ["q_proj", "v_proj"]
+  },
+  "rl": {
+    "beta": 0.1,
+    "max_length": 512,
+    "gradient_checkpointing": true,
+    "initial_checkpoint": null // Set to a compatible SFT checkpoint to warm-start.
+  },
+  "learning_rate": 5e-6,
+  "batch_size": 1,
+  "epochs": 1,
+  "device": "cuda",
+  "precision": "bfloat16",
+  "run_name": "qwen-dpo",
+  "checkpoints": {"backend": "local", "policy": "default", "overwrite": true},
+  "wandb": {"enabled": false, "mode": "offline"}
+}

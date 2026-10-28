@@ -168,52 +168,6 @@ def gather_rng(trainer):
         trainer._rank_rng = states
 
 
-def pack_trl_checkpoints(output):
-    """Bundle TRL's retained adapter/optimizer/RNG files into the backend-neutral .pt."""
-    return {
-        path.relative_to(output).as_posix(): path.read_bytes()
-        for directory in output.glob("checkpoint-*")
-        if directory.is_dir()
-        for path in directory.rglob("*")
-        if path.is_file() and not path.is_symlink()
-    }
-
-
-def restore_trl_checkpoints(path, output):
-    """Restore native TRL state from a local or downloaded amarken .pt file."""
-    import json
-
-    state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
-    files, current = state.get("trl_files"), state.get("trl_checkpoint")
-    if not files or not isinstance(current, str) or Path(current).name != current:
-        raise ValueError("RL checkpoint is missing native TRL training state")
-    root = output.resolve()
-    for name, data in files.items():
-        target = (root / name).resolve()
-        if (
-            Path(name).is_absolute()
-            or not target.is_relative_to(root)
-            or target == root
-        ):
-            raise ValueError("Invalid path in native TRL checkpoint")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
-    # Bundles are portable across machines/run directories. Rebase HF's saved
-    # best-model pointer to the retained best checkpoint extracted alongside it.
-    for directory in output.glob("checkpoint-*"):
-        metadata = directory / "trainer_state.json"
-        if metadata.is_file():
-            saved = json.loads(metadata.read_text())
-            if saved.get("best_model_checkpoint"):
-                saved["best_model_checkpoint"] = str(
-                    output / Path(saved["best_model_checkpoint"]).name
-                )
-                metadata.write_text(json.dumps(saved))
-    if not (output / current / "trainer_state.json").is_file():
-        raise ValueError("Native TRL checkpoint has no trainer state")
-    return output / current
-
-
 def save_checkpoints(owner, metrics, *, capture_training_state=None):
     """Select best/latest and save a snapshot supplied by either trainer.
 

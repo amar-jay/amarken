@@ -1,6 +1,6 @@
 /*
  * TRL GRPO on five-digit addition, rewarded for exact integer answers.
- * Model: modules.arithmetic; dataset: datasets.arithmetic.
+ * Model: modules.arithmetic; dataset: datasets.arithmetic; trainer: trainers.rl.grpo.
  * First train the arithmetic alternative in sft.json to produce initial_checkpoint.
  * Requires LoRA and one device. batch_size counts prompts; group_size counts
  * completions per prompt. update_epochs is rollout reuse (TRL num_iterations).

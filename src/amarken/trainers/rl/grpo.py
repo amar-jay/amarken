@@ -5,33 +5,26 @@ and training-state restoration. Only greedy task evaluation is customized here.
 """
 
 import json
-import shutil
-from dataclasses import asdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import torch
 import trl
 from transformers import TrainerCallback
-from trl import GRPOConfig
+from trl import GRPOConfig as TRLGRPOConfig
 from trl import GRPOTrainer as TRLGRPOTrainer
 
-from amarken.config import RLConfig
+from amarken.config import GRPOConfig
 from amarken.utils import checkpoint, distributed, run
 from amarken.utils import logger as logger_module
-from amarken.utils.checkpoint import pack_trl_checkpoints, restore_trl_checkpoints
+from amarken.utils import trl as trl_utils
 from amarken.utils.helpers import batch_size, prepare_training_precision
 
 
 def _metadata(owner):
-    return {
-        "trainer": "trl-grpo",
-        "trl_version": trl.__version__,
-        "config": asdict(owner.config),
-        "run_id": owner.run_id,
-        "run_label": owner.run_label,
-        "best_metric": owner.engine.state.best_metric,
-    }
+    return trl_utils.trl_run_metadata(
+        owner, trainer_kind="trl-grpo", trl_version=trl.__version__
+    )
 
 
 class _TaskGRPOTrainer(TRLGRPOTrainer):
@@ -122,17 +115,7 @@ class _RunCallback(TrainerCallback):
     def on_save(self, args, state, control, **kwargs):
         owner = self.owner
         directory = Path(args.output_dir) / f"checkpoint-{state.global_step}"
-        # HF resume enumerates adapter subdirectories when TRL's ref adapter
-        # exists. Mirror default there too so native resume restores BOTH.
-        default = directory / "default"
-        default.mkdir(exist_ok=True)
-        for name in (
-            "adapter_config.json",
-            "adapter_model.safetensors",
-            "adapter_model.bin",
-        ):
-            if (directory / name).exists():
-                shutil.copy2(directory / name, default / name)
+        trl_utils.mirror_trl_policy_adapter(directory)
         (directory / "amarken.json").write_text(json.dumps(_metadata(owner)))
         owner.native_checkpoint = directory.name
         owner._save_checkpoints(owner.history[-1])
@@ -140,6 +123,34 @@ class _RunCallback(TrainerCallback):
 
 class GRPOTrainer:
     """Delegate optimization and precision to TRL; share only run utilities."""
+
+    config_type = GRPOConfig
+
+    @classmethod
+    def from_config(cls, model, config):
+        from amarken.dataset import build_rl_dataset
+        from amarken.model import build_metrics, get_rl_hooks, validation_step
+
+        if not isinstance(config.rl, cls.config_type):
+            raise TypeError("Select the matching RL adapter and its configuration")
+        hooks = get_rl_hooks()
+        records, evaluation = build_rl_dataset(
+            config.dataset,
+            seed=config.seed,
+            batch_size=config.batch_size,
+            tokenize=getattr(model, "tokenize", None),
+            prepare_prompts=hooks["prepare_prompts"],
+            max_new_tokens=config.rl.max_new_tokens,
+        )
+        return cls(
+            model,
+            records,
+            config,
+            validation_loader=evaluation,
+            reward_fn=hooks["reward_fn"],
+            build_metrics=build_metrics,
+            validation_step=validation_step,
+        )
 
     def __init__(
         self,
@@ -196,77 +207,18 @@ class GRPOTrainer:
         return checkpoint.save_checkpoints(self, metrics)
 
     def resume(self, path):
-        path = Path(path)
-        if self.engine is not None:
-            raise ValueError("Resume requires a fresh GRPOTrainer")
-        if path.is_dir():
-            raise ValueError(
-                "RL resume requires an amarken .pt checkpoint with complete policy weights"
-            )
-        state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
-        if (
-            state.get("trainer") != "trl-grpo"
-            or state.get("trl_version") != trl.__version__
-        ):
-            raise ValueError(
-                "Resume requires an amarken TRL checkpoint from the installed TRL version"
-            )
-        previous, current = state["config"], asdict(self.config)
-        # Older checkpoints predate the optional evaluation budget.
-        previous["rl"] = asdict(RLConfig(**previous["rl"]))
-        for key in (
-            "rl",
-            "fine_tuning",
-            "model_id",
-            "precision",
-            "dataset",
-            "seed",
-            "batch_size",
-            "learning_rate",
-        ):
-            if json.dumps(previous[key], sort_keys=True) != json.dumps(
-                current[key], sort_keys=True
-            ):
-                raise ValueError(f"Resume requires the same {key} settings")
-        if any(
-            previous["checkpoints"][key] != current["checkpoints"][key]
-            for key in ("monitor", "mode")
-        ):
-            raise ValueError("Resume requires the same checkpoint monitor and mode")
-        for name in ("run_id", "run_label"):
-            value = state.get(name)
-            if value is not None and (
-                not value or Path(value).name != value or value in {".", ".."}
-            ):
-                raise ValueError("Invalid RL checkpoint run identity")
-        if state.get("format_version") != 1 or not isinstance(state.get("model"), dict):
-            raise ValueError("RL checkpoint is missing complete policy weights")
-        # Restore frozen base weights and the trainable policy adapter BEFORE
-        # TRL constructs its reference adapter and restores native training state.
-        self.model.load_state_dict(state["model"], strict=True)
-        self.run_id, self.run_label = state["run_id"], state.get("run_label")
-        self.best_metric = state.get("best_metric")
-        self._resumed = True
-        self.resume_source = path
+        trl_utils.restore_trl_run(
+            self,
+            path,
+            trainer_kind="trl-grpo",
+            settings_type=GRPOConfig,
+            trl_version=trl.__version__,
+        )
 
     def state_dict(self, *, training_state=None):
-        # Inference uses the same full-weight amarken format. TRL's frozen ref
-        # adapter belongs only in the bundled native training state.
-        weights = {
-            key: value
-            for key, value in self.model.state_dict().items()
-            if ".ref." not in key
-        }
-        output = Path(self.engine.args.output_dir)
-        return {
-            "format_version": 1,
-            **_metadata(self),
-            "model": weights,
-            "epoch": self.epoch,
-            "global_step": self.global_step,
-            "trl_checkpoint": self.native_checkpoint,
-            "trl_files": pack_trl_checkpoints(output),
-        }
+        return trl_utils.capture_trl_run(
+            self, trainer_kind="trl-grpo", trl_version=trl.__version__
+        )
 
     def _fit(self):
         run_directory = logger_module.CHECKPOINT_DIR / self.checkpoint_prefix
@@ -280,8 +232,10 @@ class GRPOTrainer:
         settings = self.config.rl
         native_resume = None
         if self.resume_source is not None:
-            native_resume = str(restore_trl_checkpoints(self.resume_source, output))
-        args = GRPOConfig(
+            native_resume = str(
+                trl_utils.restore_trl_checkpoints(self.resume_source, output)
+            )
+        args = TRLGRPOConfig(
             output_dir=str(output),
             per_device_train_batch_size=self.config.batch_size,
             gradient_accumulation_steps=settings.group_size,

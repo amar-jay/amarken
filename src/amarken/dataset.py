@@ -24,9 +24,20 @@ def build_rl_dataset(config, **kwargs):
     return builder(config, **kwargs)
 
 
+def build_preference_dataset(config, **kwargs):
+    """Prepare chosen/rejected records only when the selected adapter needs them."""
+    builder = getattr(module, "build_preference_dataset", None)
+    if not callable(builder):
+        raise TypeError(
+            f"Selected dataset module {module.__name__} does not support preference datasets"
+        )
+    return builder(config, **kwargs)
+
+
 __all__ = [
     "build_dataloaders",
     "build_dataset",
+    "build_preference_dataset",
     "build_rl_dataset",
     "build_test_dataset",
 ]
